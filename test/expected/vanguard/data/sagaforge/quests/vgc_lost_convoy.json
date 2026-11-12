@@ -1,0 +1,93 @@
+{
+  "_sagaforge": {
+    "generated": "by Saga Forge; edits are overwritten on export",
+    "hash": "020cc5ac"
+  },
+  "format": 1,
+  "id": "vgc_lost_convoy",
+  "title": "The Lost Convoy",
+  "kind": "quest",
+  "icon": "graphics/icons/missions/retrieve_from_derelict.png",
+  "repeatable": false,
+  "timeLimitDays": 0,
+  "start": {
+    "kind": "contact",
+    "person": "vgc_reyes",
+    "freq": 1000,
+    "minRep": "FAVORABLE",
+    "offerText": "Commodore Reyes is looking for someone to find a missing convoy.",
+    "optionText": "Ask about the missing convoy"
+  },
+  "requires": [],
+  "stages": [
+    {
+      "id": "search",
+      "title": "Find the convoy",
+      "journal": "A Compact convoy went dark in the Kestrel belt. Find it.",
+      "nextStep": "Search the Kestrel belt",
+      "marker": "vgc_convoy_wreck",
+      "kind": "normal",
+      "renamedFrom": []
+    },
+    {
+      "id": "return",
+      "title": "Report to Reyes",
+      "journal": "You found the convoy. Bring the black box to Commodore Reyes on Haven Station.",
+      "nextStep": "Return to Haven Station",
+      "marker": "vgc_haven",
+      "kind": "normal",
+      "renamedFrom": []
+    }
+  ],
+  "variables": [
+    {
+      "name": "pay",
+      "type": "number",
+      "initial": "1"
+    }
+  ],
+  "targets": [],
+  "rewards": [
+    {
+      "id": "paid",
+      "credits": 60000,
+      "rep": [
+        {
+          "faction": "vgc_vanguard",
+          "amount": 5
+        }
+      ],
+      "personRep": [
+        {
+          "person": "vgc_reyes",
+          "amount": 5
+        }
+      ]
+    },
+    {
+      "id": "paid_double",
+      "credits": 120000,
+      "rep": [
+        {
+          "faction": "vgc_vanguard",
+          "amount": 5
+        }
+      ]
+    }
+  ],
+  "timers": [],
+  "encounters": [
+    {
+      "node": "ambush",
+      "encounter": "vgc_belt_ambush",
+      "defeated": "vgc_lost_convoy_ambush_defeated",
+      "avoided": "vgc_lost_convoy_ambush_avoided"
+    }
+  ],
+  "arrivals": [
+    "vgc_convoy_wreck",
+    "vgc_haven"
+  ],
+  "phrases": [],
+  "flags": []
+}

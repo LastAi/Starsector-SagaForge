@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Saga Forge mock-up: Quest planner</title>
+<link rel="stylesheet" href="mockups.css"></head>
+<body><div class="doc">
+<nav class="navdocs"><a href="index.html">Overview</a><a href="saga.html">Saga</a><a href="factions.html">Factions</a><a href="people.html">People</a><a href="items.html">Items</a><a class="on" href="quest.html">Quest planner</a><a href="displays.html">Dialog displays</a><a href="locations.html">Locations</a><a href="encounters.html">Encounters</a><a href="problems.html">Problems</a><a href="export.html">Export &amp; save warnings</a></nav>
+<h1>Quest planner: Plan mode</h1>
+<p class="lead">Static mock-up of the heart of the tool. The quest <i>The Lost Convoy</i> is planned as a flow chart. Each Dialog node is one <span class="mono">rules.csv</span> row: text plus its options, one output handle per option. Stage frames group the nodes of a journal stage. The bottom panel draws the selected node the way the game's dialog window does, with tokens filled in from the Test context.</p>
+
+<div class="app" style="height:960px">
+  <header>
+    <span class="title"><span class="logo">◆</span> Saga Forge</span>
+    <div class="pages"><button>Saga</button><button>Factions</button><button>People</button><button>Items</button><button class="on">Quests</button><button>Locations</button><button>Encounters</button><button>Dialog</button><button>Problems <span class="count w">3</span></button></div>
+    <span class="spacer"></span>
+    <span class="activemod">Active mod <select><option>Vanguard Compact (vgc_) — mods\VanguardCompact</option></select></span>
+    <span class="sep"></span><button>Check mod</button><button class="primary">Export…</button><button>⚙</button>
+  </header>
+  <div class="body3" style="grid-template-columns:230px 1fr 320px">
+    <aside class="left">
+      <div class="sect">Quests <button>+ New quest</button></div>
+      <ul class="list">
+        <li class="on">The Lost Convoy<span class="sub mono">vgc_lost_convoy</span></li>
+        <li>Salvage Rights<span class="sub mono">vgc_salvage</span></li>
+        <li class="muted">Kestrel greetings <span class="badge b-van">dialog only</span></li>
+      </ul>
+      <hr class="thin">
+      <div class="sect">Stages (journal)</div>
+      <ul class="list">
+        <li><span class="swatch" style="background:#3c8d5a"></span>Offer <span class="sub">before accept</span></li>
+        <li><span class="swatch" style="background:#a0558f"></span>find · Find the convoy</li>
+        <li><span class="swatch" style="background:#5a6f8f"></span>return · Report to Reyes</li>
+        <li><span class="swatch" style="background:#6fd07a"></span>End: success</li>
+        <li><span class="swatch" style="background:#ff6b6b"></span>End: failed <span class="sub">time limit 60 d</span></li>
+      </ul>
+      <hr class="thin">
+      <div class="sect">Variables <button>+</button></div>
+      <ul class="list mono" style="font-size:12px">
+        <li>pay <span class="sub">number · quest · 1</span></li>
+        <li>survivors <span class="sub">bool · quest · false</span></li>
+        <li>soldCrew <span class="sub">bool · global</span></li>
+      </ul>
+      <hr class="thin">
+      <div class="sect">Start</div>
+      <div style="padding:0 12px;font-size:12px">Contact <b>Ilse Reyes</b>, Haven Station<br><span class="muted">rep ≥ Favorable · frequency 10 · not repeatable</span></div>
+    </aside>
+    <section class="main">
+      <div class="toolbar">
+        <div class="seg"><button class="on">Plan</button><button>Play ▶</button></div>
+        <span class="sep"></span>
+        <button>+ Node ▾</button><button>Auto-layout</button><button>Find  Ctrl+F</button>
+        <span class="sep"></span>
+        <div class="seg"><button class="on">Chart</button><button>Rules (14)</button></div>
+        <span class="spacer"></span><span class="muted">Ctrl+Z / Ctrl+Y · Ctrl+D duplicate</span>
+      </div>
+      <div class="help">Drag from an option's dot into empty space to add the next node. Double-click the canvas for a new node.</div>
+      <div class="canvas" id="chart1"></div>
+      <div class="dock" style="height:360px">
+        <div style="display:flex;flex-direction:column;min-width:0">
+          <div class="dock-tabs"><button class="on">Dialog preview</button><button>Problems (2)</button><button>Play log</button><span class="spacer"></span><span class="muted" style="font-size:11px;padding-top:3px">game font · dialog size 1:1 · ruler on</span></div>
+          <div class="gdlg">
+            <div class="vis">
+              <div class="portrait"><svg width="110" height="118" viewBox="0 0 110 118"><circle cx="55" cy="40" r="26" fill="#3b5466"/><path d="M8 118 Q12 76 55 72 Q98 76 102 118Z" fill="#2d4252"/></svg></div>
+              <div class="pname">Ilse Reyes<br><span class="r">Commodore · Station commander</span></div>
+              <div class="crest"><span style="color:#6cd0c8;font-size:16px">◈</span> Vanguard Compact</div>
+            </div>
+            <div class="txt">
+              <p class="old">You open a comm link to Haven Station's operations deck.</p>
+              <p>"Captain Varga." Reyes doesn't look up from her slate. "One of our convoys went dark near the <span class="h">Kestrel belt</span> eleven days ago. Three freighters, forty crew."</p>
+              <p>"Find them, and the Compact pays <span class="h">60,000</span> credits."</p>
+              <div class="opts">
+                <div class="o"><span class="k">1.</span>Accept the job</div>
+                <div class="o hover"><span class="k">2.</span>"What's the catch?"</div>
+                <div class="o story"><span class="k">3.</span>"Forty crew is worth more than that." <span style="opacity:.8">[1 story point]</span></div>
+                <div class="o"><span class="k">4.</span>"Not interested." <span style="opacity:.7">(Esc)</span></div>
+              </div>
+            </div>
+            <div class="ruler" title="dialog text height"></div>
+          </div>
+        </div>
+        <div class="ctx">
+          <div class="sect" style="padding:0 0 6px">Test context</div>
+          <div class="grid2" style="grid-template-columns:100px 1fr">
+            <label>Player</label><input type="text" value="Varga">
+            <label>Player is</label><select><option>female (her / she)</option></select>
+            <label>Speaker</label><select><option>Ilse Reyes (vgc_reyes)</option></select>
+            <label>Market</label><select><option>Haven Station</option></select>
+            <label>Rep vgc_vanguard</label><input type="text" value="0.25  Favorable">
+            <label>Credits</label><input type="text" value="120,000">
+            <label>Story points</label><input type="text" value="3">
+            <label class="mono">pay</label><input type="text" value="1">
+          </div>
+          <div class="muted" style="font-size:11px">Tokens the preview can't fill are shown as <span class="mono">[$token]</span>, never hidden.</div>
+        </div>
+      </div>
+    </section>
+    <aside class="right"><div class="rp">
+      <h3><span class="badge" style="background:var(--n-dialog);border-color:var(--n-dialog);color:#fff">Dialog</span> Offer</h3>
+      <div class="grid2">
+        <label>Speaker</label><select><option>Ilse Reyes</option></select>
+        <label>Visual</label><select><option>Person (speaker)</option><option>Image…</option><option>Planet / entity</option></select>
+        <label>Rule id</label><span class="mono">vgc_lost_convoy_offer</span>
+      </div>
+      <label class="muted" style="font-size:12px">Text</label>
+      <textarea rows="6" class="mono">"Captain $playerLastName." Reyes doesn't look up from her slate. "One of our convoys went dark near the $vgc_lost_convoy_beltName eleven days ago. Three freighters, forty crew."
+
+"Find them, and the Compact pays $vgc_lost_convoy_reward credits."</textarea>
+      <div class="grid2" style="margin-top:6px"><label>Highlights</label><span class="mono" style="font-size:11px">beltName, reward</span></div>
+      <div class="group"><div class="gt">Options <span>one output each</span></div>
+        <table class="t">
+          <tr><th>#</th><th>Text</th><th></th></tr>
+          <tr><td>1</td><td>Accept the job</td><td class="muted">→ Stage</td></tr>
+          <tr class="on"><td>2</td><td>"What's the catch?"<div class="muted" style="font-size:11px">show once · per conversation</div></td><td class="muted">→ Dialog</td></tr>
+          <tr><td>3</td><td>"Forty crew is worth more…"<div class="muted" style="font-size:11px">story point · tooltip · only if pay == 1</div></td><td class="muted">→ Action</td></tr>
+          <tr><td>4</td><td>"Not interested."<div class="muted" style="font-size:11px">shortcut Esc</div></td><td class="muted">→ Link</td></tr>
+        </table>
+        <button style="margin-top:6px;font-size:11px;padding:1px 8px">+ Option</button></div>
+      <div class="group"><div class="gt">Conditions <span>added to this rule</span></div>
+        <div class="mono" style="font-size:11px">RepGTE vgc_vanguard 0.2<br><span class="muted">+ $option == vgc_lost_convoy_option (from Start)</span></div>
+        <button style="margin-top:6px;font-size:11px;padding:1px 8px">+ Condition ▾</button></div>
+      <div class="group"><div class="gt">Exported as</div>
+        <div class="mono" style="font-size:11px">rules.csv · vgc_lost_convoy_offer<br>trigger DialogOptionSelected<br>options 1:vgc_lost_convoy_accept:Accept the job …</div></div>
+    </div></aside>
+  </div>
+  <footer><span>The Lost Convoy · 11 nodes · 3 stages</span><span class="warn">2 problems</span><span class="spacer"></span><span class="muted">plan: sagaforge/quests/vgc_lost_convoy.quest.json · saved</span></footer>
+</div>
+
+<div class="callouts">
+  <div><b>One node = one rule.</b> A Dialog node holds the text and the options of one <span class="mono">rules.csv</span> row, so the chart reads like the conversation. Option ids are made from the quest id and the option text (<span class="mono">vgc_lost_convoy_accept</span>).</div>
+  <div><b>Stage frames.</b> Nodes inside a stage frame belong to that journal stage. A Stage node moves the quest there (<span class="mono">SF_Step</span>), updating the journal text and map markers.</div>
+  <div><b>Problems on the chart.</b> Red corner: "Avoided leads nowhere". Yellow corner: "the convoy wreck only exists in new games" (see Export &amp; save warnings).</div>
+  <div><b>Links into vanilla.</b> Dashed nodes are read-only rules from the game or other mods. "Not interested" goes back to the contact's vanilla menu; nothing of vanilla's is changed.</div>
+</div>
+
+<h1 style="margin-top:34px">Quest planner: Play mode</h1>
+<p class="lead">Play ▶ runs the <b>exported rules</b> (not the chart) with a small copy of the game's rules engine and SagaLib's logic. Click options in the preview; the chart shows the path taken, the log explains each choice, variables update live. Things it can't simulate, like a fleet battle, ask you for the outcome.</p>
+
+<div class="app" style="height:760px">
+  <header>
+    <span class="title"><span class="logo">◆</span> Saga Forge</span>
+    <div class="pages"><button>Saga</button><button>Factions</button><button>People</button><button>Items</button><button class="on">Quests</button><button>Locations</button><button>Encounters</button><button>Dialog</button><button>Problems <span class="count w">3</span></button></div>
+    <span class="spacer"></span>
+    <span class="activemod">Active mod <select><option>Vanguard Compact (vgc_) — mods\VanguardCompact</option></select></span>
+    <span class="sep"></span><button>Check mod</button><button class="primary">Export…</button><button>⚙</button>
+  </header>
+  <div style="display:grid;grid-template-columns:1fr 320px;min-height:0">
+    <section class="main">
+      <div class="toolbar">
+        <div class="seg"><button>Plan</button><button class="on">Play ▶</button></div>
+        <span class="sep"></span><button>⟲ Restart</button><button>◀ Step back</button><button>Play from selected node</button>
+        <span class="spacer"></span><span class="good">● Playing · stage find · day 4 of 60</span>
+      </div>
+      <div class="canvas" id="chart2" style="flex:1"></div>
+      <div class="dock" style="height:280px;grid-template-columns:1fr">
+        <div class="gdlg">
+          <div class="vis">
+            <div class="portrait" style="background:linear-gradient(160deg,#3a1d1d,#120909)"><svg width="110" height="118" viewBox="0 0 110 118"><circle cx="55" cy="40" r="26" fill="#664040"/><path d="M8 118 Q12 76 55 72 Q98 76 102 118Z" fill="#523030"/></svg></div>
+            <div class="pname">Fleet commander<br><span class="r">Pirates · 80 FP</span></div>
+          </div>
+          <div class="txt">
+            <p class="old">The Kestrel belt fills your sensor display with ice and rock.</p>
+            <p>Three contacts drop their transponder silence at once. A pirate fleet is waiting in the belt, and it is <span class="h">between you and the wreck</span>.</p>
+            <div class="opts">
+              <div class="o" style="border-style:dashed"><span class="k">⚔</span>Battle can't be simulated. Choose the outcome:</div>
+              <div class="o hover"><span class="k">1.</span>Player wins (Defeated)</div>
+              <div class="o"><span class="k">2.</span>Player escapes (Avoided)</div>
+              <div class="o dis"><span class="k">3.</span>Player loses: not in this plan <span style="opacity:.7">(add an outcome)</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <aside class="right"><div class="rp">
+      <h3>Play log</h3>
+      <div class="mono" style="font-size:11px;line-height:1.6">
+        <div>▸ Start: contact Ilse Reyes (rep 0.25 ≥ 0.2 ✓)</div>
+        <div>▸ Rule <span style="color:var(--accent)">vgc_lost_convoy_offer</span> (FireBest: 2 conditions, beat 1 other)</div>
+        <div>▸ Option 2 "What's the catch?"</div>
+        <div>▸ Rule vgc_lost_convoy_catch</div>
+        <div>▸ Option "Back" → offer</div>
+        <div>▸ Option 3 (story point) <span class="good">story points 3 → 2</span></div>
+        <div>▸ Action: <span class="good">pay 1 → 2</span></div>
+        <div>▸ <span style="color:#d79ccb">SF_Step vgc_lost_convoy find</span> journal + marker Kestrel belt</div>
+        <div>▸ Wait: player arrives at Kestrel belt (simulated, day 4)</div>
+        <div>▸ Encounter vgc_belt_ambush: <span class="warn">needs an outcome</span></div>
+      </div>
+      <hr class="thin">
+      <div class="sect" style="padding:4px 0">Variables now</div>
+      <table class="t mono"><tr><td>$global.vgc_lost_convoy_step</td><td>find</td></tr><tr><td>$vgc_lost_convoy_stage</td><td>ACTIVE</td></tr><tr><td>…_pay</td><td class="good">2</td></tr><tr><td>…_survivors</td><td>false</td></tr><tr><td>credits</td><td>120,000</td></tr><tr><td>story points</td><td class="good">2</td></tr></table>
+      <div class="muted" style="font-size:11px;margin-top:8px">Journal now: "Find the missing convoy in Kestrel. Reyes doubled the pay."</div>
+    </div></aside>
+  </div>
+  <footer><span>Play mode · changes nothing in the plan or the mod</span><span class="spacer"></span><span class="muted">engine: rules from export preview · SagaLib logic 0.1 (TS copy)</span></footer>
+</div>
+</div>
+
+<script>
+// Static mock-up drawing: nodes are placed by hand, edges are computed from the DOM.
+const H = { start:'--n-start', dialog:'--n-dialog', branch:'--n-branch', action:'--n-action', stage:'--n-stage', enc:'--n-enc', wait:'--n-wait', end:'--n-end', link:'--n-link', note:'--n-note' };
+const NODES = [
+  { id:'start', t:'start', x:14, y:42, h:'Start · contact', b:'<b>Ilse Reyes</b>, Haven Station<div class="q">person_missions.csv · rep ≥ Favorable</div>', s:'offer' },
+  { id:'offer', t:'dialog', x:214, y:18, h:'Dialog · Offer', b:'<div class="q">"Captain $playerLastName." Reyes doesn\'t look up from her slate. "One of our convoys went dark…"</div>',
+    o:['1 Accept the job','2 "What\'s the catch?"',['3 "Forty crew is worth…"','story'],'4 "Not interested."'], s:'offer', sel:1 },
+  { id:'catch', t:'dialog', x:214, y:236, h:'Dialog · Catch', b:'<div class="q">"Pirates, probably. The belt is where they hide."</div>', o:['Back'], s:'offer' },
+  { id:'pay', t:'action', x:444, y:150, h:'Action', b:'<span class="mono">pay = 2</span><div class="q">story point spent</div>', s:'offer' },
+  { id:'decline', t:'link', x:444, y:262, h:'Link · read-only', b:'→ contact menu <span class="badge b-van">vanilla</span><div class="q mono">PopulateOptions</div>', ro:1, s:'offer' },
+  { id:'go', t:'stage', x:444, y:18, h:'Stage → find', b:'<div class="q">Journal: "Find the missing convoy in Kestrel." Marker: Kestrel belt.</div>', s:'find' },
+  { id:'amb', t:'enc', x:674, y:18, h:'Encounter', b:'Belt ambush <span class="muted">· Pirates · 80 FP</span>', o:['Defeated','Avoided'], s:'find', prob:['e',2] },
+  { id:'wreck', t:'wait', x:674, y:170, h:'Arrive', b:'Player reaches the <b>convoy wreck</b>', s:'find', prob:['w',1] },
+  { id:'note', t:'note', x:14, y:160, h:'Note', b:'<div class="q">Bad ending idea: sell the survivors to the pirates (soldCrew).</div>' },
+];
+const EDGES = [['start','offer'],['offer:0','go'],['offer:1','catch'],['offer:2','pay'],['pay','go'],['offer:3','decline'],['catch:0','offer'],['go','amb'],['amb:0','wreck'],['wreck','>']];
+const FRAMES = [['offer','Offer (before accept)','#3c8d5a'],['find','Stage find · Find the convoy','#a0558f']];
+
+function draw(id, play) {
+  const c = document.getElementById(id);
+  const path = play ? new Set(['start','offer','catch','pay','go','amb']) : null;
+  const pathEdges = play ? new Set(['start>offer','offer:1>catch','catch:0>offer','offer:2>pay','pay>go','go>amb']) : null;
+  for (const n of NODES) {
+    const d = document.createElement('div');
+    d.className = 'node' + (n.ro ? ' ro' : '') + (!play && n.sel ? ' sel' : '') + (play && n.id === 'amb' ? ' sel' : '');
+    d.id = id + '-' + n.id; d.style.left = n.x + 'px'; d.style.top = n.y + 'px'; d.dataset.s = n.s || '';
+    if (play && !path.has(n.id)) d.style.opacity = .35;
+    let html = `<div class="nh" style="background:var(${H[n.t]})"><span>${n.h}</span></div><div class="nb">${n.b}</div>`;
+    (n.o || []).forEach((o, i) => { const [txt, cls] = Array.isArray(o) ? o : [o, '']; html += `<div class="opt ${cls}" id="${id}-${n.id}-o${i}">${txt}</div>`; });
+    if (n.prob && !play) html += `<div class="prob ${n.prob[0] === 'w' ? 'w' : ''}">!</div>`;
+    d.innerHTML = html; c.appendChild(d);
+  }
+  const cr = c.getBoundingClientRect();
+  for (const [sid, label, color] of FRAMES) {
+    const els = [...c.querySelectorAll(`.node[data-s="${sid}"]`)];
+    let x1 = 1e9, y1 = 1e9, x2 = -1e9, y2 = -1e9;
+    for (const e of els) { const r = e.getBoundingClientRect(); x1 = Math.min(x1, r.left); y1 = Math.min(y1, r.top); x2 = Math.max(x2, r.right); y2 = Math.max(y2, r.bottom); }
+    const f = document.createElement('div'); f.className = 'frame';
+    Object.assign(f.style, { left: x1 - cr.left - 8 + 'px', top: y1 - cr.top - 12 + 'px', width: x2 - x1 + 16 + 'px', height: y2 - y1 + 22 + 'px', borderColor: color, background: color + '12' });
+    f.innerHTML = `<span style="color:${color}">${label}</span>`; c.prepend(f);
+  }
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('class', 'edges');
+  for (const [from, to] of EDGES) {
+    const [fn, oi] = from.split(':');
+    const fe = document.getElementById(oi === undefined ? `${id}-${fn}` : `${id}-${fn}-o${oi}`);
+    const fr = fe.getBoundingClientRect();
+    const x1 = fr.right - cr.left, y1 = oi === undefined ? fr.top - cr.top + 11 : fr.top - cr.top + fr.height / 2;
+    let x2, y2;
+    if (to === '>') { x2 = cr.width + 20; y2 = y1; } else { const tr = document.getElementById(`${id}-${to}`).getBoundingClientRect(); x2 = tr.left - cr.left; y2 = tr.top - cr.top + 11; }
+    const back = x2 < x1; const k = back ? 90 : Math.max(40, (x2 - x1) / 2);
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p.setAttribute('d', back ? `M${x1} ${y1} C${x1 + k} ${y1 + 60}, ${x2 - k} ${y2 - 60}, ${x2} ${y2}` : `M${x1} ${y1} C${x1 + k} ${y1}, ${x2 - k} ${y2}, ${x2} ${y2}`);
+    const on = play && pathEdges.has(from + '>' + to);
+    p.setAttribute('stroke', on ? '#6fd07a' : (play ? '#3a4452' : '#5d6b80')); p.setAttribute('stroke-width', on ? 3 : 1.6); p.setAttribute('fill', 'none');
+    if (to === 'decline') p.setAttribute('stroke-dasharray', '5 4');
+    svg.appendChild(p);
+  }
+  c.prepend(svg);
+  if (!play) {
+    c.insertAdjacentHTML('beforeend', `<div class="zoom"><button>+</button><button>−</button><button>⤢</button></div>
+      <div class="minimap"><i style="left:8px;top:20px;width:14px;height:8px"></i><i style="left:30px;top:12px;width:16px;height:24px"></i><i style="left:30px;top:50px;width:16px;height:8px"></i><i style="left:56px;top:12px;width:16px;height:8px"></i><i style="left:56px;top:34px;width:16px;height:8px"></i><i style="left:82px;top:12px;width:16px;height:12px"></i><i style="left:82px;top:36px;width:16px;height:8px"></i><i style="left:110px;top:36px;width:16px;height:8px"></i><i style="left:136px;top:30px;width:16px;height:8px"></i><i style="left:136px;top:60px;width:16px;height:12px"></i><div class="view" style="left:4px;top:6px;width:118px;height:72px"></div></div>`);
+  }
+}
+draw('chart1', false); draw('chart2', true);
+</script>
+</body></html>

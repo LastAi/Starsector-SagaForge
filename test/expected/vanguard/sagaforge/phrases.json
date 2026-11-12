@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "phrases": [
+    {
+      "token": "$vgc_farewell",
+      "owner": "mod",
+      "mode": "random",
+      "cases": [
+        {
+          "when": [],
+          "text": "Fair winds."
+        },
+        {
+          "when": [],
+          "text": "Keep your burn clean."
+        }
+      ],
+      "otherwise": "Safe travels."
+    }
+  ]
+}

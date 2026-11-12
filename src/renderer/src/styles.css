@@ -1,0 +1,70 @@
+/* Copied from Ship Editor (src/renderer/src/styles.css); may drift. */
+:root {
+  --bg: #12151a;
+  --panel: #1a1f26;
+  --panel-2: #222832;
+  --border: #2e3642;
+  --text: #d8dee8;
+  --muted: #8a94a6;
+  --accent: #4fb3ff;
+  --accent-2: #2b7fc4;
+  --good: #6fd07a;
+  --warn: #f0b44c;
+  --bad: #ff6b6b;
+  --mono: ui-monospace, 'Cascadia Mono', 'DejaVu Sans Mono', Consolas, monospace;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #app { height: 100%; margin: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.4 system-ui, 'Segoe UI', Ubuntu, 'Noto Sans', sans-serif;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--accent-2); }
+button:disabled { opacity: 0.45; cursor: default; }
+button.primary { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+button.primary:hover:not(:disabled) { background: var(--accent); }
+
+input[type='text'], input[type='search'], select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 8px;
+}
+input:focus, select:focus, button:focus-visible { outline: 1px solid var(--accent); outline-offset: 0; }
+
+.mono { font-family: var(--mono); }
+.muted { color: var(--muted); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #333b47; border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+input[type='number'], textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+/* the open list of a dropdown: same colors as the app, readable on Windows and Linux */
+select option, select optgroup { background: var(--panel-2); color: var(--text); }
+select option:disabled { color: var(--muted); }
+select option:checked { background: var(--accent-2); color: #fff; }

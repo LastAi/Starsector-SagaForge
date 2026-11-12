@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Saga Forge mock-up: Saga overview</title>
+<link rel="stylesheet" href="mockups.css">
+<style>
+  .board { position: relative; flex: 1; overflow: hidden; background-color: #0f1216; background-image: radial-gradient(#252c36 1px, transparent 1px); background-size: 20px 20px; }
+  .col { position: absolute; top: 8px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .qc { position: absolute; width: 230px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; box-shadow: 0 4px 12px rgba(0,0,0,.4); }
+  .qc .qh { padding: 5px 9px; border-bottom: 1px solid var(--border); font-weight: 600; display: flex; justify-content: space-between; }
+  .qc .qb { padding: 6px 9px; line-height: 1.5; }
+  .qc.sel { outline: 2px solid var(--accent); }
+  .flagtag { font-family: var(--mono); font-size: 11px; color: #c9a0ff; }
+  .board svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+</style></head>
+<body><div class="doc">
+<nav class="navdocs"><a href="index.html">Overview</a><a class="on" href="saga.html">Saga</a><a href="factions.html">Factions</a><a href="people.html">People</a><a href="items.html">Items</a><a href="quest.html">Quest planner</a><a href="displays.html">Dialog displays</a><a href="locations.html">Locations</a><a href="encounters.html">Encounters</a><a href="problems.html">Problems</a><a href="export.html">Export &amp; save warnings</a></nav>
+<h1>Saga overview: how the quests fit together</h1>
+<p class="lead">Static mock-up. Every quest and conversation of the mod as a card: how it starts, what it needs first, what it sets. Solid arrows are prerequisites ("needs The Lost Convoy done"); dashed purple arrows are flags one quest sets and another reads. On the right, the <b>flags registry</b>: every memory key the mod uses, who sets it and who reads it, with typo detection.</p>
+
+<div class="app" style="height:720px">
+  <header>
+    <span class="title"><span class="logo">◆</span> Saga Forge</span>
+    <div class="pages"><button class="on">Saga</button><button>Factions</button><button>People</button><button>Items</button><button>Quests</button><button>Locations</button><button>Encounters</button><button>Dialog</button><button>Problems <span class="count w">3</span></button></div>
+    <span class="spacer"></span>
+    <span class="activemod"><select><option>Vanguard Compact (vgc_)</option></select></span>
+    <span class="sep"></span><button>Check mod</button><button class="primary">Export…</button><button>⚙</button>
+  </header>
+  <div style="display:grid;grid-template-columns:1fr 430px;min-height:0">
+    <section class="main">
+      <div class="toolbar"><div class="seg"><button class="on">Board</button><button>Timeline</button><button>Flags</button></div><span class="sep"></span><label><input type="checkbox" checked> Prerequisites</label><label><input type="checkbox" checked> Flags</label><label><input type="checkbox"> People</label><span class="spacer"></span><button>Test profiles…</button></div>
+      <div class="board" id="board">
+        <div class="col" style="left:20px">Start of the game</div><div class="col" style="left:290px">After the first quest</div><div class="col" style="left:560px">Later</div>
+        <div class="qc sel" id="c1" style="left:20px;top:40px"><div class="qh">The Lost Convoy <span class="badge b-lib">quest</span></div><div class="qb">Start: contact <b>Ilse Reyes</b>, rep ≥ Favorable<br>Stages: find → return<br>Ends: success / failed<br>Sets <span class="flagtag">$global.vgc_convoy_saved</span><br>Sets <span class="flagtag">$global.vgc_signalHeard</span></div></div>
+        <div class="qc" id="c2" style="left:20px;top:250px"><div class="qh">Kestrel greetings <span class="badge b-van">dialog</span></div><div class="qb">Start: comm link, Kestrel fleets<br>Reads <span class="flagtag">$global.vgc_convoy_saved</span> (warmer greeting)</div></div>
+        <div class="qc" id="c3" style="left:290px;top:40px"><div class="qh">Salvage Rights <span class="badge b-lib">quest</span></div><div class="qb">Start: contact <b>Dex Marrow</b><br><b>Needs:</b> The Lost Convoy · success<br>Reads <span class="flagtag bad">$global.vgc_convoySaved</span> ⚠</div></div>
+        <div class="qc" id="c4" style="left:290px;top:230px"><div class="qh">Ghost Signal <span class="badge b-lib">quest</span></div><div class="qb">Start: bar event, Kestrel markets<br><b>Needs:</b> flag <span class="flagtag">$global.vgc_signalHeard</span><br>Repeatable: no</div></div>
+        <div class="qc" id="c5" style="left:560px;top:120px"><div class="qh">The Compact's Offer <span class="badge b-lib">quest</span></div><div class="qb">Start: contact <b>Ilse Reyes</b><br><b>Needs:</b> Salvage Rights · any end<br><b>Needs:</b> Ghost Signal · success<br>Ends: commission offered</div></div>
+        <div class="minimap" style="width:140px;height:80px"><i style="left:8px;top:10px;width:30px;height:20px"></i><i style="left:8px;top:44px;width:30px;height:14px"></i><i style="left:52px;top:10px;width:30px;height:16px"></i><i style="left:52px;top:40px;width:30px;height:16px"></i><i style="left:96px;top:24px;width:30px;height:22px"></i><div class="view" style="left:4px;top:4px;width:128px;height:66px"></div></div>
+      </div>
+    </section>
+    <aside class="right"><div class="rp">
+      <h3>Flags registry <span class="muted" style="font-weight:normal;font-size:12px">12 keys · 1 problem</span></h3>
+      <table class="t">
+        <tr><th>Key</th><th>Set by</th><th>Read by</th></tr>
+        <tr><td class="mono">$global.vgc_convoy_saved</td><td>Lost Convoy · End</td><td>Greetings, Salvage Rights?</td></tr>
+        <tr class="on"><td class="mono bad">$global.vgc_convoySaved</td><td class="bad">nothing</td><td>Salvage Rights · Branch</td></tr>
+        <tr><td colspan="3" style="font-size:12px"><span class="bad">Read but never set.</span> Did you mean <span class="mono">$global.vgc_convoy_saved</span>? <button style="padding:0 8px;font-size:11px">Replace (1 use)</button></td></tr>
+        <tr><td class="mono">$global.vgc_signalHeard</td><td>Lost Convoy · Arrive</td><td>Ghost Signal · start</td></tr>
+        <tr><td class="mono">$global.vgc_lost_convoy_step</td><td>SagaLib</td><td>4 rules</td></tr>
+        <tr><td class="mono">$global.vgc_lost_convoy_pay</td><td>Lost Convoy · Action</td><td>2 rules, 1 phrase</td></tr>
+        <tr><td class="mono">$vgc_belt_ambush</td><td>SagaLib (on the fleet)</td><td>Greeting rule</td></tr>
+        <tr><td class="mono">$player.commissionFactionId</td><td class="muted">vanilla</td><td>phrase $vgc_reyes_title</td></tr>
+        <tr><td class="muted" colspan="3">… 5 more</td></tr>
+      </table>
+      <div class="muted" style="font-size:11px;margin-top:8px">Every key is found from the plans and the mod's hand-written rules. Keys vanilla sets are marked; keys of other mods are shown with the mod's name.</div>
+    </div></aside>
+  </div>
+  <footer><span>5 quests and conversations · 4 people · 12 flags</span><span class="spacer"></span><span class="muted">board positions saved in sagaforge/project.json</span></footer>
+</div>
+
+<h1 style="margin-top:34px">Test profiles: start with flags already set</h1>
+<p class="lead">A test profile is a saved game situation: quest steps, flags, variables, reputation, commission, credits, cargo. The same profile drives the editor's Play mode and, through SagaLib in the game's <b>dev mode</b>, a real game: applied when a new game starts, or at any time from SagaLib's dev menu, with the quest JSON reloaded from disk without restarting.</p>
+
+<div class="app" style="height:600px">
+  <header>
+    <span class="title"><span class="logo">◆</span> Saga Forge</span>
+    <div class="pages"><button class="on">Saga</button><button>Factions</button><button>People</button><button>Items</button><button>Quests</button><button>Locations</button><button>Encounters</button><button>Dialog</button><button>Problems</button></div>
+    <span class="spacer"></span><span class="activemod"><select><option>Vanguard Compact (vgc_)</option></select></span>
+  </header>
+  <div class="body3" style="grid-template-columns:260px 1fr 380px">
+    <aside class="left">
+      <div class="sect">Test profiles <button>+ New</button></div>
+      <ul class="list">
+        <li>Fresh start at Haven<span class="sub">3 settings</span></li>
+        <li class="on">After the convoy, commissioned<span class="sub">11 settings</span></li>
+        <li>Convoy failed, hostile Compact<span class="sub">6 settings</span></li>
+      </ul>
+      <hr class="thin">
+      <div style="padding:6px 12px;font-size:12px" class="muted">Profiles are for testing only. They are exported to <span class="mono">data/sagaforge/dev/</span>, read by SagaLib only in dev mode, and left out of release zips.</div>
+    </aside>
+    <section class="main">
+      <div class="toolbar"><span>After the convoy, commissioned</span><span class="spacer"></span><button>Use in Play mode</button><button>Copy from Play mode now</button></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px;overflow:auto">
+        <div>
+          <div class="group"><div class="gt">Quests</div>
+            <table class="t"><tr><th>Quest</th><th>State</th></tr>
+              <tr><td>The Lost Convoy</td><td>ended · success</td></tr>
+              <tr><td>Salvage Rights</td><td>active · step <span class="mono">survey</span></td></tr>
+              <tr><td>Ghost Signal</td><td class="muted">not started</td></tr></table></div>
+          <div class="group"><div class="gt">Flags and variables</div>
+            <table class="t mono"><tr><td>$global.vgc_convoy_saved</td><td>true</td></tr><tr><td>$global.vgc_signalHeard</td><td>true</td></tr><tr><td>$global.vgc_lost_convoy_pay</td><td>2</td></tr></table>
+            <button style="font-size:11px;padding:1px 8px;margin-top:6px">+ Flag (from registry)</button></div>
+        </div>
+        <div>
+          <div class="group"><div class="gt">Player</div>
+            <div class="grid2"><label>Commission</label><select><option>Vanguard Compact</option></select><label>Rep</label><span>Vanguard 0.40 · Hegemony −0.30</span><label>Credits</label><input type="text" value="250,000"><label>Story points</label><input type="text" value="5"><label>Cargo</label><span>1 × Convoy black box</span><label>Start at</label><select><option>Haven Station (docked)</option></select></div></div>
+        </div>
+      </div>
+    </section>
+    <aside class="right"><div class="rp">
+      <h3>Use it in game <span class="badge b-lib">SagaLib dev mode</span></h3>
+      <ol style="font-size:12.5px;padding-left:18px;line-height:1.6;margin:0 0 10px">
+        <li>Turn on the game's <span class="mono">devMode</span> in <span class="mono">settings.json</span> (your own step; Saga Forge never edits the game).</li>
+        <li><b>New game</b>: after the sector is made, SagaLib asks which profile to apply (or none).</li>
+        <li><b>Any time</b>: SagaLib's dev menu (hotkey, dev mode only) lists the profiles, applies one, or <b>reloads the mod's JSON</b> so text and step changes show without restarting.</li>
+      </ol>
+      <div class="gdlg" style="height:auto;font-size:13px"><div class="txt" style="border:none;padding:0"><p style="color:var(--g-h)">SagaLib dev menu</p><p>Vanguard Compact: 3 test profiles.</p><div class="opts"><div class="o"><span class="k">1.</span>Apply "After the convoy, commissioned"</div><div class="o"><span class="k">2.</span>Jump The Lost Convoy to step…</div><div class="o"><span class="k">3.</span>Reload quest JSON from disk</div><div class="o"><span class="k">4.</span>Close</div></div></div></div>
+      <div class="muted" style="font-size:11px;margin-top:8px">Applying a profile to a running game changes that save. The menu says so, and suggests a throwaway save.</div>
+    </div></aside>
+  </div>
+  <footer><span>3 test profiles</span><span class="spacer"></span><span class="muted">sagaforge/test-profiles.json → data/sagaforge/dev/test_profiles.json</span></footer>
+</div>
+</div>
+<script>
+const b = document.getElementById('board'), br = b.getBoundingClientRect();
+const pt = (id, side) => { const r = document.getElementById(id).getBoundingClientRect(); return side === 'r' ? [r.right - br.left, r.top - br.top + 40] : [r.left - br.left, r.top - br.top + 40]; };
+const lines = [['c1','c3','pre'],['c3','c5','pre'],['c4','c5','pre'],['c1','c4','flag'],['c1','c2','flagdown']];
+let s = '<svg>';
+for (const [a, c, k] of lines) {
+  let [x1, y1] = pt(a, 'r'), [x2, y2] = pt(c, 'l');
+  if (k === 'flagdown') { const ra = document.getElementById(a).getBoundingClientRect(), rc = document.getElementById(c).getBoundingClientRect(); x1 = x2 = ra.left - br.left + 115; y1 = ra.bottom - br.top; y2 = rc.top - br.top; }
+  const d = k === 'flagdown' ? `M${x1} ${y1} L${x2} ${y2}` : `M${x1} ${y1} C${x1 + 50} ${y1}, ${x2 - 50} ${y2}, ${x2} ${y2}`;
+  s += `<path d="${d}" fill="none" stroke="${k === 'pre' ? '#6fd07a' : '#c9a0ff'}" stroke-width="2" ${k === 'pre' ? '' : 'stroke-dasharray="6 4"'}/>`;
+}
+b.insertAdjacentHTML('afterbegin', s + '</svg>');
+</script>
+</body></html>

@@ -1,0 +1,15 @@
+{
+  "_sagaforge": {
+    "generated": "by Saga Forge; edits are overwritten on export",
+    "hash": "7bf87d1b"
+  },
+  "format": 1,
+  "relations": {
+    "vgc_vanguard": {
+      "hegemony": -0.5,
+      "independent": 0.3,
+      "pirates": -0.75
+    }
+  },
+  "scripted": {}
+}

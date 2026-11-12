@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Saga Forge mock-up: Items</title>
+<link rel="stylesheet" href="mockups.css">
+<style>
+  .icon { width: 48px; height: 48px; border: 1px solid var(--border); background: #0b1118; display: grid; place-items: center; font-size: 24px; }
+  .tip { background: #0d1418; border: 1px solid #3a6f7f; padding: 10px 12px; font-size: 12.5px; color: var(--g-text); width: 330px; }
+  .tip .t1 { color: var(--g-btn); font-weight: 600; margin-bottom: 6px; }
+</style></head>
+<body><div class="doc">
+<nav class="navdocs"><a href="index.html">Overview</a><a href="saga.html">Saga</a><a href="factions.html">Factions</a><a href="people.html">People</a><a class="on" href="items.html">Items</a><a href="quest.html">Quest planner</a><a href="displays.html">Dialog displays</a><a href="locations.html">Locations</a><a href="encounters.html">Encounters</a><a href="problems.html">Problems</a><a href="export.html">Export &amp; save warnings</a></nav>
+<h1>Items: quest items and other new cargo</h1>
+<p class="lead">Static mock-up. Items the mod adds: <b>commodities</b> (rows in <span class="mono">commodities.csv</span>, like the convoy's black box) and <b>special items</b> (rows in <span class="mono">special_items.csv</span>, using vanilla's generic item plugin, so no code). Each has its description: commodities in <span class="mono">descriptions.csv</span> (type RESOURCE), special items in the <span class="mono">desc</span> column of their own row. Existing items are listed read-only: a row with the same id would <i>replace</i> vanilla's whole row, so the editor never writes one.</p>
+
+<div class="app" style="height:760px">
+  <header>
+    <span class="title"><span class="logo">◆</span> Saga Forge</span>
+    <div class="pages"><button>Saga</button><button>Factions</button><button>People</button><button class="on">Items</button><button>Quests</button><button>Locations</button><button>Encounters</button><button>Dialog</button><button>Problems <span class="count w">3</span></button></div>
+    <span class="spacer"></span>
+    <span class="activemod"><select><option>Vanguard Compact (vgc_)</option></select></span>
+    <span class="sep"></span><button>Check mod</button><button class="primary">Export…</button><button>⚙</button>
+  </header>
+  <div class="body3" style="grid-template-columns:250px 1fr 380px">
+    <aside class="left">
+      <input class="search" type="search" placeholder="Filter items…">
+      <div class="sect">This mod's items <button>+ New ▾</button></div>
+      <ul class="list">
+        <li class="on"><span>▣</span>Convoy black box <span class="badge b-new">commodity</span></li>
+        <li><span>◆</span>Vanguard nav core <span class="badge b-new">special</span></li>
+        <li><span>▣</span>Rescued crew manifest <span class="badge b-new">commodity</span></li>
+      </ul>
+      <div class="sect">Existing items (read-only)</div>
+      <ul class="list muted" style="font-size:12px">
+        <li>Alpha Core<span class="sub">vanilla</span></li><li>Survey data<span class="sub">vanilla</span></li><li>Nanoforge<span class="sub">vanilla</span></li><li>… 140 more</li>
+      </ul>
+      <div class="muted" style="font-size:11px;padding:6px 12px">Existing items can still be used in quests: as rewards, costs or conditions.</div>
+    </aside>
+    <section class="main">
+      <div class="toolbar"><div class="seg"><button class="on">Item</button><button>Description</button><button>Used by (3)</button></div><span class="spacer"></span><span class="mono">vgc_black_box</span><span class="muted">→ row in data/campaign/commodities.csv</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px;overflow:auto">
+        <div>
+          <div class="group"><div class="gt">Item</div>
+            <div class="grid2">
+              <label>Kind</label><div class="seg"><button class="on">Commodity</button><button>Special item</button></div>
+              <label>Id</label><div class="mono">vgc_black_box <button style="padding:0 6px;font-size:11px">Change id…</button></div>
+              <label>Name</label><input type="text" value="Convoy black box">
+              <label>Icon</label><div style="display:flex;gap:8px;align-items:center"><div class="icon">▣</div><button>Pick…</button><span class="muted" style="font-size:11px">graphics/icons/cargo/vgc_black_box.png</span></div>
+              <label>Base price</label><input type="text" value="0  (can't be sold)">
+              <label>Stack size</label><input type="text" value="1">
+              <label>Cargo space</label><input type="text" value="1">
+            </div></div>
+          <div class="group"><div class="gt">Behavior <span>vanilla tags</span></div>
+            <div class="chips"><span class="chip add">nonecon ✓ (no trade, no markets)</span><span class="chip add">no_loss_from_combat ✓</span><span class="chip add">hide_in_codex ✓</span><span class="chip">+ tag</span></div>
+            <div class="muted" style="font-size:11px;margin-top:6px">Preset <b>Quest item</b>: not traded, not lost in combat, hidden in the Codex. Presets also for <i>trade good</i> and <i>rare valuable</i>.</div></div>
+          <div class="group"><div class="gt">Description <span>descriptions.csv · RESOURCE</span></div>
+            <textarea rows="4">A hardened flight recorder from a Vanguard Compact freighter. The casing is scorched, but the data core is intact.</textarea></div>
+        </div>
+        <div>
+          <div class="group"><div class="gt">Preview · cargo tooltip</div>
+            <div class="tip"><div style="display:flex;gap:10px"><div class="icon" style="border-color:#3a6f7f">▣</div><div><div class="t1">Convoy black box</div><div style="color:#9ab">Quantity: 1 · Cargo space: 1</div></div></div><p style="margin:8px 0 0">A hardened flight recorder from a Vanguard Compact freighter. The casing is scorched, but the data core is intact.</p></div></div>
+          <div class="group"><div class="gt">Preview · in dialog</div>
+            <div class="gdlg" style="height:auto;font-size:13px"><div class="txt" style="border:none;padding:0"><p>You pull the black box from the wreck's command deck.</p><p style="color:var(--good)">Gained <span class="h">1</span> Convoy black box</p></div></div>
+            <div class="muted" style="font-size:11px;margin-top:4px">The "Gained" line is vanilla's own (<span class="mono">AddRemoveCommodity</span>).</div></div>
+          <div class="group"><div class="gt">Used by</div>
+            <table class="t">
+              <tr><td><a href="quest.html">The Lost Convoy</a></td><td class="muted">Action at the wreck: gain 1</td></tr>
+              <tr><td>The Lost Convoy</td><td class="muted">Condition: player has it (return to Reyes)</td></tr>
+              <tr><td>The Lost Convoy</td><td class="muted">End: success removes it</td></tr>
+            </table></div>
+        </div>
+      </div>
+    </section>
+    <aside class="right"><div class="rp">
+      <h3>File preview <span class="badge b-new">new row</span></h3>
+<pre class="files" style="max-height:none;white-space:pre-wrap">commodities.csv
+name             Convoy black box
+id               vgc_black_box
+base price       0
+tags             nonecon, no_loss_from_combat,
+                 hide_in_codex
+stack size       1
+cargo space      1
+icon             graphics/icons/cargo/
+                 vgc_black_box.png
+…other columns   vanilla defaults
+
+descriptions.csv
+vgc_black_box, RESOURCE,
+"A hardened flight recorder…"</pre>
+      <div class="muted" style="font-size:12px">Rows go into the mod's owned block in each CSV. Columns the editor doesn't show keep vanilla's usual defaults and are listed under "Other columns", as in Ship Editor.</div>
+      <div class="group" style="margin-top:10px"><div class="gt">Special items</div><div style="font-size:12px">Use vanilla's <span class="mono">GenericSpecialItemPlugin</span>: name, icon, description, rarity, price. Items with their own behavior (a colony item, a blueprint) need a plugin class from the mod's jar, picked by name.</div></div>
+    </div></aside>
+  </div>
+  <footer><span>3 items · used by 2 quests</span><span class="spacer"></span><span class="muted">no SagaLib needed for items</span></footer>
+</div>
+</div></body></html>

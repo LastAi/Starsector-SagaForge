@@ -1,0 +1,118 @@
+{
+  "format": 1,
+  "id": "vgc_kestrel",
+  "name": "Kestrel",
+  "kind": "new",
+  "hyperspace": [
+    -5200,
+    -7600
+  ],
+  "star": {
+    "type": "star_yellow",
+    "radius": 600,
+    "corona": 300
+  },
+  "entities": [
+    {
+      "id": "vgc_kestrel_i",
+      "kind": "planet",
+      "type": "barren",
+      "name": "Kestrel I",
+      "orbit": {
+        "focus": "star",
+        "radius": 2600,
+        "angle": 40,
+        "days": 173
+      },
+      "radius": 120
+    },
+    {
+      "id": "vgc_haven",
+      "kind": "station",
+      "type": "station_side02",
+      "name": "Haven Station",
+      "orbit": {
+        "focus": "vgc_kestrel_i",
+        "radius": 450,
+        "angle": 0,
+        "days": 30
+      },
+      "market": {
+        "id": "vgc_haven",
+        "name": "Haven Station",
+        "faction": "vgc_vanguard",
+        "size": 5,
+        "conditions": [
+          "population_5"
+        ],
+        "industries": [
+          "population",
+          "spaceport",
+          "militarybase",
+          "orbitalstation"
+        ],
+        "submarkets": [
+          "open_market",
+          "black_market",
+          "storage"
+        ],
+        "freePort": false,
+        "people": [
+          "vgc_reyes"
+        ]
+      }
+    },
+    {
+      "id": "vgc_kestrel_belt",
+      "kind": "asteroidBelt",
+      "type": "asteroid_belt",
+      "name": "Kestrel Belt",
+      "orbit": {
+        "focus": "star",
+        "radius": 4200,
+        "angle": 0,
+        "days": 280
+      },
+      "width": 300,
+      "count": 100
+    },
+    {
+      "id": "vgc_convoy_wreck",
+      "kind": "derelict",
+      "type": "wreck",
+      "name": "Convoy wreck",
+      "orbit": {
+        "focus": "star",
+        "radius": 4200,
+        "angle": 120,
+        "days": 280
+      }
+    },
+    {
+      "id": "vgc_kestrel_jp",
+      "kind": "jumpPoint",
+      "type": "jump_point",
+      "name": "Kestrel Jump-point",
+      "orbit": {
+        "focus": "star",
+        "radius": 3400,
+        "angle": 200,
+        "days": 227
+      }
+    },
+    {
+      "id": "vgc_kestrel_relay",
+      "kind": "commRelay",
+      "type": "comm_relay",
+      "name": "Kestrel Relay",
+      "orbit": {
+        "focus": "star",
+        "radius": 3000,
+        "angle": 300,
+        "days": 200
+      }
+    }
+  ],
+  "addToExistingSaves": true,
+  "tags": []
+}

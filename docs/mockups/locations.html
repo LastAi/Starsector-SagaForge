@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Saga Forge mock-up: Locations</title>
+<link rel="stylesheet" href="mockups.css"></head>
+<body><div class="doc">
+<nav class="navdocs"><a href="index.html">Overview</a><a href="saga.html">Saga</a><a href="factions.html">Factions</a><a href="people.html">People</a><a href="items.html">Items</a><a href="quest.html">Quest planner</a><a href="displays.html">Dialog displays</a><a class="on" href="locations.html">Locations</a><a href="encounters.html">Encounters</a><a href="problems.html">Problems</a><a href="export.html">Export &amp; save warnings</a></nav>
+<h1>Locations: a new system with a market and a contact</h1>
+<p class="lead">Static mock-up. Top: the hyperspace map, with vanilla systems at their real positions from <span class="mono">data/campaign/starmap.json</span> (grey), this mod's new system (green) and an existing system this mod adds to (orange). Bottom: the selected system's layout. Right: the selected market, its people, and who gives which quest.</p>
+
+<div class="app" style="height:900px">
+  <header>
+    <span class="title"><span class="logo">◆</span> Saga Forge</span>
+    <div class="pages"><button>Saga</button><button>Factions</button><button>People</button><button>Items</button><button>Quests</button><button class="on">Locations</button><button>Encounters</button><button>Dialog</button><button>Problems <span class="count w">3</span></button></div>
+    <span class="spacer"></span>
+    <span class="activemod">Active mod <select><option>Vanguard Compact (vgc_) — mods\VanguardCompact</option></select></span>
+    <span class="sep"></span><button>Check mod</button><button class="primary">Export…</button><button>⚙</button>
+  </header>
+  <div class="body3" style="grid-template-columns:240px 1fr 340px">
+    <aside class="left">
+      <div class="sect">This mod's systems <button>+ New system</button></div>
+      <ul class="list">
+        <li class="on"><span class="swatch" style="background:#6fd07a;border-radius:50%"></span>Kestrel <span class="badge b-new">new</span></li>
+      </ul>
+      <div class="sect">Added to existing <button>+ Add to a system…</button></div>
+      <ul class="list">
+        <li><span class="swatch" style="background:#f0b44c;border-radius:50%"></span>Corvus <span class="badge b-ovr">+1 entity</span><span class="sub">vanilla</span></li>
+      </ul>
+      <hr class="thin">
+      <div class="sect">Kestrel · entities</div>
+      <ul class="list" style="font-size:12px">
+        <li><span style="color:#ffd27a">●</span> Kestrel <span class="sub">star_yellow</span></li>
+        <li style="padding-left:20px"><span style="color:#b89a7a">●</span> Kestrel I <span class="sub">barren</span></li>
+        <li class="on" style="padding-left:20px"><span style="color:#6cd0c8">■</span> Haven Station <span class="sub">market · size 5</span></li>
+        <li style="padding-left:20px"><span style="color:#7a8aa0">⋯</span> Kestrel belt <span class="sub">asteroid belt</span></li>
+        <li style="padding-left:36px"><span style="color:#ff6b6b">✕</span> Convoy wreck <span class="sub">derelict_ship · quest</span></li>
+        <li style="padding-left:20px"><span style="color:#4fb3ff">◎</span> Kestrel jump point <span class="sub">jump point</span></li>
+        <li style="padding-left:20px"><span style="color:#8a94a6">△</span> Comm relay <span class="sub">comm_relay_makeshift</span></li>
+      </ul>
+      <div style="padding:6px 10px"><button style="font-size:12px">+ Entity ▾</button></div>
+    </aside>
+    <section class="main">
+      <div class="toolbar">
+        <div class="seg"><button class="on">Hyperspace</button><button>System</button><button>Both</button></div>
+        <span class="sep"></span>
+        <label><input type="checkbox" checked> Vanilla systems</label><label><input type="checkbox" checked> Other mods' systems</label><label><input type="checkbox"> Faction territory</label>
+        <span class="spacer"></span><span class="muted">Kestrel at</span><span class="mono">[8200, -11000]</span><span class="muted">· nearest: Naraka 2.2 ly</span>
+      </div>
+      <div class="map" style="flex:none;height:330px" id="hyper"></div>
+      <div class="map" style="flex:1;border-top:1px solid var(--border);background:radial-gradient(circle at 42% 50%, #2a2410 0%, #0a0c10 40%)">
+        <svg viewBox="-520 -250 1040 500">
+          <defs><radialGradient id="star"><stop offset="0" stop-color="#fff6d0"/><stop offset=".5" stop-color="#ffd27a"/><stop offset="1" stop-color="#ffd27a00"/></radialGradient></defs>
+          <g transform="translate(-80 0)" fill="none" stroke="#2e3642">
+            <circle r="90"/><circle r="160" stroke="#4fb3ff" stroke-width="1.5" stroke-dasharray="3 3"/><circle r="230" stroke="#3a4452" stroke-width="16" stroke-opacity=".5"/><circle r="300"/><circle r="360" stroke-dasharray="2 6"/>
+            <circle r="44" fill="url(#star)" stroke="none"/>
+            <circle cx="-64" cy="-64" r="11" fill="#b89a7a" stroke="none"/><text x="-64" y="-82" fill="#8a94a6" stroke="none" font-size="12" text-anchor="middle">Kestrel I</text>
+            <rect x="152" y="-8" width="16" height="16" fill="#6cd0c8" stroke="#fff" stroke-width="2"/><text x="160" y="-16" fill="#d8dee8" stroke="none" font-size="12" text-anchor="middle">Haven Station</text>
+            <path d="M160 0 L160 -24" stroke="#4fb3ff"/>
+            <text x="0" y="-238" fill="#8a94a6" stroke="none" font-size="12" text-anchor="middle">Kestrel belt</text>
+            <path d="M-170 158 l10 10 m0 -10 l-10 10" stroke="#ff6b6b" stroke-width="2.5"/><text x="-165" y="190" fill="#ff6b6b" stroke="none" font-size="12" text-anchor="middle">Convoy wreck</text>
+            <circle cx="212" cy="212" r="10" stroke="#4fb3ff" stroke-width="2"/><text x="212" y="238" fill="#4fb3ff" stroke="none" font-size="12" text-anchor="middle">jump point</text>
+            <path d="M-300 0 l8 -14 l8 14z" fill="#8a94a6" stroke="none"/><text x="-292" y="18" fill="#8a94a6" stroke="none" font-size="12" text-anchor="middle">relay</text>
+          </g>
+          <g font-size="12" fill="#8a94a6"><text x="300" y="-215">Drag a body to move it on its orbit.</text><text x="300" y="-198">Shift+drag changes the orbit radius.</text><text x="300" y="215">Orbit periods shown in days.</text><text x="300" y="232">Selected: Haven Station · r 160 · 45 days</text></g>
+        </svg>
+      </div>
+    </section>
+    <aside class="right"><div class="rp">
+      <h3><span style="color:#6cd0c8">■</span> Haven Station <span class="badge b-new">new</span></h3>
+      <div class="grid2">
+        <label>Entity id</label><span class="mono">vgc_haven</span>
+        <label>Type</label><select><option>station_midline2 (custom_entities.json)</option></select>
+        <label>Orbit</label><span>Kestrel · r 160 · 45 days</span>
+      </div>
+      <div class="group"><div class="gt">Market</div>
+        <div class="grid2">
+          <label>Faction</label><select><option>Vanguard Compact (this mod)</option></select>
+          <label>Size</label><select><option>5</option></select>
+          <label>Free port</label><span><input type="checkbox"> no</span>
+        </div>
+        <div class="muted" style="font-size:11px;margin-bottom:3px">Conditions</div>
+        <div class="chips"><span class="chip">population_5</span><span class="chip">no_atmosphere</span><span class="chip">ore_sparse</span><span class="chip">+</span></div>
+        <div class="muted" style="font-size:11px;margin:6px 0 3px">Industries</div>
+        <div class="chips"><span class="chip">population</span><span class="chip">spaceport</span><span class="chip">patrolhq</span><span class="chip">orbitalworks</span><span class="chip">heavybatteries</span><span class="chip">+</span></div>
+        <div class="muted" style="font-size:11px;margin:6px 0 3px">Submarkets</div>
+        <div class="chips"><span class="chip">open_market</span><span class="chip">black_market</span><span class="chip">storage</span><span class="chip">+</span></div>
+      </div>
+      <div class="group"><div class="gt">People at this market <button style="padding:0 8px;font-size:11px">+ Person</button></div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <div style="width:48px;height:48px;border:1px solid #3a6f7f;background:linear-gradient(160deg,#1d2c3a,#0b1118);display:grid;place-items:end center;overflow:hidden"><svg width="40" height="44" viewBox="0 0 110 118"><circle cx="55" cy="40" r="26" fill="#3b5466"/><path d="M8 118 Q12 76 55 72 Q98 76 102 118Z" fill="#2d4252"/></svg></div>
+          <div style="font-size:12px"><b>Ilse Reyes</b> <span class="mono muted">vgc_reyes</span><br>Commodore · Station commander<br><span class="muted">contact · military · importance HIGH</span></div>
+        </div>
+        <div style="font-size:12px;margin-top:6px">Gives: <a href="people.html">People</a><a href="items.html">Items</a><a href="quest.html">The Lost Convoy</a> · <span class="muted">Salvage Rights</span></div>
+        <div style="font-size:12px;margin-top:4px">Comm link: <span class="muted">vanilla greeting (no custom dialog)</span> <button style="padding:0 6px;font-size:11px">Write greeting…</button></div>
+      </div>
+      <div class="group"><div class="gt">Existing saves <span class="badge b-lib">SagaLib</span></div>
+        <div style="font-size:12px"><label><input type="checkbox"> Add this system to existing saves when they load</label></div>
+        <div class="warn" style="font-size:11px;margin-top:4px">Off: Kestrel only appears in new games. Players who update mid-campaign won't see it, and The Lost Convoy can't be offered to them.</div>
+      </div>
+      <div class="muted" style="font-size:11px">Exported to <span class="mono">data/sagaforge/systems/vgc_kestrel.json</span>; SagaLib builds it on new game. The Corvus addition is checked first and never added twice.</div>
+    </div></aside>
+  </div>
+  <footer><span>Kestrel · 7 entities · 1 market · 1 person</span><span class="spacer"></span><span class="muted">plan: sagaforge/locations/vgc_kestrel.system.json · saved</span></footer>
+</div>
+</div>
+<script>
+// Vanilla positions copied from starsector-core/data/campaign/starmap.json (0.98a). y is flipped for SVG.
+const SYS = { askonia:[-4400,-4500], algebbar:[-9200,-7900], arcadia:[-2500,-11900], aztlan:[5900,-7300], canaan:[-15500,-8600], corvus:[400,-9400], duzahk:[-2300,-7950], eos:[-12700,-11400], galatia:[2850,-11550], hybrasil:[-200,400], isirah:[-14900,-4400], kumarikandam:[-11800,-4600], magec:[-7200,-10700], mayasura:[-6000,-200], naraka:[11000,-7500], penelope:[-9500,-14500], samarra:[4800,-14250], thule:[-10600,-1200], tia:[6300,-1600], tyle:[-19100,-2700], valhalla:[400,-3300], westernesse:[-13900,1600], yma:[3300,-500], zagan:[-3900,3200] };
+let s = '<svg viewBox="-21500 -4600 34500 20500" preserveAspectRatio="xMidYMid meet"><g stroke="#1b2733" stroke-width="40">';
+for (let x = -20000; x <= 12000; x += 2000) s += `<line x1="${x}" y1="-4600" x2="${x}" y2="16000"/>`;
+for (let y = -4000; y <= 16000; y += 2000) s += `<line x1="-21500" y1="${y}" x2="13000" y2="${y}"/>`;
+s += '</g>';
+for (const [n, [x, y]] of Object.entries(SYS)) {
+  const hl = n === 'corvus';
+  s += `<circle cx="${x}" cy="${-y}" r="${hl ? 260 : 190}" fill="${hl ? '#f0b44c' : '#5d6b80'}"/>`;
+  s += `<text x="${x}" y="${-y - 330}" font-size="520" fill="${hl ? '#f0b44c' : '#6f7c90'}" text-anchor="middle">${n[0].toUpperCase() + n.slice(1)}${hl ? ' (+1)' : ''}</text>`;
+}
+s += `<line x1="8200" y1="11000" x2="11000" y2="7500" stroke="#6fd07a" stroke-width="40" stroke-dasharray="200 160"/>`;
+s += `<circle cx="8200" cy="11000" r="900" fill="none" stroke="#6fd07a" stroke-width="60" stroke-dasharray="240 160"/>`;
+s += `<circle cx="8200" cy="11000" r="320" fill="#6fd07a"/><text x="8200" y="12450" font-size="620" fill="#6fd07a" text-anchor="middle" font-weight="600">Kestrel (new)</text>`;
+s += '</svg>';
+document.getElementById('hyper').innerHTML = s;
+</script>
+</body></html>

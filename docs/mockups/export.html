@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Saga Forge mock-up: Export and save warnings</title>
+<link rel="stylesheet" href="mockups.css"></head>
+<body><div class="doc">
+<nav class="navdocs"><a href="index.html">Overview</a><a href="saga.html">Saga</a><a href="factions.html">Factions</a><a href="people.html">People</a><a href="items.html">Items</a><a href="quest.html">Quest planner</a><a href="displays.html">Dialog displays</a><a href="locations.html">Locations</a><a href="encounters.html">Encounters</a><a href="problems.html">Problems</a><a class="on" href="export.html">Export &amp; save warnings</a></nav>
+<h1>Export</h1>
+<p class="lead">Static mock-up. Export turns the plans into the files the game reads and shows exactly what will be written, before writing it. Only the active mod is written. Rows in shared files go into owned blocks; anything hand-written is never touched. Here the mod's 1.0.0 is already released and the modder is working on 1.1.0.</p>
+
+<div class="app" style="height:720px">
+  <header>
+    <span class="title"><span class="logo">◆</span> Saga Forge</span>
+    <div class="pages"><button>Saga</button><button>Factions</button><button>People</button><button>Items</button><button class="on">Quests</button><button>Locations</button><button>Encounters</button><button>Dialog</button><button>Problems <span class="count w">2</span></button></div>
+    <span class="spacer"></span>
+    <span class="activemod">Active mod <select><option>Vanguard Compact (vgc_) — mods\VanguardCompact</option></select></span>
+    <span class="sep"></span><button>Check mod</button><button class="primary">Export…</button><button>⚙</button>
+  </header>
+  <div style="background:var(--bg)"></div>
+  <footer><span></span></footer>
+  <div class="modalbg">
+    <div class="modal" style="width:760px">
+      <h2>Export Vanguard Compact</h2>
+      <div class="muted" style="font-size:12px;margin-bottom:10px">To <span class="mono">D:\ModTools\mods\VanguardCompact</span> · 0 errors · 2 warnings (not blocking) · 2 save warnings</div>
+      <div class="files" style="max-height:none">
+        <div><span class="tag good">new</span>data/sagaforge/systems/vgc_kestrel.json</div>
+        <div><span class="tag warn">changed</span>data/sagaforge/quests/vgc_lost_convoy.json <span class="muted">· stage find text, pay variable</span></div>
+        <div><span class="tag good">new</span>data/sagaforge/encounters/vgc_belt_ambush.json</div>
+        <div><span class="tag warn">changed</span>data/sagaforge/factions.json <span class="muted">· relations, scripted change</span></div>
+        <div><span class="tag warn">changed</span>data/config/sagaforge/content.csv <span class="muted">· +2 rows</span></div>
+        <div><span class="tag warn">block</span>data/campaign/rules.csv <span class="muted">· replace block quest=vgc_lost_convoy (14 rows) · add block encounter=vgc_belt_ambush (3 rows) · 31 hand-written rows untouched</span></div>
+        <div><span class="tag warn">block</span>data/campaign/person_missions.csv <span class="muted">· 1 row, unchanged</span></div>
+        <div><span class="tag muted">same</span>data/world/factions/vgc_vanguard.faction</div>
+        <div><span class="tag muted">same</span>data/world/factions/factions.csv</div>
+        <div><span class="tag warn">changed</span>data/world/factions/hegemony.faction <span class="muted">· patch only (+1 hull)</span></div>
+        <div><span class="tag warn">changed</span>mod_info.json <span class="muted">· dependency lastai_sagalib ≥ 0.2 (was 0.1)</span></div>
+      </div>
+      <div class="group" style="margin-top:10px;border-color:#6b4a1f"><div class="gt"><span class="warn">Block edited by hand</span></div>
+        <div style="font-size:12px">The <span class="mono">quest=vgc_lost_convoy</span> block in rules.csv was changed outside Saga Forge (hash differs). 1 row differs.</div>
+        <div style="display:flex;gap:8px;margin-top:6px"><button>Show diff</button><button>Overwrite with export</button><button>Detach (stop managing this block)</button></div></div>
+      <div class="group" style="border-color:#4b3870"><div class="gt"><span style="color:#c9a0ff">Save warnings since release 1.0.0</span><a href="#release">details</a></div>
+        <div style="font-size:12px">2 changes can affect players who update mid-campaign: Kestrel is new-game only; stage <span class="mono">search</span> was removed. <a href="problems.html">Open in Problems</a></div></div>
+      <div class="actions"><span class="muted" style="margin-right:auto;font-size:12px">Writes 8 files · backups in sagaforge/backups/</span><button>Cancel</button><button>Export dialog only</button><button class="primary">Export</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="callouts">
+  <div><b>Owned blocks.</b> Generated rows sit between <span class="mono"># sagaforge:begin … hash=…</span> and <span class="mono"># sagaforge:end</span> marker rows. Re-export replaces only the block. Edited by hand → show diff, overwrite or detach.</div>
+  <div><b>Dependencies, asked once.</b> If anything needs SagaLib (or another mod's faction or ships), <span class="mono">mod_info.json</span> gets the dependency. Dialog-only mods that use vanilla commands don't need SagaLib.</div>
+  <div><b>Nothing outside the mod.</b> No writes to the game, other mods, <span class="mono">enabled_mods.json</span> or saves. Files changed on disk since they were read are refused, as in Ship Editor.</div>
+</div>
+
+<h1 id="release" style="margin-top:34px">Mark as released, and save warnings</h1>
+<p class="lead"><b>Mark as released</b> stores a snapshot of every id that saves can depend on (quests, stages, variables, flags, people, markets, systems, factions) in <span class="mono">sagaforge/releases/&lt;version&gt;.json</span>. Changes after that are compared with it.</p>
+
+<div class="app" style="height:560px">
+  <header>
+    <span class="title"><span class="logo">◆</span> Saga Forge</span>
+    <div class="pages"><button>Saga</button><button>Factions</button><button>People</button><button>Items</button><button class="on">Quests</button><button>Locations</button><button>Encounters</button><button>Dialog</button><button>Problems <span class="count w">2</span></button></div>
+    <span class="spacer"></span><span class="activemod">Active mod <select><option>Vanguard Compact (vgc_) — mods\VanguardCompact</option></select></span>
+  </header>
+  <div style="background:var(--bg)"></div>
+  <footer><span></span></footer>
+  <div class="modalbg">
+    <div class="modal" style="width:780px">
+      <h2>Change a stage id?</h2>
+      <div style="font-size:13px">You are changing stage <span class="mono">search</span> → <span class="mono">find</span> in <i>The Lost Convoy</i>. Release <b>1.0.0</b> has this stage, so saves may be in it.</div>
+      <table class="t" style="margin-top:10px">
+        <tr><th>What happens to a player in stage <span class="mono">search</span> after updating</th><th></th></tr>
+        <tr class="on"><td><b>Keep the old id as an alias</b> (<span class="mono">renamedFrom: ["search"]</span>). SagaLib moves them to <span class="mono">find</span> on load; dialog conditions on the old id are rewritten.</td><td class="good">safe · recommended</td></tr>
+        <tr><td>Don't keep it. SagaLib shows the quest as "changed by an update" and lets them abandon it.</td><td class="warn">players lose progress</td></tr>
+        <tr><td>Only change the display name ("Find the convoy"); the id stays <span class="mono">search</span>.</td><td class="good">safe</td></tr>
+      </table>
+      <div class="group" style="margin-top:12px"><div class="gt">What saves depend on · other changes since 1.0.0</div>
+        <table class="t">
+          <tr><th>Change</th><th>Warning</th></tr>
+          <tr><td>System <span class="mono">vgc_kestrel</span> added</td><td class="warn">new games only, unless "Add to existing saves"</td></tr>
+          <tr><td>Variable <span class="mono">pay</span> added</td><td class="good">fine: missing variables start at their default</td></tr>
+          <tr><td>Option text changed (4)</td><td class="muted">no warning: dialog is not stored in saves</td></tr>
+        </table></div>
+      <div class="actions"><button>Cancel</button><button>Change id, no alias</button><button class="primary">Change id and keep alias</button></div>
+    </div>
+  </div>
+</div>
+</div></body></html>

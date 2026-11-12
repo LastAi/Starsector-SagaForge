@@ -1,0 +1,77 @@
+{
+  "format": 1,
+  "id": "vgc_wreck_lock",
+  "title": "Wreck: Compact property",
+  "kind": "dialog",
+  "icon": "",
+  "start": {
+    "kind": "trigger",
+    "trigger": "OpenInteractionDialog",
+    "conditions": [
+      "$id == vgc_convoy_wreck score:500",
+      "!SF_QuestDone vgc_salvage_rights success"
+    ]
+  },
+  "requires": [],
+  "stages": [],
+  "variables": [],
+  "rewards": [],
+  "repeatable": false,
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "x": 20,
+      "y": 60
+    },
+    {
+      "id": "offer",
+      "type": "dialog",
+      "x": 260,
+      "y": 40,
+      "title": "Compact property",
+      "visual": {
+        "kind": "illustration",
+        "category": "illustrations",
+        "key": "vgc_wreck"
+      },
+      "displays": [],
+      "highlights": [
+        "salvage prohibited"
+      ],
+      "conditions": [],
+      "script": [],
+      "phrases": [],
+      "text": "Three freighters drift in loose formation among the rocks. Each hull broadcasts a Vanguard Compact warning beacon: registered property, salvage prohibited.\n\nTouching them without the Compact's leave would be piracy.",
+      "options": [
+        {
+          "id": "leave",
+          "text": "Leave",
+          "shortcut": "ESC"
+        }
+      ]
+    },
+    {
+      "id": "close",
+      "type": "link",
+      "x": 520,
+      "y": 60,
+      "mode": "option",
+      "target": "defaultLeave"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_start",
+      "from": "start",
+      "handle": "next",
+      "to": "offer"
+    },
+    {
+      "id": "e_close",
+      "from": "offer",
+      "handle": "leave",
+      "to": "close"
+    }
+  ]
+}

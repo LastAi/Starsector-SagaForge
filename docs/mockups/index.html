@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Saga Forge mock-ups</title>
+<link rel="stylesheet" href="mockups.css">
+<style>
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; text-decoration: none; color: var(--text); }
+  .card .shot { height: 220px; background: #0f1216 center top / cover no-repeat; border-bottom: 1px solid var(--border); }
+  .card div.t { padding: 10px 14px; }
+  .card b { color: var(--accent); }
+</style></head>
+<body><div class="doc">
+<nav class="navdocs"><a class="on" href="index.html">Overview</a><a href="saga.html">Saga</a><a href="factions.html">Factions</a><a href="people.html">People</a><a href="items.html">Items</a><a href="quest.html">Quest planner</a><a href="displays.html">Dialog displays</a><a href="locations.html">Locations</a><a href="encounters.html">Encounters</a><a href="problems.html">Problems</a><a href="export.html">Export &amp; save warnings</a></nav>
+<h1>Saga Forge: screen mock-ups</h1>
+<p class="lead">Static mock-ups of the main pages, styled like Ship Editor (same colors, header, toolbars, panels). They follow one example mod, <i>Vanguard Compact</i> (id prefix <span class="mono">vgc_</span>): a new faction, a change to the Hegemony, a new star system with a station and a contact, and a quest with a branching conversation and an ambush fleet. The walkthrough and the pitch are in <a href="../PITCH.md">PITCH.md</a>; the full design is in <a href="../PLAN.md">PLAN.md</a>. Vanilla names and ids are real (0.98a); all art is placeholder.</p>
+<div class="cards">
+  <a class="card" href="saga.html"><div class="shot" style="background-image:url(img/saga.png)"></div><div class="t"><b>Saga overview</b><br>All quests as cards with prerequisites and shared flags, the flags registry with typo detection, and test profiles for Play mode and the game's dev mode.</div></a>
+  <a class="card" href="factions.html"><div class="shot" style="background-image:url(img/factions.png)"></div><div class="t"><b>Factions</b><br>A new faction, and an override of Hegemony that saves only a patch and shows what other mods change.</div></a>
+  <a class="card" href="people.html"><div class="shot" style="background-image:url(img/people.png)"></div><div class="t"><b>People</b><br>The mod's characters: identity, portrait, placement, contact, where they're used, and phrases (conditional text such as how they address you).</div></a>
+  <a class="card" href="items.html"><div class="shot" style="background-image:url(img/items.png)"></div><div class="t"><b>Items</b><br>New quest items and cargo (commodities and special items) with their descriptions and previews.</div></a>
+  <a class="card" href="quest.html"><div class="shot" style="background-image:url(img/quest.png)"></div><div class="t"><b>Quest planner</b><br>The flow chart, inspector, in-game dialog preview with test context, and Play mode.</div></a>
+  <a class="card" href="displays.html"><div class="shot" style="background-image:url(img/displays.png)"></div><div class="t"><b>Dialog displays</b><br>Illustrations, several people, planets, fleets, gained items, reputation changes, faction callouts: everything a dialog can show, and how each is exported.</div></a>
+  <a class="card" href="locations.html"><div class="shot" style="background-image:url(img/locations.png)"></div><div class="t"><b>Locations</b><br>Hyperspace map with vanilla systems, the system layout, a market and its contact.</div></a>
+  <a class="card" href="encounters.html"><div class="shot" style="background-image:url(img/encounters.png)"></div><div class="t"><b>Encounters</b><br>A quest ambush fleet: composition, spawn, behavior, comm greeting and outcomes.</div></a>
+  <a class="card" href="problems.html"><div class="shot" style="background-image:url(img/problems.png)"></div><div class="t"><b>Problems</b><br>Check the active mod: errors, warnings, save warnings, optional style checks, with fixes.</div></a>
+  <a class="card" href="export.html"><div class="shot" style="background-image:url(img/export.png)"></div><div class="t"><b>Export &amp; save warnings</b><br>What gets written, owned blocks, dependencies, and changing an id after a release.</div></a>
+</div>
+<p class="muted" style="margin-top:16px;font-size:12px">Images in <span class="mono">img/</span> are rendered from these pages with <span class="mono">scripts/capture-mockups.cjs</span>.</p>
+</div></body></html>

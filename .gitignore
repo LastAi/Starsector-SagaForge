@@ -1,0 +1,16 @@
+# Node / build output
+node_modules/
+out/
+dist/
+
+# Downloads (npm, Electron, electron-builder) and generated placeholder art
+.cache/
+
+# Settings and browser cache when running from source; the portable build's data folder
+.userdata/
+/data/
+
+# Saga Forge's export backups inside a mod
+sagaforge/backups/
+
+*.log

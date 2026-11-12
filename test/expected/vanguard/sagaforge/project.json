@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "prefix": "vgc_",
+  "saga": {
+    "positions": {
+      "vgc_lost_convoy": [
+        40,
+        40
+      ],
+      "vgc_salvage_rights": [
+        320,
+        40
+      ],
+      "vgc_belt_ambush_comm": [
+        40,
+        220
+      ],
+      "vgc_wreck_lock": [
+        320,
+        220
+      ]
+    }
+  },
+  "ignores": [],
+  "ownedQuestIds": [],
+  "exported": {
+    "illustrations": "vgc_wreck"
+  },
+  "options": {},
+  "illustrations": {
+    "vgc_wreck": "graphics/illustrations/vgc_wreck.png"
+  }
+}

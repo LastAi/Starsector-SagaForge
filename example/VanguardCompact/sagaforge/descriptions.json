@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "descriptions": {
+    "FACTION:vgc_vanguard": {
+      "text1": "A compact of free stations on the edge of the Persean Sector, bound by a shared navy and a stubborn refusal to be anyone's province."
+    },
+    "CUSTOM:vgc_haven": {
+      "text1": "A ring of habitat modules around a captured fuel depot, Haven Station is the Compact's capital in all but name."
+    }
+  }
+}

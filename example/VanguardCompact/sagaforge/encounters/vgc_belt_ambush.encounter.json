@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "id": "vgc_belt_ambush",
+  "name": "Belt ambush",
+  "fleet": {
+    "faction": "pirates",
+    "type": "patrolMedium",
+    "size": "fp",
+    "points": 80,
+    "quality": 0.5,
+    "name": "Belt Raiders"
+  },
+  "spawn": {
+    "at": "vgc_kestrel_belt",
+    "when": "quest-stage",
+    "despawnOnStageEnd": true
+  },
+  "behavior": "ambush",
+  "flags": {
+    "hostile": true,
+    "important": true,
+    "allowDisengage": true
+  },
+  "outcomes": {},
+  "commDialog": "vgc_belt_ambush_comm"
+}

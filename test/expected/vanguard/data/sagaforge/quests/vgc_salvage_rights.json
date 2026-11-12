@@ -1,0 +1,45 @@
+{
+  "_sagaforge": {
+    "generated": "by Saga Forge; edits are overwritten on export",
+    "hash": "558f48ca"
+  },
+  "format": 1,
+  "id": "vgc_salvage_rights",
+  "title": "Salvage Rights",
+  "kind": "quest",
+  "icon": "graphics/icons/missions/data_retrieval.png",
+  "repeatable": false,
+  "timeLimitDays": 0,
+  "start": {
+    "kind": "contact",
+    "person": "vgc_reyes",
+    "freq": 1000,
+    "minRep": "FAVORABLE",
+    "offerText": "Reyes wants the convoy's cargo recovered before the scavengers get it.",
+    "optionText": "Ask about salvage rights"
+  },
+  "requires": [
+    "SF_QuestDone vgc_lost_convoy success"
+  ],
+  "stages": [
+    {
+      "id": "survey",
+      "title": "Survey the wreck",
+      "journal": "Survey the convoy wreck in the Kestrel belt.",
+      "nextStep": "",
+      "marker": "vgc_convoy_wreck",
+      "kind": "normal",
+      "renamedFrom": []
+    }
+  ],
+  "variables": [],
+  "targets": [],
+  "rewards": [],
+  "timers": [],
+  "encounters": [],
+  "arrivals": [
+    "vgc_convoy_wreck"
+  ],
+  "phrases": [],
+  "flags": []
+}

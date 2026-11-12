@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Saga Forge mock-up: Dialog displays</title>
+<link rel="stylesheet" href="mockups.css">
+<style>
+  .dl { list-style: none; margin: 0; padding: 0; }
+  .dl li { display: grid; grid-template-columns: 18px 1fr auto; gap: 6px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 4px; margin-bottom: 4px; background: #161a20; font-size: 12px; align-items: center; }
+  .dl li.on { outline: 1px solid var(--accent); }
+  .illu { width: 100%; height: 150px; border: 1px solid #3a6f7f; background: linear-gradient(170deg, #1a2430 0%, #2c2418 55%, #0a0c10 100%); position: relative; overflow: hidden; }
+  .illu::after { content: ''; position: absolute; left: 40px; top: 60px; width: 150px; height: 40px; background: #3a3f48; transform: rotate(-12deg); border-radius: 4px; box-shadow: 30px 20px 0 -6px #2a2e36; }
+  .gain { display: flex; gap: 8px; align-items: center; margin: 4px 0; }
+  .gain .ic { width: 22px; height: 22px; border: 1px solid #3a6f7f; display: grid; place-items: center; font-size: 12px; }
+  .rep { margin: 6px 0; }
+  .bar { height: 8px; background: #1b2530; border: 1px solid #335; position: relative; margin-top: 3px; width: 260px; }
+  .bar i { position: absolute; left: 50%; top: 0; bottom: 0; width: 15%; background: #3fa7a0; }
+  table.types td:first-child { white-space: nowrap; }
+</style></head>
+<body><div class="doc">
+<nav class="navdocs"><a href="index.html">Overview</a><a href="saga.html">Saga</a><a href="factions.html">Factions</a><a href="people.html">People</a><a href="items.html">Items</a><a href="quest.html">Quest planner</a><a class="on" href="displays.html">Dialog displays</a><a href="locations.html">Locations</a><a href="encounters.html">Encounters</a><a href="problems.html">Problems</a><a href="export.html">Export &amp; save warnings</a></nav>
+<h1>Dialog displays: everything a dialog can show</h1>
+<p class="lead">Static mock-up. Besides text and options, the game's dialog has a <b>visual panel</b> (left: a person, several people, an illustration, a planet, fleets, a map marker) and can put <b>displays inside the text</b>: gained or lost cargo, credits, ships and officers, reputation changes, costs, images, skill panels. A Dialog node lists its displays in order, and the preview draws them as the game does.</p>
+
+<div class="app" style="height:700px">
+  <header>
+    <span class="title"><span class="logo">◆</span> Saga Forge</span>
+    <div class="pages"><button>Saga</button><button>Factions</button><button>People</button><button>Items</button><button class="on">Quests</button><button>Locations</button><button>Encounters</button><button>Dialog</button><button>Problems <span class="count w">3</span></button></div>
+    <span class="spacer"></span>
+    <span class="activemod"><select><option>Vanguard Compact (vgc_)</option></select></span>
+    <span class="sep"></span><button>Check mod</button><button class="primary">Export…</button><button>⚙</button>
+  </header>
+  <div style="display:grid;grid-template-columns:360px 1fr;min-height:0">
+    <aside class="left"><div class="rp">
+      <h3><span class="badge" style="background:var(--n-dialog);border-color:var(--n-dialog);color:#fff">Dialog</span> Wreck found</h3>
+      <div class="group"><div class="gt">Visual panel</div>
+        <div class="grid2" style="grid-template-columns:80px 1fr">
+          <label>Show</label><select><option>Illustration</option><option>Speaker (person)</option><option>Speaker + second / third person</option><option>Large planet</option><option>Planet info</option><option>Fleets (player vs other)</option><option>Ship (fleet member)</option><option>Map marker</option><option>Keep previous / restore saved</option><option>Hide</option></select>
+          <label>Image</label><select><option>vgc_wreck_interior (this mod)</option><option>salvor_explore_hull (vanilla)</option></select>
+          <label>Fade in</label><span><input type="checkbox" checked> yes</span>
+        </div>
+        <div class="muted" style="font-size:11px">This mod's illustrations are registered in its <span class="mono">settings.json</span> (graphics → illustrations) on export. The 99 vanilla ones and other mods' can be used by key.</div>
+      </div>
+      <div class="group"><div class="gt">In the text, in order <button style="padding:0 8px;font-size:11px">+ Display ▾</button></div>
+        <ul class="dl">
+          <li><span>¶</span>Text <span class="muted">2 paragraphs</span></li>
+          <li class="on"><span>▣</span>Gain item: Convoy black box × 1<span class="muted mono">AddRemoveCommodity</span></li>
+          <li><span>⚓</span>Gain ship: Buffalo Mk.II (damaged)<span class="muted mono">AddShip</span></li>
+          <li><span>◈</span>Reputation: Vanguard +5<span class="muted mono">AdjustRep</span></li>
+          <li><span>¶</span>Text, small, grey <span class="muted mono">AddTextSmall</span></li>
+          <li><span>♪</span>Sound: ui_cargo_metals<span class="muted mono">PlaySound</span></li>
+        </ul>
+      </div>
+    </div></aside>
+    <section class="main">
+      <div class="dock-tabs"><button class="on">Dialog preview</button><button>Rules</button><span class="spacer"></span><span class="muted" style="font-size:11px;padding-top:3px">game font · 1:1</span></div>
+      <div class="gdlg" style="flex:1">
+        <div class="vis" style="width:300px"><div class="illu"></div><div class="pname" style="margin-top:8px">Convoy wreck <span class="r">· derelict</span></div></div>
+        <div class="txt">
+          <p class="old">Your salvage crews cut through the outer hull.</p>
+          <p>The freighter's command deck is dark and cold. The <span class="h">black box</span> is still in its cradle, and the cargo bay holds a ship the pirates didn't have time to strip.</p>
+          <div class="gain"><span class="ic">▣</span><span style="color:var(--good)">Gained <span class="h">1</span> Convoy black box</span></div>
+          <div class="gain"><span class="ic">⚓</span><span style="color:var(--good)">Gained <span class="h">Buffalo Mk.II</span>-class freighter (damaged)</span></div>
+          <div class="rep"><span>Relationship with the <span style="color:#6cd0c8">Vanguard Compact</span> improved by <span class="h">5</span>, now at <span class="h">30/100</span> (Welcoming)</span><div class="bar"><i></i></div></div>
+          <p style="font-size:12px;color:#8a94a6">Survivor count: 0 of 40. They were moved before you arrived.</p>
+          <div class="opts"><div class="o"><span class="k">1.</span>Search the escape pod logs</div><div class="o"><span class="k">2.</span>Leave</div></div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <footer><span>Wreck found · 1 visual · 6 displays</span><span class="spacer"></span><span class="muted">all displays above are vanilla commands; no SagaLib needed</span></footer>
+</div>
+
+<h2 style="font-size:15px;margin:26px 0 8px">What can be shown, and how it's exported</h2>
+<p class="lead">From the game's <span class="mono">VisualPanelAPI</span>, <span class="mono">TextPanelAPI</span>, <span class="mono">TooltipMakerAPI</span> and the rule commands in <span class="mono">impl.campaign.rulecmd</span> (0.98a). Vanilla commands are used wherever they exist; the rest come from SagaLib.</p>
+<div class="group" style="background:var(--panel)">
+<table class="t types">
+  <tr><th>Display</th><th>Where</th><th>Exported as</th></tr>
+  <tr><td>Person (speaker, with rank, post, faction crest)</td><td>visual panel</td><td class="mono">ShowPersonVisual</td></tr>
+  <tr><td>Second and third person (several people in one scene)</td><td>visual panel</td><td class="mono">ShowSecondPerson / ShowThirdPerson</td></tr>
+  <tr><td>Illustration (vanilla, other mods', the mod's own)</td><td>visual panel</td><td class="mono">ShowImageVisual [category] key</td></tr>
+  <tr><td>Large planet · planet info</td><td>visual panel</td><td class="mono">ShowLargePlanet · SF_ShowPlanetInfo</td></tr>
+  <tr><td>Map marker (entity, title, text)</td><td>visual panel</td><td class="mono">ShowMapMarker</td></tr>
+  <tr><td>Fleets side by side · one ship · loot</td><td>visual panel</td><td class="mono">SF_ShowFleets · SF_ShowShip · (vanilla salvage flow)</td></tr>
+  <tr><td>Save / restore / hide the visual</td><td>visual panel</td><td class="mono">SaveCurrentVisual · RestoreSavedVisual · HideVisual</td></tr>
+  <tr><td>Gained / lost: credits, commodities, special items, weapons, fighters, ships, officers, story points, XP</td><td>text</td><td class="mono">AddCredits · SubCredits · AddRemoveCommodity · AddRemoveAnyItem · AddShip · RemoveShip · AddStoryPoints · AddXP</td></tr>
+  <tr><td>Reputation change with faction or person (faction color)</td><td>text</td><td class="mono">AdjustRep · AdjustRepPerson</td></tr>
+  <tr><td>Extra text: colored, small, random variants (<span class="mono">OR</span>)</td><td>text</td><td class="mono">AddText · AddTextSmall</td></tr>
+  <tr><td>Cost panel (resources needed vs available)</td><td>text</td><td class="mono">ShowResCost</td></tr>
+  <tr><td>Remaining cargo / fuel capacity</td><td>text</td><td class="mono">ShowRemainingCapacity</td></tr>
+  <tr><td>Inline image · faction callout (crest + name + relationship bar) · ship list · cargo grid · section heading · skill panel</td><td>text</td><td class="mono">SF_Show image|faction|ships|cargo|heading|skills (SagaLib, via TextPanelAPI / TooltipMakerAPI)</td></tr>
+  <tr><td>Highlights and their colors</td><td>text</td><td class="mono">highlights from the editor · SetTextHighlights · SetTextHighlightColors</td></tr>
+  <tr><td>Option tooltip, story-point option, option text change, shortcut</td><td>options</td><td class="mono">SetTooltip · SetStoryOption · SetOptionText · SetShortcut</td></tr>
+  <tr><td>Sound · music</td><td>—</td><td class="mono">PlaySound · PlayCustomMusic · PauseMusic · ResumeNormalMusic</td></tr>
+</table>
+<div class="muted" style="font-size:11px;margin-top:6px">Lists of commands and their parameters live in the definitions data file (Q11), so a new game version is a data update. The preview draws every row; anything it can't draw exactly is shown as a labelled placeholder of the right size.</div>
+</div>
+</div></body></html>

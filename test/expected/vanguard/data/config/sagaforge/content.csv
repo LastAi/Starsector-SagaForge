@@ -1,0 +1,8 @@
+id,type,path,mod
+vgc_lost_convoy,quest,data/sagaforge/quests/vgc_lost_convoy.json,vgc
+vgc_salvage_rights,quest,data/sagaforge/quests/vgc_salvage_rights.json,vgc
+vgc_people,people,data/sagaforge/people/vgc_people.json,vgc
+vgc_factions,factions,data/sagaforge/factions.json,vgc
+vgc_kestrel,system,data/sagaforge/systems/vgc_kestrel.json,vgc
+vgc_belt_ambush,encounter,data/sagaforge/encounters/vgc_belt_ambush.json,vgc
+vgc_profiles,profiles,data/sagaforge/dev/test_profiles.json,vgc

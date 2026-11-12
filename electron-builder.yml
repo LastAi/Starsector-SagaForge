@@ -1,0 +1,30 @@
+# Packaging (npm run dist:win / npm run dist:linux). Output goes to ./dist (git-ignored).
+# Downloads (Electron, NSIS, AppImage tools) are cached in ELECTRON_BUILDER_CACHE; the
+# package scripts point it at D:\ModTools\.cache\electron-builder via scripts/dist.mjs.
+appId: io.github.lastai.saga-forge
+productName: Saga Forge
+copyright: Saga Forge contributors (MIT)
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+asar: true
+artifactName: saga-forge-${version}-${os}-${arch}.${ext}
+
+# No installer: the app ships as a zip. Unzip anywhere and run the exe; settings are kept in a
+# "data" folder next to it (see src/main/datadir.ts).
+win:
+  target:
+    - target: zip
+      arch: [x64]
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: tar.gz
+      arch: [x64]
+  category: Development
+  synopsis: Campaign editor for Starsector mods

@@ -1,0 +1,123 @@
+{
+  "format": 1,
+  "id": "vgc_belt_ambush_comm",
+  "title": "Belt ambush: comm link",
+  "kind": "dialog",
+  "icon": "",
+  "start": {
+    "kind": "trigger",
+    "trigger": "OpenCommLink",
+    "conditions": [
+      "$entity.sagaforge_encounter == vgc_belt_ambush"
+    ]
+  },
+  "requires": [],
+  "stages": [],
+  "variables": [],
+  "rewards": [],
+  "repeatable": false,
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "x": 20,
+      "y": 60
+    },
+    {
+      "id": "offer",
+      "type": "dialog",
+      "x": 260,
+      "y": 40,
+      "title": "Greeting",
+      "visual": {
+        "kind": "none"
+      },
+      "displays": [],
+      "highlights": [],
+      "conditions": [],
+      "script": [],
+      "phrases": [],
+      "text": "\"You picked the wrong belt to fly through, $playerSirOrMadam. Cut your engines.\"",
+      "options": [
+        {
+          "id": "bluff",
+          "text": "\"A Compact battle group is two jumps behind me.\"",
+          "story": {
+            "cost": 1
+          }
+        },
+        {
+          "id": "cut",
+          "text": "Cut the comm link",
+          "shortcut": "ESC"
+        }
+      ]
+    },
+    {
+      "id": "cut_link",
+      "type": "link",
+      "x": 520,
+      "y": 60,
+      "mode": "option",
+      "target": "cutCommLink"
+    },
+    {
+      "id": "leave",
+      "type": "action",
+      "x": 520,
+      "y": 180,
+      "title": "They leave",
+      "ops": [
+        {
+          "op": "despawn",
+          "encounter": "vgc_belt_ambush"
+        }
+      ]
+    },
+    {
+      "id": "left",
+      "type": "dialog",
+      "x": 760,
+      "y": 180,
+      "title": "They believe you",
+      "visual": {
+        "kind": "keep"
+      },
+      "displays": [],
+      "highlights": [],
+      "conditions": [],
+      "script": [
+        "EndConversation"
+      ],
+      "phrases": [],
+      "text": "A long pause. \"...Not worth it.\" The pirate fleet turns away.",
+      "options": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_start",
+      "from": "start",
+      "handle": "next",
+      "to": "offer"
+    },
+    {
+      "id": "e_cut",
+      "from": "offer",
+      "handle": "cut",
+      "to": "cut_link"
+    },
+    {
+      "id": "e_bluff",
+      "from": "offer",
+      "handle": "bluff",
+      "to": "leave"
+    },
+    {
+      "id": "e_left",
+      "from": "leave",
+      "handle": "next",
+      "to": "left"
+    }
+  ]
+}

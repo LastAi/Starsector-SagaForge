@@ -1,0 +1,60 @@
+{
+  "_sagaforge": {
+    "generated": "by Saga Forge; edits are overwritten on export",
+    "hash": "403bec19"
+  },
+  "format": 1,
+  "profiles": [
+    {
+      "id": "after_convoy",
+      "name": "After the convoy, commissioned",
+      "quests": {
+        "vgc_lost_convoy": {
+          "state": "success",
+          "step": "return"
+        },
+        "vgc_salvage_rights": {
+          "state": "active",
+          "step": "survey"
+        }
+      },
+      "flags": {
+        "$global.vgc_signal_heard": "true"
+      },
+      "player": {
+        "credits": 250000,
+        "commission": "vgc_vanguard",
+        "rep": {
+          "vgc_vanguard": 0.5
+        },
+        "cargo": [
+          {
+            "item": "vgc_black_box",
+            "qty": 1
+          }
+        ],
+        "startAt": "vgc_haven"
+      }
+    },
+    {
+      "id": "at_report",
+      "name": "Convoy found, report to Reyes",
+      "quests": {
+        "vgc_lost_convoy": {
+          "state": "active",
+          "step": "return"
+        }
+      },
+      "flags": {},
+      "player": {
+        "cargo": [
+          {
+            "item": "vgc_black_box",
+            "qty": 1
+          }
+        ],
+        "startAt": "vgc_haven"
+      }
+    }
+  ]
+}

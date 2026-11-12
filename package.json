@@ -1,0 +1,36 @@
+{
+  "name": "saga-forge",
+  "productName": "Saga Forge",
+  "version": "1.0.0",
+  "description": "Campaign editor for Starsector mods: factions, people, items, quests and dialog, locations, encounters.",
+  "author": "LastAi",
+  "license": "MIT",
+  "private": true,
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "test": "vitest run",
+    "e2e": "electron-vite build && node scripts/e2e.mjs",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "dist:win": "electron-vite build && node scripts/dist.mjs win",
+    "dist:linux": "electron-vite build && node scripts/dist.mjs linux"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tsconfig/svelte": "^5.0.8",
+    "@types/node": "^24.0.0",
+    "@xyflow/svelte": "^1.7.1",
+    "electron": "^45.2.2",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "elkjs": "^0.12.1",
+    "svelte": "^5.57.3",
+    "svelte-check": "^4.7.8",
+    "typescript": "^6.0.0",
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
+  },
+  "desktopName": "saga-forge.desktop"
+}

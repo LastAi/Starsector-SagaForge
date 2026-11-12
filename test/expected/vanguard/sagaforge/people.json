@@ -1,0 +1,52 @@
+{
+  "format": 1,
+  "people": [
+    {
+      "id": "vgc_reyes",
+      "name": {
+        "first": "Ilse",
+        "last": "Reyes"
+      },
+      "gender": "FEMALE",
+      "faction": "vgc_vanguard",
+      "rank": "spaceCommander",
+      "post": "stationCommander",
+      "portrait": "graphics/portraits/vgc_reyes.png",
+      "voice": "soldier",
+      "placement": {
+        "at": "market",
+        "market": "vgc_haven",
+        "inCommDirectory": true
+      },
+      "contact": {
+        "types": [
+          "military"
+        ],
+        "importance": "HIGH"
+      },
+      "tags": [],
+      "phrases": [
+        {
+          "token": "$vgc_reyes_title",
+          "owner": "vgc_reyes",
+          "mode": "first-match",
+          "cases": [
+            {
+              "when": [
+                "$player.commissionFactionId == vgc_vanguard"
+              ],
+              "text": "Commander $playerLastName"
+            },
+            {
+              "when": [
+                "RepIsAtWorst vgc_vanguard FRIENDLY"
+              ],
+              "text": "Captain $playerLastName"
+            }
+          ],
+          "otherwise": "Captain"
+        }
+      ]
+    }
+  ]
+}

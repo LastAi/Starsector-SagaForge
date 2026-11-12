@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Saga Forge mock-up: Encounters</title>
+<link rel="stylesheet" href="mockups.css"></head>
+<body><div class="doc">
+<nav class="navdocs"><a href="index.html">Overview</a><a href="saga.html">Saga</a><a href="factions.html">Factions</a><a href="people.html">People</a><a href="items.html">Items</a><a href="quest.html">Quest planner</a><a href="displays.html">Dialog displays</a><a href="locations.html">Locations</a><a class="on" href="encounters.html">Encounters</a><a href="problems.html">Problems</a><a href="export.html">Export &amp; save warnings</a></nav>
+<h1>Encounters: a quest ambush fleet</h1>
+<p class="lead">Static mock-up. An encounter is a fleet (or an interaction with a custom entity) with a place, a trigger, a behavior and outcomes. Encounters used by a quest are spawned on a quest stage, the way vanilla quests do (<span class="mono">triggerCreateFleet</span>); standalone ones are spawned by SagaLib's fleet manager. The comm-link dialog uses the same chart editor as quests.</p>
+
+<div class="app" style="height:860px">
+  <header>
+    <span class="title"><span class="logo">◆</span> Saga Forge</span>
+    <div class="pages"><button>Saga</button><button>Factions</button><button>People</button><button>Items</button><button>Quests</button><button>Locations</button><button class="on">Encounters</button><button>Dialog</button><button>Problems <span class="count w">3</span></button></div>
+    <span class="spacer"></span>
+    <span class="activemod">Active mod <select><option>Vanguard Compact (vgc_) — mods\VanguardCompact</option></select></span>
+    <span class="sep"></span><button>Check mod</button><button class="primary">Export…</button><button>⚙</button>
+  </header>
+  <div class="body3" style="grid-template-columns:250px 1fr 380px">
+    <aside class="left">
+      <div class="sect">Encounters <button>+ New ▾</button></div>
+      <ul class="list">
+        <li class="on"><span style="color:var(--n-enc)">⚔</span> Belt ambush<span class="sub">quest stage</span></li>
+        <li><span style="color:var(--n-enc)">⚔</span> Salvager patrol<span class="sub">periodic</span></li>
+        <li><span style="color:var(--n-wait)">✕</span> Convoy wreck<span class="sub">entity interaction</span></li>
+      </ul>
+      <hr class="thin">
+      <div class="sect">Used by</div>
+      <div style="padding:0 12px;font-size:12px"><a href="people.html">People</a><a href="items.html">Items</a><a href="quest.html">The Lost Convoy</a> → node <i>Encounter</i>, stage <span class="mono">find</span></div>
+      <hr class="thin">
+      <div class="sect">Fleet preview</div>
+      <div style="padding:0 12px;font-size:12px;line-height:1.7">
+        <div>Flagship <b>Falcon (P)</b> <span class="muted">· officer lvl 5</span></div>
+        <div>2 × Buffalo Mk.II <span class="muted">· random</span></div>
+        <div>3 × Wolf (P) <span class="muted">· random</span></div>
+        <div>2 × Hound (P) <span class="muted">· random</span></div>
+        <div class="muted">≈ 80 FP · re-rolled each preview</div>
+        <button style="font-size:11px;padding:1px 8px;margin-top:4px">⟲ Roll again</button>
+      </div>
+    </aside>
+    <section class="main">
+      <div class="toolbar"><div class="seg"><button class="on">Fleet</button><button>Spawn &amp; behavior</button><button>Comm dialog</button><button>Outcomes</button></div><span class="spacer"></span><span class="mono">vgc_belt_ambush</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px;overflow:auto">
+        <div>
+          <div class="group"><div class="gt">Fleet</div>
+            <div class="grid2">
+              <label>Faction</label><select><option>Pirates (vanilla)</option></select>
+              <label>Fleet type</label><select><option>patrolMedium</option></select>
+              <label>Name</label><input type="text" value="Belt Raiders">
+              <label>Composition</label><div class="seg"><button class="on">Points from doctrine</button><button>Exact variants</button></div>
+              <label>Fleet points</label><input type="text" value="80   (scale with player fleet: off)">
+              <label>Quality</label><select><option>Faction default (pirates: low)</option></select>
+              <label>Officers</label><select><option>Faction default</option></select>
+            </div></div>
+          <div class="group"><div class="gt">Flagship commander</div>
+            <div class="grid2">
+              <label>Person</label><select><option>Random pirate</option><option>Named person…</option></select>
+              <label>Flagship</label><select><option>falcon_p_Strike (variant)</option></select>
+            </div></div>
+          <div class="group"><div class="gt">Flags</div>
+            <div class="chips"><span class="chip add">hostile ✓</span><span class="chip add">important (marked) ✓</span><span class="chip">no rep impact</span><span class="chip add">allow disengage ✓</span><span class="chip">remove when stage ends ✓</span></div></div>
+        </div>
+        <div>
+          <div class="group"><div class="gt">Spawn</div>
+            <div class="grid2">
+              <label>When</label><select><option>Quest stage starts: The Lost Convoy · find</option></select>
+              <label>Where</label><select><option>Kestrel belt (vgc_kestrel)</option></select>
+              <label>Despawn</label><select><option>When the stage ends, or defeated</option></select>
+            </div></div>
+          <div class="group"><div class="gt">Behavior</div>
+            <div class="seg" style="margin-bottom:6px"><button>Patrol</button><button>Guard</button><button>Intercept player</button><button>Travel</button><button class="on">Ambush</button></div>
+            <div style="font-size:12px" class="muted">Waits hidden (transponder off) inside the belt; attacks when the player comes within 1,000 su. Built from vanilla's fleet-trigger calls; no custom AI.</div></div>
+          <div class="group"><div class="gt">Outcomes <span>back into the quest</span></div>
+            <table class="t">
+              <tr><th>Outcome</th><th>Goes to</th></tr>
+              <tr><td>Defeated</td><td>Arrive · Convoy wreck</td></tr>
+              <tr class="on"><td>Avoided (player leaves the system)</td><td class="bad">nothing yet ⚠</td></tr>
+              <tr><td>Player loses</td><td class="muted">quest continues (vanilla default)</td></tr>
+            </table></div>
+          <div class="group"><div class="gt">Exported as <span class="badge b-lib">SagaLib</span></div>
+            <div class="mono" style="font-size:11px">data/sagaforge/encounters/vgc_belt_ambush.json<br>rules.csv · vgc_belt_ambush_greeting (OpenCommLink)</div></div>
+        </div>
+      </div>
+    </section>
+    <aside class="right" style="display:flex;flex-direction:column">
+      <div class="rp" style="height:auto;flex:none;padding-bottom:4px"><h3>Comm link greeting</h3>
+        <div class="muted" style="font-size:12px">Shown when the player hails this fleet. Rule <span class="mono">OpenCommLink</span> with <span class="mono">$vgc_belt_ambush</span> on the fleet, so it never replaces the greeting of other pirate fleets.</div></div>
+      <div style="height:300px;margin:8px 12px;border:1px solid var(--border)">
+        <div class="gdlg" style="font-size:13px">
+          <div class="vis" style="width:96px"><div class="portrait" style="width:88px;height:88px;background:linear-gradient(160deg,#3a1d1d,#120909)"><svg width="76" height="80" viewBox="0 0 110 118"><circle cx="55" cy="40" r="26" fill="#664040"/><path d="M8 118 Q12 76 55 72 Q98 76 102 118Z" fill="#523030"/></svg></div><div class="pname" style="font-size:11px">Belt Raiders<br><span class="r">Pirates</span></div></div>
+          <div class="txt">
+            <p>The channel opens on static and a grin. "Vanguard money, isn't it? Your convoy paid us well. You'll pay better."</p>
+            <div class="opts">
+              <div class="o"><span class="k">1.</span>"Where are the survivors?"</div>
+              <div class="o story"><span class="k">2.</span>Bluff: "A Hegemony patrol is two jumps behind me." [1 story point]</div>
+              <div class="o"><span class="k">3.</span>Cut the comm link</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="rp" style="height:auto"><button>Open in chart editor →</button>
+        <div class="muted" style="font-size:12px;margin-top:8px">Option 2 ends the encounter peacefully (the fleet leaves): <span class="mono">SF_Despawn vgc_belt_ambush</span>, outcome <i>Avoided</i>.</div></div>
+    </aside>
+  </div>
+  <footer><span>Belt ambush · Pirates · 80 FP · quest stage</span><span class="warn">1 problem</span><span class="spacer"></span><span class="muted">plan: sagaforge/encounters/vgc_belt_ambush.encounter.json · saved</span></footer>
+</div>
+<div class="callouts">
+  <div><b>Three kinds.</b> Quest fleets (spawned on a stage), standalone fleets (new game or periodic, from SagaLib's fleet manager), and interactions with custom entities (a derelict, a beacon), which are dialog on <span class="mono">OpenInteractionDialog</span> for that entity.</div>
+  <div><b>Picked, not edited.</b> Variants and hulls come from the game index (and Ship Editor's output in the same mod). Saga Forge never changes ships.</div>
+  <div><b>Greeting without takeover.</b> The greeting rule tests a memory flag set only on this fleet, so other pirate fleets keep vanilla's greeting. The FireBest check proves it.</div>
+</div>
+</div></body></html>

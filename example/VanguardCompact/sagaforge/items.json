@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "items": [
+    {
+      "kind": "special",
+      "id": "vgc_black_box",
+      "name": "Convoy black box",
+      "icon": "graphics/icons/cargo/vgc_black_box.png",
+      "basePrice": 0,
+      "stackSize": 1,
+      "cargoSpace": 1,
+      "tags": [
+        "mission_item",
+        "hide_in_codex"
+      ],
+      "description": "A scorched flight recorder from a Vanguard Compact convoy. The data core is intact.",
+      "otherColumns": {
+        "tech/manufacturer": "",
+        "baseRaidDanger": "",
+        "sound id": "ui_cargo_special_tech_pickup",
+        "sound id drop": "ui_cargo_special_tech_drop"
+      },
+      "preset": "quest_item",
+      "special": {
+        "rarity": 0,
+        "plugin": "com.fs.starfarer.api.campaign.impl.items.GenericSpecialItemPlugin",
+        "pluginParams": ""
+      }
+    }
+  ]
+}

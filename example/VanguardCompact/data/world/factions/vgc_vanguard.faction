@@ -1,0 +1,76 @@
+{
+	"id": "vgc_vanguard",
+	"color": [63, 167, 160, 255],
+	"baseUIColor": [108, 208, 200, 255],
+	"darkUIColor": [29, 76, 73, 175],
+	"gridUIColor": [63, 167, 160, 70],
+	"displayName": "Vanguard Compact",
+	"displayNameWithArticle": "the Vanguard Compact",
+	"displayNameLong": "Vanguard Compact of Free Stations",
+	"displayNameLongWithArticle": "the Vanguard Compact of Free Stations",
+	"entityNamePrefix": "Vanguard",
+	"personNamePrefix": "Vanguard Compact",
+	"personNamePrefixAOrAn": "a",
+	"displayNameIsOrAre": "is",
+	"showInIntelTab": true,
+	"logo": "graphics/factions/vgc_vanguard_flag.png",
+	"crest": "graphics/factions/vgc_vanguard_crest.png",
+	"shipNamePrefix": "VCS",
+	"shipNameSources": {
+		"GENERAL": 1,
+		"SPACE": 1
+	},
+	"names": {
+		"modern": 1,
+		"world": 1
+	},
+	"portraits": {
+		"standard_male": ["graphics/portraits/portrait_mercenary01.png"],
+		"standard_female": ["graphics/portraits/portrait_mercenary02.png"]
+	},
+	"knownShips": {
+		"tags": ["base_bp", "lowtech_bp"],
+		"hulls": ["hammerhead", "sunder", "buffalo", "kite", "hound", "enforcer"]
+	},
+	"priorityShips": {
+		"tags": [],
+		"hulls": []
+	},
+	"knownFighters": {
+		"tags": ["base_bp"],
+		"fighters": []
+	},
+	"knownWeapons": {
+		"tags": ["base_bp"],
+		"weapons": []
+	},
+	"knownHullMods": {
+		"tags": ["base_bp"],
+		"hullMods": []
+	},
+	"factionDoctrine": {
+		"warships": 3,
+		"carriers": 2,
+		"phaseShips": 2,
+		"officerQuality": 2,
+		"shipQuality": 3,
+		"numShips": 2,
+		"shipSize": 3,
+		"aggression": 3
+	},
+	"illegalCommodities": ["drugs", "organs"],
+	"ranks": {
+		"ranks": {},
+		"posts": {}
+	},
+	"custom": {
+		"offersCommissions": true,
+		"engagesInHostilities": true,
+		"buysAICores": true,
+		"AICoreValueMult": 1,
+		"AICoreRepMult": 1,
+		"buysSurveyData": true,
+		"hostilityImpactOnGrowth": true,
+		"caresAboutAtrocities": true
+	}
+}

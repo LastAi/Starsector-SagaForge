@@ -1,0 +1,178 @@
+{
+  "format": 1,
+  "id": "vgc_salvage_rights",
+  "title": "Salvage Rights",
+  "kind": "quest",
+  "icon": "",
+  "start": {
+    "kind": "contact",
+    "person": "vgc_reyes",
+    "freq": 1000,
+    "minRep": "FAVORABLE",
+    "offerText": "Reyes wants the convoy's cargo recovered before the scavengers get it.",
+    "optionText": "Ask about salvage rights"
+  },
+  "requires": [
+    {
+      "quest": "vgc_lost_convoy",
+      "ended": "success"
+    }
+  ],
+  "stages": [
+    {
+      "id": "survey",
+      "title": "Survey the wreck",
+      "journal": "Survey the convoy wreck in the Kestrel belt.",
+      "marker": "vgc_convoy_wreck",
+      "kind": "normal",
+      "renamedFrom": []
+    }
+  ],
+  "variables": [],
+  "rewards": [],
+  "repeatable": false,
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "x": 20,
+      "y": 60
+    },
+    {
+      "id": "offer",
+      "type": "dialog",
+      "x": 260,
+      "y": 40,
+      "title": "Offer",
+      "visual": {
+        "kind": "person",
+        "person": "vgc_reyes"
+      },
+      "displays": [],
+      "highlights": [],
+      "conditions": [],
+      "script": [],
+      "phrases": [],
+      "text": "\"The convoy's cargo is still out there, $vgc_reyes_title. I'd rather we had it than the scavengers.\"",
+      "options": [
+        {
+          "id": "accept",
+          "text": "Accept the job"
+        },
+        {
+          "id": "decline",
+          "text": "Not interested",
+          "shortcut": "ESC"
+        }
+      ],
+      "speaker": "vgc_reyes"
+    },
+    {
+      "id": "go",
+      "type": "stage",
+      "x": 520,
+      "y": 40,
+      "stage": "survey"
+    },
+    {
+      "id": "no",
+      "type": "link",
+      "x": 520,
+      "y": 160,
+      "mode": "trigger",
+      "target": "PopulateOptions",
+      "fire": "FireAll"
+    },
+    {
+      "id": "arrive",
+      "type": "wait",
+      "x": 760,
+      "y": 40,
+      "mode": "arrive",
+      "entity": "vgc_convoy_wreck",
+      "arriveText": "You transmit the salvage rights Reyes granted you. The Compact warning beacons on the hulks fall silent."
+    },
+    {
+      "id": "rights",
+      "type": "dialog",
+      "x": 1000,
+      "y": 40,
+      "title": "Rights granted",
+      "visual": {
+        "kind": "keep"
+      },
+      "displays": [],
+      "highlights": [],
+      "conditions": [],
+      "script": [],
+      "phrases": [],
+      "text": "The convoy's holds are yours to work now, and whatever your crews can recover.",
+      "options": [
+        {
+          "id": "salvage",
+          "text": "Begin salvage"
+        }
+      ]
+    },
+    {
+      "id": "end",
+      "type": "end",
+      "x": 1240,
+      "y": 40,
+      "outcome": "success"
+    },
+    {
+      "id": "salvage_open",
+      "type": "link",
+      "x": 1480,
+      "y": 40,
+      "mode": "trigger",
+      "target": "OpenInteractionDialog",
+      "fire": "FireBest"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_start",
+      "from": "start",
+      "handle": "next",
+      "to": "offer"
+    },
+    {
+      "id": "a",
+      "from": "offer",
+      "handle": "accept",
+      "to": "go"
+    },
+    {
+      "id": "b",
+      "from": "offer",
+      "handle": "decline",
+      "to": "no"
+    },
+    {
+      "id": "c",
+      "from": "go",
+      "handle": "next",
+      "to": "arrive"
+    },
+    {
+      "id": "d",
+      "from": "arrive",
+      "handle": "next",
+      "to": "rights"
+    },
+    {
+      "id": "e",
+      "from": "rights",
+      "handle": "salvage",
+      "to": "end"
+    },
+    {
+      "id": "f",
+      "from": "end",
+      "handle": "next",
+      "to": "salvage_open"
+    }
+  ]
+}

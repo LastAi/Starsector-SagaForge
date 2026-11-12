@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Saga Forge mock-up: Problems</title>
+<link rel="stylesheet" href="mockups.css"></head>
+<body><div class="doc">
+<nav class="navdocs"><a href="index.html">Overview</a><a href="saga.html">Saga</a><a href="factions.html">Factions</a><a href="people.html">People</a><a href="items.html">Items</a><a href="quest.html">Quest planner</a><a href="displays.html">Dialog displays</a><a href="locations.html">Locations</a><a href="encounters.html">Encounters</a><a class="on" href="problems.html">Problems</a><a href="export.html">Export &amp; save warnings</a></nav>
+<h1>Problems: Check the active mod</h1>
+<p class="lead">Static mock-up. Live problems come from the page you're editing; <b>Check mod</b> adds the cross-file checks against the game and every installed mod (enabled or not). Each row says what is wrong, where, and offers a fix. Errors block Export; warnings don't. Save warnings compare with the last release snapshot. Style checks are optional and off by default.</p>
+
+<div class="app" style="height:780px">
+  <header>
+    <span class="title"><span class="logo">◆</span> Saga Forge</span>
+    <div class="pages"><button>Saga</button><button>Factions</button><button>People</button><button>Items</button><button>Quests</button><button>Locations</button><button>Encounters</button><button>Dialog</button><button class="on">Problems <span class="count">7</span></button></div>
+    <span class="spacer"></span>
+    <span class="activemod">Active mod <select><option>Vanguard Compact (vgc_) — mods\VanguardCompact</option></select></span>
+    <span class="sep"></span><button>Check mod</button><button class="primary">Export…</button><button>⚙</button>
+  </header>
+  <div class="body2" style="grid-template-columns:220px 1fr">
+    <aside class="left">
+      <div class="sect">Show</div>
+      <ul class="list">
+        <li class="on"><span class="ico e">!</span> Errors <span class="sub">2</span></li>
+        <li class="on"><span class="ico w">!</span> Warnings <span class="sub">3</span></li>
+        <li class="on"><span class="ico s">S</span> Save warnings <span class="sub">2</span></li>
+        <li class="muted"><span class="ico i">i</span> Style (off) <span class="sub">—</span></li>
+      </ul>
+      <hr class="thin">
+      <div class="sect">Area</div>
+      <ul class="list" style="font-size:12px">
+        <li>Factions <span class="sub">1</span></li><li>Quests <span class="sub">3</span></li><li>Locations <span class="sub">1</span></li><li>Encounters <span class="sub">1</span></li><li>Mod files <span class="sub">1</span></li>
+      </ul>
+      <hr class="thin">
+      <div style="padding:6px 12px;font-size:12px" class="muted">Last full check: 2 min ago<br>Game 0.98a · 23 mods indexed<br>rules.csv: vanilla + 9 mods</div>
+    </aside>
+    <section class="main">
+      <div class="toolbar"><input type="search" placeholder="Filter…" style="width:220px"><span class="spacer"></span><span class="bad">2 errors block Export</span><button>Check mod</button></div>
+      <div style="overflow:auto;flex:1">
+        <div class="prow" style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em"><span></span><span>Area</span><span>Problem</span><span>Where</span></div>
+
+        <div class="prow on"><span class="ico e">!</span><span>Quest</span><div><b>Option leads nowhere.</b> "Avoided" on the Belt ambush encounter has no next node, so the quest gets stuck if the player leaves.<div class="fix"><button>Show on chart</button><button>Add End: failed</button><button>Link to a node…</button></div></div><span class="mono muted">vgc_lost_convoy · Encounter</span></div>
+
+        <div class="prow"><span class="ico e">!</span><span>Mod files</span><div><b>Id already used.</b> Rule id <span class="mono">vgc_greeting</span> also exists in <i>Vanguard Compact Old</i> (not enabled). Two mods with the same rule id replace each other.<div class="fix"><button>Rename to vgc_kestrel_greeting</button><button>Ignore (mods never loaded together)</button></div></div><span class="mono muted">rules.csv (hand-written row 212)</span></div>
+
+        <div class="prow"><span class="ico w">!</span><span>Quest</span><div><b>Would take over a vanilla greeting.</b> Rule <span class="mono">vgc_kestrel_greeting</span> (trigger OpenCommLink, 2 conditions) beats vanilla's <span class="mono">greetingPirateHostileStronger</span> (fewer conditions) for <b>every</b> pirate fleet in the sector.<div class="fix"><button>Add condition: $vgc_belt_ambush</button><button>Show both rules</button></div></div><span class="mono muted">Kestrel greetings · Dialog</span></div>
+
+        <div class="prow"><span class="ico w">!</span><span>Factions</span><div><b>Scripted change undoes other mods.</b> Removing <span class="mono">colossus</span> from Hegemony's known ships runs after all merges; a mod that adds it back is undone too.<div class="fix"><button>Keep</button><button>Remove the scripted change</button></div></div><span class="mono muted">Hegemony override</span></div>
+
+        <div class="prow"><span class="ico w">!</span><span>Quest</span><div><b>Token never set.</b> <span class="mono">$vgc_lost_convoy_beltName</span> is used in text but no node or SagaLib field sets it. The game will show it literally.<div class="fix"><button>Make it a quest variable</button><button>Show uses (1)</button></div></div><span class="mono muted">vgc_lost_convoy · Offer</span></div>
+
+        <div class="prow"><span class="ico s">S</span><span>Locations</span><div><b>Won't appear in existing saves.</b> Kestrel is new since release 1.0.0 and is built on new game only. The Lost Convoy starts there, so players who update can't get it.<div class="fix"><button>Add to existing saves</button><button>OK, new games only</button></div></div><span class="mono muted">vgc_kestrel</span></div>
+
+        <div class="prow"><span class="ico s">S</span><span>Quest</span><div><b>Stage removed.</b> Stage <span class="mono">search</span> existed in 1.0.0 and is gone. Players in that stage lose their place (SagaLib shows "changed by an update" and lets them abandon).<div class="fix"><button>Map old stage → find (renamedFrom)</button><button>Keep it removed</button></div></div><span class="mono muted">vgc_lost_convoy</span></div>
+
+        <div class="prow" style="opacity:.45"><span class="ico i">i</span><span>Style · off</span><div><b>Speech without quotes</b> (vanilla puts spoken lines in quotes). Turn on in Settings → Checks.</div><span class="mono muted">—</span></div>
+      </div>
+    </section>
+  </div>
+  <footer><span>2 errors · 3 warnings · 2 save warnings</span><span class="spacer"></span><span class="muted">Errors block Export · everything else is advice</span></footer>
+</div>
+</div></body></html>

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Saga Forge mock-up: People</title>
+<link rel="stylesheet" href="mockups.css">
+<style>
+  .pgrid { display: grid; grid-template-columns: repeat(6, 64px); gap: 6px; }
+  .pgrid div { width: 64px; height: 64px; border: 1px solid var(--border); background: linear-gradient(160deg,#1d2c3a,#0b1118); display: grid; place-items: end center; overflow: hidden; }
+  .pgrid div.on { outline: 2px solid var(--accent); }
+  .case { display: grid; grid-template-columns: 18px minmax(0,1.2fr) minmax(0,1fr) 20px; gap: 6px; align-items: center; padding: 4px 0; border-bottom: 1px solid #1e242c; font-size: 12px; }
+  .case .drag { color: var(--muted); }
+  .tokchip { text-transform: none; letter-spacing: 0; display: inline-block; padding: 0 6px; border-radius: 4px; background: #2a2440; border: 1px solid #4b3870; color: #c9a0ff; font-family: var(--mono); font-size: 12px; }
+  .tokchip.inl { background: #102233; border-color: var(--accent-2); color: var(--accent); }
+  .variants { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .variants .gdlg { height: auto; min-height: 120px; font-size: 13px; }
+  .variants .lab { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .fakeinput { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; font-size: 12.5px; line-height: 1.7; }
+</style></head>
+<body><div class="doc">
+<nav class="navdocs"><a href="index.html">Overview</a><a href="saga.html">Saga</a><a href="factions.html">Factions</a><a class="on" href="people.html">People</a><a href="items.html">Items</a><a href="quest.html">Quest planner</a><a href="displays.html">Dialog displays</a><a href="locations.html">Locations</a><a href="encounters.html">Encounters</a><a href="problems.html">Problems</a><a href="export.html">Export &amp; save warnings</a></nav>
+<h1>People: the mod's characters</h1>
+<p class="lead">Static mock-up. Everyone the mod creates, in one place: contacts at a market, quest-only characters, named fleet commanders. Existing characters (vanilla's or another mod's) are listed separately and read-only; the mod can talk to them but never changes them. The right panel holds the character's <b>phrases</b>: text that changes with the situation, such as how they address the player.</p>
+
+<div class="app" style="height:880px">
+  <header>
+    <span class="title"><span class="logo">◆</span> Saga Forge</span>
+    <div class="pages"><button>Saga</button><button>Factions</button><button class="on">People</button><button>Items</button><button>Quests</button><button>Locations</button><button>Encounters</button><button>Dialog</button><button>Problems <span class="count w">3</span></button></div>
+    <span class="spacer"></span>
+    <span class="activemod">Active mod <select><option>Vanguard Compact (vgc_) — mods\VanguardCompact</option></select></span>
+    <span class="sep"></span><button>Check mod</button><button class="primary">Export…</button><button>⚙</button>
+  </header>
+  <div class="body3" style="grid-template-columns:250px 1fr 420px">
+    <aside class="left">
+      <input class="search" type="search" placeholder="Filter people…">
+      <div class="sect">This mod's people <button>+ New person</button></div>
+      <ul class="list">
+        <li class="on"><span class="swatch" style="background:#3fa7a0"></span>Ilse Reyes <span class="badge b-new">new</span><span class="sub">Haven Station</span></li>
+        <li><span class="swatch" style="background:#3fa7a0"></span>Dex Marrow <span class="badge b-new">new</span><span class="sub">quest only</span></li>
+        <li><span class="swatch" style="background:#8c6b4a"></span>Old Tamsin <span class="badge b-new">new</span><span class="sub">bar · Haven</span></li>
+        <li><span class="swatch" style="background:#bb4444"></span>Kesh Vool <span class="badge b-new">new</span><span class="sub">fleet · Belt ambush</span></li>
+      </ul>
+      <div class="sect">Existing people this mod uses</div>
+      <ul class="list">
+        <li><span class="swatch" style="background:#f5961e"></span>Baird <span class="badge b-van">vanilla</span><span class="sub">dialog added</span></li>
+      </ul>
+      <div class="sect">Everyone else (read-only)</div>
+      <ul class="list muted"><li>Sebestyen<span class="sub">vanilla</span></li><li>Gargoyle<span class="sub">vanilla</span></li><li class="muted">… people defined in Java show as "defined in code"</li></ul>
+      <hr class="thin">
+      <div class="sect">Mod-wide phrases <button>+</button></div>
+      <ul class="list mono" style="font-size:12px"><li>$vgc_title<span class="sub">4 cases</span></li><li>$vgc_greetWord<span class="sub">random · 3</span></li></ul>
+    </aside>
+    <section class="main">
+      <div class="toolbar">
+        <div class="seg"><button class="on">Character</button><button>Placement</button><button>Used by (4)</button></div>
+        <span class="spacer"></span><span class="mono">vgc_reyes</span><span class="muted">→ data/sagaforge/people/vgc_people.json</span><span class="badge b-lib">SagaLib</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px;overflow:auto">
+        <div>
+          <div class="group"><div class="gt">Identity</div>
+            <div class="grid2">
+              <label>Id</label><div class="mono">vgc_reyes <button style="padding:0 6px;font-size:11px">Change id…</button></div>
+              <label>First name</label><input type="text" value="Ilse">
+              <label>Last name</label><input type="text" value="Reyes">
+              <label>Gender</label><select><option>Female</option><option>Male</option><option>Any (random)</option></select>
+              <label>Faction</label><select><option>Vanguard Compact (this mod)</option></select>
+              <label>Rank</label><select><option>Commodore (spaceCommander)</option></select>
+              <label>Post</label><select><option>Station commander (stationCommander)</option></select>
+              <label>Voice</label><select><option>soldier</option></select>
+              <label>Personality</label><select><option>steady (for when she commands a fleet)</option></select>
+            </div></div>
+          <div class="group"><div class="gt">Portrait <span>game + this mod</span></div>
+            <div class="pgrid" id="pg"></div>
+            <div style="display:flex;gap:8px;margin-top:8px;align-items:center"><input type="search" placeholder="Filter portraits…" style="flex:1"><button>From file…</button></div>
+            <div class="muted" style="font-size:11px;margin-top:4px">Game portraits are referenced by path, never copied. Your own images are copied into <span class="mono">graphics/portraits/</span>.</div>
+          </div>
+        </div>
+        <div>
+          <div class="group"><div class="gt">Placement</div>
+            <div class="seg" style="margin-bottom:8px"><button class="on">Market</button><button>Fleet</button><button>Nowhere until a quest</button></div>
+            <div class="grid2">
+              <label>Market</label><select><option>Haven Station (vgc_kestrel)</option></select>
+              <label>In comm directory</label><span><input type="checkbox" checked> listed, shown first</span>
+              <label>When</label><select><option>New game (and existing saves: system setting)</option></select>
+            </div></div>
+          <div class="group"><div class="gt">Contact</div>
+            <div class="grid2">
+              <label>Is a contact</label><span><input type="checkbox" checked> offers missions</span>
+              <label>Contact type</label><div class="chips"><span class="chip add">military ✓</span><span class="chip">trade</span><span class="chip">underworld</span><span class="chip">science</span></div>
+              <label>Importance</label><select><option>HIGH</option></select>
+              <label>Tags</label><div class="chips"><span class="chip">vgc_officer</span><span class="chip">+</span></div>
+            </div></div>
+          <div class="group"><div class="gt">Used by</div>
+            <table class="t">
+              <tr><td><a href="quest.html">The Lost Convoy</a></td><td class="muted">offers it · speaker in 6 nodes</td></tr>
+              <tr><td>Salvage Rights</td><td class="muted">speaker in 2 nodes</td></tr>
+              <tr><td>Kestrel greetings</td><td class="muted">comm-link greeting</td></tr>
+              <tr><td>Haven Station</td><td class="muted">placed here</td></tr>
+            </table>
+            <div style="display:flex;gap:6px;margin-top:6px"><button style="font-size:11px;padding:1px 8px">Edit comm-link greeting →</button><button style="font-size:11px;padding:1px 8px">New quest from her →</button></div></div>
+        </div>
+      </div>
+    </section>
+    <aside class="right"><div class="rp">
+      <h3>Phrases <span class="muted" style="font-weight:normal;font-size:12px">text that changes with the situation</span></h3>
+      <div class="group" style="border-color:#4b3870">
+        <div class="gt"><span><span class="tokchip">$vgc_reyes_title</span> how she addresses you</span><span>first match wins</span></div>
+        <div class="case muted" style="font-size:11px"><span></span><span>When</span><span>Says</span><span></span></div>
+        <div class="case"><span class="drag">⋮⋮</span><span>Commissioned with <b>her faction</b></span><span>"Commander $playerLastName"</span><span>✕</span></div>
+        <div class="case"><span class="drag">⋮⋮</span><span>Rep with her ≥ <b>Friendly</b></span><span>"Captain $playerLastName"</span><span>✕</span></div>
+        <div class="case"><span class="drag">⋮⋮</span><span>Commissioned with <b>Hegemony</b></span><span>"Hegemony"</span><span>✕</span></div>
+        <div class="case"><span class="drag">⋮⋮</span><span class="muted">Otherwise</span><span>"Captain"</span><span></span></div>
+        <div style="display:flex;gap:6px;margin-top:6px"><button style="font-size:11px;padding:1px 8px;white-space:nowrap;flex:none">+ Case ▾</button><span class="muted" style="font-size:11px;align-self:center">Commission · Reputation · Player gender · Story flag · Quest variable · Market · Any condition…</span></div>
+      </div>
+      <div class="group">
+        <div class="gt"><span><span class="tokchip">$vgc_reyes_farewell</span></span><span>random each time</span></div>
+        <div style="font-size:12px">"Fly safe." · "Clear skies, $vgc_reyes_title." · "Dismissed."</div>
+      </div>
+      <div class="group">
+        <div class="gt"><span><span class="tokchip">$vgc_reyes_mood</span></span><span>by quest state</span></div>
+        <div class="case"><span class="drag">⋮⋮</span><span>Lost Convoy done, survivors saved</span><span>"warmly"</span><span>✕</span></div>
+        <div class="case"><span class="drag">⋮⋮</span><span>Lost Convoy failed</span><span>"coolly"</span><span>✕</span></div>
+        <div class="case"><span class="drag">⋮⋮</span><span class="muted">Otherwise</span><span>"briskly"</span><span></span></div>
+      </div>
+      <div class="sect" style="padding:4px 0">Preview in three test contexts</div>
+      <table class="t">
+        <tr><th>Context</th><th>"Good to see you, $vgc_reyes_title."</th></tr>
+        <tr><td class="muted">Commissioned · Vanguard</td><td>Good to see you, <span style="color:var(--g-h)">Commander Varga</span>.</td></tr>
+        <tr><td class="muted">Rep 0.6 · no commission</td><td>Good to see you, Captain Varga.</td></tr>
+        <tr><td class="muted">Stranger</td><td>Good to see you, Captain.</td></tr>
+      </table>
+      <div class="muted" style="font-size:11px;margin-top:8px">A phrase is a token. SagaLib fills it in when the game replaces tokens in dialog text, so the text stays one <span class="mono">rules.csv</span> row.</div>
+    </div></aside>
+  </div>
+  <footer><span>4 people · 1 existing person used · 5 phrases</span><span class="spacer"></span><span class="muted">plan: sagaforge/people.json · saved</span></footer>
+</div>
+
+<h1 style="margin-top:34px">Conditional text inside a Dialog node</h1>
+<p class="lead">In the Quest planner's text field, a phrase shows as a chip. For a one-off variation you don't want to name, type <span class="mono">{</span> and pick conditions inline; the editor turns it into an unnamed phrase for that node on export. The dialog preview's Test context gets switches for the conditions the text uses, and <b>Show all variants</b> draws every case side by side.</p>
+
+<div class="group" style="background:var(--panel);padding:12px 14px">
+  <div class="gt"><span>Dialog node "Debrief" · text</span><span><label><input type="checkbox" checked> Show all variants</label></span></div>
+  <div class="fakeinput">"<span class="tokchip">$vgc_reyes_title</span>." Reyes nods <span class="tokchip">$vgc_reyes_mood</span>. "Forty crew, home alive.
+    <span class="tokchip inl">{ if commissioned with Vanguard: The Compact owes you a promotion, not just a payment. | else: The Compact pays its debts. }</span>"<br>
+    <span class="tokchip inl">{ if pay == 2: She transfers the doubled fee without comment. }</span></div>
+  <div class="muted" style="font-size:11px;margin:6px 0 10px">Purple chips are named phrases (reusable, from the People page). Blue chips are inline variations, edited in place; an inline variation with no <i>else</i> shows nothing when no case matches.</div>
+  <div class="variants">
+    <div><div class="lab">Commissioned with Vanguard · pay 2</div><div class="gdlg"><div class="txt" style="border:none;padding:0"><p>"<span class="h">Commander Varga</span>." Reyes nods warmly. "Forty crew, home alive. The Compact owes you a promotion, not just a payment."</p><p>She transfers the doubled fee without comment.</p></div></div></div>
+    <div><div class="lab">Rep Friendly · pay 1</div><div class="gdlg"><div class="txt" style="border:none;padding:0"><p>"Captain Varga." Reyes nods warmly. "Forty crew, home alive. The Compact pays its debts."</p></div></div></div>
+    <div><div class="lab">Stranger · pay 1</div><div class="gdlg"><div class="txt" style="border:none;padding:0"><p>"Captain." Reyes nods warmly. "Forty crew, home alive. The Compact pays its debts."</p></div></div></div>
+  </div>
+</div>
+
+<div class="callouts">
+  <div><b>Vanilla first.</b> Vanilla's own tokens still work and are listed in the token picker: <span class="mono">$PlayerSirOrMadam</span> already uses the player's honorific, and <span class="mono">$playerLastName</span>, <span class="mono">$faction</span>, <span class="mono">$marketName</span> and the rest fill in as usual.</div>
+  <div><b>How it runs in game.</b> SagaLib registers one token generator with the game's rules (<span class="mono">RulesAPI.addTokenReplacementGenerator</span>). When the game fills tokens in a line, it asks SagaLib for <span class="mono">$vgc_…</span> phrases, and SagaLib picks the first case whose conditions match.</div>
+  <div><b>Big differences stay as rules.</b> When the conversation itself branches (different options, different next steps), use a Branch node: separate rules, picked by FireBest. Phrases are for wording, not for flow.</div>
+  <div><b>Without SagaLib.</b> A dialog-only mod with no SagaLib can still use inline variations: the export splits the node into one rule per combination (up to 4). More than that needs SagaLib, and Problems says so.</div>
+</div>
+</div>
+<script>
+const g = document.getElementById('pg');
+const cols = ['#3b5466','#4a3b66','#5a4636','#365a47','#663b4f','#3b5f66','#56603b','#3e4a5a','#5a3b3b','#46465a','#3b6650','#614d3b'];
+cols.forEach((c, i) => { g.insertAdjacentHTML('beforeend', `<div class="${i === 0 ? 'on' : ''}"><svg width="54" height="58" viewBox="0 0 110 118"><circle cx="55" cy="40" r="26" fill="${c}"/><path d="M8 118 Q12 76 55 72 Q98 76 102 118Z" fill="${c}" opacity=".8"/></svg></div>`); });
+</script>
+</body></html>

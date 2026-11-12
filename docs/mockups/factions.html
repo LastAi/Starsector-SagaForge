@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Saga Forge mock-up: Factions</title>
+<link rel="stylesheet" href="mockups.css"></head>
+<body><div class="doc">
+<nav class="navdocs"><a href="index.html">Overview</a><a href="saga.html">Saga</a><a class="on" href="factions.html">Factions</a><a href="people.html">People</a><a href="items.html">Items</a><a href="quest.html">Quest planner</a><a href="displays.html">Dialog displays</a><a href="locations.html">Locations</a><a href="encounters.html">Encounters</a><a href="problems.html">Problems</a><a href="export.html">Export &amp; save warnings</a></nav>
+<h1>Factions: a new faction</h1>
+<p class="lead">Static mock-up. The Factions page keeps two separate lists: factions this mod <b>creates</b> (green "new") and <b>changes to factions someone else defines</b> (orange "override", with where the faction comes from). A new faction is edited as a whole document.</p>
+
+<div class="app" style="height:640px">
+  <header>
+    <span class="title"><span class="logo">◆</span> Saga Forge</span>
+    <div class="pages"><button>Saga</button><button class="on">Factions</button><button>People</button><button>Items</button><button>Quests</button><button>Locations</button><button>Encounters</button><button>Dialog</button><button>Problems <span class="count w">3</span></button></div>
+    <span class="spacer"></span>
+    <span class="activemod">Active mod <select><option>Vanguard Compact (vgc_) — mods\VanguardCompact</option></select></span>
+    <span class="sep"></span><button>Check mod</button><button class="primary">Export…</button><button>⚙</button>
+  </header>
+  <div class="body3" style="grid-template-columns:260px 1fr 330px">
+    <aside class="left">
+      <input class="search" type="search" placeholder="Filter factions…">
+      <div class="sect">This mod's factions <button>+ New faction</button></div>
+      <ul class="list">
+        <li class="on"><span class="swatch" style="background:#3fa7a0"></span>Vanguard Compact <span class="badge b-new">new</span><span class="sub mono">vgc_vanguard</span></li>
+        <li><span class="swatch" style="background:#8c6b4a"></span>Kestrel Salvagers <span class="badge b-new">new</span><span class="sub mono">vgc_salvagers</span></li>
+      </ul>
+      <div class="sect">Changes to other factions <button>+ Change a faction…</button></div>
+      <ul class="list">
+        <li><span class="swatch" style="background:#f5961e"></span>Hegemony <span class="badge b-ovr">override</span><span class="sub">vanilla</span></li>
+        <li><span class="swatch" style="background:#b5e0ff"></span>Independent <span class="badge b-ovr">override</span><span class="sub">vanilla</span></li>
+      </ul>
+      <div class="sect">Everyone else (read-only)</div>
+      <ul class="list muted">
+        <li><span class="swatch" style="background:#aaff22"></span>Tri-Tachyon<span class="sub">vanilla</span></li>
+        <li><span class="swatch" style="background:#d25a9a"></span>United Aurora Federation<span class="sub">UAF</span></li>
+        <li><span class="swatch" style="background:#bb4444"></span>Arma Armatura<span class="sub">ArmaA</span></li>
+        <li><span class="muted">… 23 more</span></li>
+      </ul>
+    </aside>
+    <section class="main">
+      <div class="toolbar">
+        <div class="seg"><button class="on">Identity</button><button>Ships &amp; weapons</button><button>Doctrine</button><button>Names &amp; ranks</button><button>Relations</button><button>Other keys (4)</button></div>
+        <span class="spacer"></span><span class="muted">writes</span><span class="mono">data/world/factions/vgc_vanguard.faction</span><span class="muted">+ a row in</span><span class="mono">factions.csv</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px;overflow:auto">
+        <div>
+          <div class="group"><div class="gt">Names</div>
+            <div class="grid2">
+              <label>Id</label><div class="mono">vgc_vanguard <button style="padding:0 6px;font-size:11px">Change id…</button></div>
+              <label>Display name</label><input type="text" value="Vanguard Compact">
+              <label>With article</label><input type="text" value="the Vanguard Compact">
+              <label>Long name</label><input type="text" value="Vanguard Compact of Free Stations">
+              <label>Entity name</label><input type="text" value="Vanguard">
+              <label>Personal names</label><select><option>Same as Independent (names from vanilla)</option></select>
+            </div></div>
+          <div class="group"><div class="gt">Colors</div>
+            <div class="grid2">
+              <label>Main</label><div><span class="swatch" style="display:inline-block;background:#3fa7a0;vertical-align:middle"></span> <span class="mono">[63,167,160,255]</span></div>
+              <label>Base UI</label><div><span class="swatch" style="display:inline-block;background:#6cd0c8;vertical-align:middle"></span> <span class="mono">[108,208,200,255]</span></div>
+              <label>Dark UI</label><div><span class="swatch" style="display:inline-block;background:#1d4c49;vertical-align:middle"></span> <span class="mono">[29,76,73,175]</span></div>
+              <label>Secondary</label><div><span class="swatch" style="display:inline-block;background:#e0d08a;vertical-align:middle"></span> <span class="mono">[224,208,138,255]</span></div>
+            </div></div>
+        </div>
+        <div>
+          <div class="group"><div class="gt">Logo and crest <span>graphics/factions/</span></div>
+            <div style="display:flex;gap:14px;align-items:flex-end">
+              <div style="text-align:center"><div style="width:160px;height:100px;border:1px solid var(--border);background:linear-gradient(135deg,#1d4c49,#3fa7a0);display:grid;place-items:center;font-weight:700;letter-spacing:.2em">VGC</div><div class="muted mono" style="margin-top:4px">vgc_flag.png 410×256</div></div>
+              <div style="text-align:center"><div style="width:64px;height:64px;border:1px solid var(--border);border-radius:50%;background:#1d4c49;display:grid;place-items:center;color:#6cd0c8;font-size:28px">◈</div><div class="muted mono" style="margin-top:4px">crest 128×128</div></div>
+              <div><button>Pick image…</button><div class="muted" style="font-size:11px;margin-top:4px">From the mod or D:\ModTools\assets<br>(copied into the mod)</div></div>
+            </div></div>
+          <div class="group"><div class="gt">Starting relations <span class="badge b-lib">set by SagaLib on new game</span></div>
+            <table class="t">
+              <tr><th>Faction</th><th>Start</th><th></th></tr>
+              <tr><td>Hegemony</td><td class="mono">-0.50</td><td class="bad">Hostile</td></tr>
+              <tr><td>Independent</td><td class="mono">+0.30</td><td class="good">Welcoming</td></tr>
+              <tr><td>Pirates</td><td class="mono">-0.75</td><td class="bad">Vengeful</td></tr>
+              <tr><td>Player</td><td class="mono">0.00</td><td class="muted">Neutral</td></tr>
+              <tr><td colspan="3" class="muted">Everyone else: neutral (vanilla default)</td></tr>
+            </table></div>
+          <div class="group"><div class="gt">Flags</div>
+            <div class="chips"><span class="chip">show in intel tab</span><span class="chip">has rep / commission</span><span class="chip">not pirate-like</span><span class="chip">+ flag</span></div></div>
+        </div>
+      </div>
+    </section>
+    <aside class="right"><div class="rp">
+      <h3>File preview <span class="badge b-new">new file</span></h3>
+<pre class="files" style="max-height:none;white-space:pre">{
+  "id":"vgc_vanguard",
+  "color":[63,167,160,255],
+  "baseUIColor":[108,208,200,255],
+  "darkUIColor":[29,76,73,175],
+  "displayName":"Vanguard Compact",
+  "displayNameWithArticle":
+      "the Vanguard Compact",
+  "logo":"graphics/factions/vgc_flag.png",
+  "crest":"graphics/factions/vgc_crest.png",
+  "knownShips":{
+    "tags":["vgc_bp"],
+    "hulls":["hammerhead","sunder",…]
+  },
+  …
+}</pre>
+      <div class="muted" style="font-size:12px">Unknown keys and comments in the file are kept when it is saved again. Relations are not a <span class="mono">.faction</span> key, so they go into <span class="mono">data/sagaforge/factions.json</span> for SagaLib.</div>
+    </div></aside>
+  </div>
+  <footer><span>Vanguard Compact · 2 new factions · 2 overrides</span><span class="spacer"></span><span class="muted">Starsector 0.98a · 23 mods indexed</span></footer>
+</div>
+
+<h1 style="margin-top:34px">Factions: changing an existing faction (override)</h1>
+<p class="lead">Selecting "Hegemony" under <i>Changes to other factions</i>. The editor shows the <b>effective</b> faction: vanilla's values, other installed mods' changes (greyed, with the mod's name), and this mod's changes (orange). It only ever saves this mod's patch, at the same path as vanilla's file, so the game merges it.</p>
+
+<div class="app" style="height:600px">
+  <header>
+    <span class="title"><span class="logo">◆</span> Saga Forge</span>
+    <div class="pages"><button>Saga</button><button class="on">Factions</button><button>People</button><button>Items</button><button>Quests</button><button>Locations</button><button>Encounters</button><button>Dialog</button><button>Problems <span class="count w">3</span></button></div>
+    <span class="spacer"></span>
+    <span class="activemod">Active mod <select><option>Vanguard Compact (vgc_) — mods\VanguardCompact</option></select></span>
+    <span class="sep"></span><button>Check mod</button><button class="primary">Export…</button><button>⚙</button>
+  </header>
+  <div class="body3" style="grid-template-columns:260px 1fr 330px">
+    <aside class="left">
+      <input class="search" type="search" placeholder="Filter factions…">
+      <div class="sect">This mod's factions <button>+ New faction</button></div>
+      <ul class="list">
+        <li><span class="swatch" style="background:#3fa7a0"></span>Vanguard Compact <span class="badge b-new">new</span></li>
+        <li><span class="swatch" style="background:#8c6b4a"></span>Kestrel Salvagers <span class="badge b-new">new</span></li>
+      </ul>
+      <div class="sect">Changes to other factions <button>+ Change a faction…</button></div>
+      <ul class="list">
+        <li class="on"><span class="swatch" style="background:#f5961e"></span>Hegemony <span class="badge b-ovr">override</span><span class="sub">vanilla</span></li>
+        <li><span class="swatch" style="background:#b5e0ff"></span>Independent <span class="badge b-ovr">override</span><span class="sub">vanilla</span></li>
+      </ul>
+    </aside>
+    <section class="main">
+      <div class="toolbar">
+        <div class="seg"><button>Identity</button><button class="on">Ships &amp; weapons</button><button>Doctrine</button><button>Illegal goods</button><button>Other keys</button></div>
+        <span class="spacer"></span>
+        <label><input type="checkbox" checked> Show other mods' changes</label>
+        <span class="muted">patch file</span><span class="mono">data/world/factions/hegemony.faction</span>
+      </div>
+      <div style="padding:12px 14px;overflow:auto">
+        <div class="group"><div class="gt">Known ships · hulls <span>vanilla 38 · <span style="color:#c9a0ff">Arma Armatura +6</span> · <span class="warn">this mod +2</span></span></div>
+          <div class="chips">
+            <span class="chip">cerberus</span><span class="chip">crig</span><span class="chip">ox</span><span class="chip">dram</span><span class="chip">phaeton</span><span class="chip">prometheus</span><span class="chip">shepherd</span><span class="chip">mule</span><span class="chip">venture</span><span class="chip">atlas</span><span class="chip">hermes</span><span class="chip">nebula</span><span class="chip">valkyrie</span><span class="chip">colossus</span><span class="chip muted">… 24 more</span>
+            <span class="chip other" style="color:#c9a0ff">armaa_corsair_xiv · ArmaA</span><span class="chip other" style="color:#c9a0ff">armaa_monitor_xiv · ArmaA</span><span class="chip other" style="color:#c9a0ff">armaa_valkyrie · ArmaA</span><span class="chip other" style="color:#c9a0ff">… 3 more · ArmaA</span>
+            <span class="chip add">+ vgc_bulwark ✕</span><span class="chip add">+ vgc_lancer ✕</span><span class="chip">+ Add hull…</span>
+          </div>
+          <div class="muted" style="font-size:11px;margin-top:6px">Hull list comes from the game index (Ship Editor's hulls are picked here, never edited).</div>
+        </div>
+        <div class="group"><div class="gt">Known ships · blueprint tags</div>
+          <div class="chips"><span class="chip">heg_aux_bp</span><span class="chip">XIV_bp</span><span class="chip">hegemony</span><span class="chip add">+ vgc_captured_bp ✕</span></div></div>
+        <div class="group"><div class="gt">Hull frequency</div>
+          <table class="t"><tr><th>Hull</th><th>Vanilla</th><th>Other mods</th><th>Effective</th><th></th></tr>
+            <tr><td class="mono">armaa_corsair_xiv</td><td class="muted">—</td><td style="color:#c9a0ff">0.50 · ArmaA</td><td>0.50</td><td></td></tr>
+            <tr class="on"><td class="mono">vgc_bulwark</td><td class="muted">—</td><td class="muted">—</td><td class="patched">0.25</td><td><button style="padding:0 8px;font-size:11px">Revert</button></td></tr>
+          </table></div>
+        <div class="group" style="border-color:#6b2f2f"><div class="gt"><span class="bad">Can't be done with a merge file</span></div>
+          <div style="font-size:12px">You tried to remove <span class="mono">colossus</span>. The game's merge only <b>adds</b> to lists, so a <span class="mono">.faction</span> patch can't remove it.</div>
+          <div style="display:flex;gap:8px;margin-top:6px"><button>Keep it (cancel)</button><button>Remove it at game start with SagaLib (scripted change)</button></div>
+          <div class="chips" style="margin-top:8px"><span class="chip scripted">− colossus · scripted, applied by SagaLib on load</span></div>
+        </div>
+      </div>
+    </section>
+    <aside class="right"><div class="rp">
+      <h3>Patch file <span class="badge b-ovr">only this mod's changes</span></h3>
+<pre class="files" style="max-height:none;white-space:pre"># Saga Forge override of hegemony
+# (vanilla). Merged by the game.
+{
+  "knownShips":{
+    "tags":["vgc_captured_bp"],
+    "hulls":["vgc_bulwark",
+             "vgc_lancer"],
+  },
+  "hullFrequency":{
+    "hulls":{"vgc_bulwark":0.25},
+  },
+}</pre>
+      <div class="group"><div class="gt">Scripted changes <span class="badge b-lib">SagaLib</span></div>
+        <div style="font-size:12px"><span class="mono">remove knownShips.hulls colossus</span><div class="muted">→ data/sagaforge/factions.json. Shown as a warning in Problems: other mods that add <i>colossus</i> back would be undone.</div></div></div>
+      <div class="muted" style="font-size:12px">The writer for overrides can't produce a full copy of <span class="mono">hegemony.faction</span>; it only serializes the patch.</div>
+    </div></aside>
+  </div>
+  <footer><span>Hegemony · defined by vanilla · changed by Arma Armatura and this mod</span><span class="spacer"></span><span class="muted">Starsector 0.98a · 23 mods indexed</span></footer>
+</div>
+</div></body></html>

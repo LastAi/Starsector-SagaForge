@@ -1,0 +1,494 @@
+{
+  "format": 1,
+  "id": "vgc_lost_convoy",
+  "title": "The Lost Convoy",
+  "kind": "quest",
+  "icon": "graphics/icons/missions/retrieve_from_derelict.png",
+  "start": {
+    "kind": "contact",
+    "person": "vgc_reyes",
+    "freq": 1000,
+    "minRep": "FAVORABLE",
+    "offerText": "Commodore Reyes is looking for someone to find a missing convoy.",
+    "optionText": "Ask about the missing convoy"
+  },
+  "requires": [],
+  "stages": [
+    {
+      "id": "search",
+      "title": "Find the convoy",
+      "journal": "A Compact convoy went dark in the Kestrel belt. Find it.",
+      "nextStep": "Search the Kestrel belt",
+      "marker": "vgc_convoy_wreck",
+      "kind": "normal",
+      "renamedFrom": []
+    },
+    {
+      "id": "return",
+      "title": "Report to Reyes",
+      "journal": "You found the convoy. Bring the black box to Commodore Reyes on Haven Station.",
+      "nextStep": "Return to Haven Station",
+      "marker": "vgc_haven",
+      "kind": "normal",
+      "renamedFrom": []
+    }
+  ],
+  "variables": [
+    {
+      "name": "pay",
+      "type": "number",
+      "scope": "quest",
+      "initial": "1"
+    }
+  ],
+  "rewards": [
+    {
+      "id": "paid",
+      "credits": 60000,
+      "rep": [
+        {
+          "faction": "vgc_vanguard",
+          "amount": 5
+        }
+      ],
+      "personRep": [
+        {
+          "person": "vgc_reyes",
+          "amount": 5
+        }
+      ]
+    },
+    {
+      "id": "paid_double",
+      "credits": 120000,
+      "rep": [
+        {
+          "faction": "vgc_vanguard",
+          "amount": 5
+        }
+      ]
+    }
+  ],
+  "repeatable": false,
+  "nodes": [
+    {
+      "id": "start",
+      "type": "start",
+      "x": 0,
+      "y": 120
+    },
+    {
+      "id": "offer",
+      "type": "dialog",
+      "x": 220,
+      "y": 60,
+      "title": "Offer",
+      "speaker": "vgc_reyes",
+      "visual": {
+        "kind": "person",
+        "person": "vgc_reyes"
+      },
+      "displays": [],
+      "conditions": [],
+      "script": [],
+      "phrases": [],
+      "highlights": [
+        "Kestrel belt",
+        "60,000"
+      ],
+      "text": "\"$vgc_reyes_title.\" Reyes doesn't look up from her slate. \"One of our convoys went dark near the Kestrel belt eleven days ago. Three freighters, forty crew.\"\n\n\"Find them, and the Compact pays 60,000 credits.\"",
+      "options": [
+        {
+          "id": "accept",
+          "text": "Accept the job"
+        },
+        {
+          "id": "catch",
+          "text": "\"What's the catch?\"",
+          "showOnce": "conversation"
+        },
+        {
+          "id": "double",
+          "text": "\"Forty crew is worth more than that.\"",
+          "story": {
+            "cost": 1
+          },
+          "showIf": [
+            "$global.vgc_lost_convoy_pay == 1"
+          ],
+          "tooltip": "Use a story point to double the pay."
+        },
+        {
+          "id": "decline",
+          "text": "\"Not interested.\"",
+          "shortcut": "ESC"
+        }
+      ]
+    },
+    {
+      "id": "catch",
+      "type": "dialog",
+      "x": 520,
+      "y": 0,
+      "title": "Catch",
+      "visual": {
+        "kind": "keep"
+      },
+      "displays": [],
+      "highlights": [],
+      "conditions": [],
+      "script": [],
+      "phrases": [],
+      "text": "\"Pirates, probably. The belt is where they hide.\"",
+      "options": [
+        {
+          "id": "back",
+          "text": "Back"
+        }
+      ]
+    },
+    {
+      "id": "pay2",
+      "type": "action",
+      "x": 520,
+      "y": 160,
+      "title": "Double pay",
+      "ops": [
+        {
+          "op": "set",
+          "key": "$global.vgc_lost_convoy_pay",
+          "value": "2"
+        }
+      ]
+    },
+    {
+      "id": "no",
+      "type": "link",
+      "x": 520,
+      "y": 300,
+      "mode": "trigger",
+      "target": "PopulateOptions",
+      "fire": "FireAll"
+    },
+    {
+      "id": "go",
+      "type": "stage",
+      "x": 760,
+      "y": 60,
+      "stage": "search"
+    },
+    {
+      "id": "ambush",
+      "type": "encounter",
+      "x": 980,
+      "y": 60,
+      "encounter": "vgc_belt_ambush"
+    },
+    {
+      "id": "arrive",
+      "type": "wait",
+      "x": 1220,
+      "y": 0,
+      "mode": "arrive",
+      "entity": "vgc_convoy_wreck",
+      "arriveText": "The convoy's hulks drift among the rocks, cold and silent."
+    },
+    {
+      "id": "wreck",
+      "type": "dialog",
+      "x": 1700,
+      "y": 0,
+      "title": "Wreck found",
+      "visual": {
+        "kind": "illustration",
+        "category": "illustrations",
+        "key": "vgc_wreck"
+      },
+      "conditions": [],
+      "script": [],
+      "phrases": [],
+      "highlights": [],
+      "displays": [
+        {
+          "kind": "commodity",
+          "item": "vgc_black_box",
+          "qty": 1
+        },
+        {
+          "kind": "text",
+          "text": "The black box is scorched, but intact.",
+          "small": true,
+          "color": "textGrayColor"
+        }
+      ],
+      "text": "Your salvage crews board the lead freighter. In the bridge wreckage they find what you came for.",
+      "options": [
+        {
+          "id": "leave_wreck",
+          "text": "Leave"
+        }
+      ]
+    },
+    {
+      "id": "ret",
+      "type": "stage",
+      "x": 1460,
+      "y": 0,
+      "stage": "return"
+    },
+    {
+      "id": "report",
+      "type": "dialog",
+      "x": 1940,
+      "y": 0,
+      "title": "Report",
+      "speaker": "vgc_reyes",
+      "visual": {
+        "kind": "person",
+        "person": "vgc_reyes"
+      },
+      "displays": [],
+      "highlights": [],
+      "phrases": [],
+      "script": [],
+      "conditions": [],
+      "text": "Reyes turns the black box over in her hands. \"So they didn't make it. But now their families will know why.\"",
+      "options": [
+        {
+          "id": "hand_over",
+          "text": "Hand over the black box"
+        }
+      ]
+    },
+    {
+      "id": "payout",
+      "type": "branch",
+      "x": 2180,
+      "y": 0,
+      "title": "Pay",
+      "cases": [
+        {
+          "id": "double",
+          "label": "Double pay",
+          "conditions": [
+            "$global.vgc_lost_convoy_pay == 2"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "done",
+      "type": "end",
+      "x": 2420,
+      "y": -40,
+      "outcome": "success",
+      "reward": "paid"
+    },
+    {
+      "id": "done_double",
+      "type": "end",
+      "x": 2420,
+      "y": 80,
+      "outcome": "success",
+      "reward": "paid_double"
+    },
+    {
+      "id": "accepted",
+      "type": "dialog",
+      "x": 1220,
+      "y": 300,
+      "title": "Accepted",
+      "speaker": "vgc_reyes",
+      "visual": {
+        "kind": "keep"
+      },
+      "displays": [],
+      "highlights": [
+        "Kestrel belt"
+      ],
+      "conditions": [],
+      "script": [],
+      "phrases": [],
+      "text": "Reyes nods once. \"The convoy's last position is in your nav computer. Start with the Kestrel belt, and watch for raiders.\"",
+      "options": [
+        {
+          "id": "leave_accepted",
+          "text": "\"I'll find them.\""
+        }
+      ]
+    },
+    {
+      "id": "dock",
+      "type": "wait",
+      "x": 1940,
+      "y": 160,
+      "mode": "arrive",
+      "entity": "vgc_haven",
+      "arriveText": "As you dock, a message from Commodore Reyes is waiting: she wants to see you at once."
+    },
+    {
+      "id": "back",
+      "type": "link",
+      "x": 2660,
+      "y": 0,
+      "mode": "trigger",
+      "target": "OpenInteractionDialog",
+      "fire": "FireBest"
+    },
+    {
+      "id": "bluffed",
+      "type": "action",
+      "x": 1220,
+      "y": 160,
+      "title": "They left",
+      "ops": [
+        {
+          "op": "set",
+          "key": "$global.vgc_signal_heard",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "id": "note",
+      "type": "note",
+      "x": 220,
+      "y": 320,
+      "text": "Bad ending idea: sell the survivors to the pirates (soldCrew)."
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "start",
+      "handle": "next",
+      "to": "offer"
+    },
+    {
+      "id": "e2",
+      "from": "offer",
+      "handle": "accept",
+      "to": "go"
+    },
+    {
+      "id": "e3",
+      "from": "offer",
+      "handle": "catch",
+      "to": "catch"
+    },
+    {
+      "id": "e4",
+      "from": "catch",
+      "handle": "back",
+      "to": "offer"
+    },
+    {
+      "id": "e5",
+      "from": "offer",
+      "handle": "double",
+      "to": "pay2"
+    },
+    {
+      "id": "e6",
+      "from": "pay2",
+      "handle": "next",
+      "to": "offer"
+    },
+    {
+      "id": "e7",
+      "from": "offer",
+      "handle": "decline",
+      "to": "no"
+    },
+    {
+      "id": "e8",
+      "from": "go",
+      "handle": "next",
+      "to": "ambush"
+    },
+    {
+      "id": "e8b",
+      "from": "ambush",
+      "handle": "next",
+      "to": "accepted"
+    },
+    {
+      "id": "e8c",
+      "from": "accepted",
+      "handle": "leave_accepted",
+      "to": "no"
+    },
+    {
+      "id": "e9",
+      "from": "ambush",
+      "handle": "defeated",
+      "to": "arrive"
+    },
+    {
+      "id": "e10",
+      "from": "ambush",
+      "handle": "avoided",
+      "to": "bluffed"
+    },
+    {
+      "id": "e11",
+      "from": "bluffed",
+      "handle": "next",
+      "to": "arrive"
+    },
+    {
+      "id": "e12",
+      "from": "arrive",
+      "handle": "next",
+      "to": "ret"
+    },
+    {
+      "id": "e13",
+      "from": "ret",
+      "handle": "next",
+      "to": "wreck"
+    },
+    {
+      "id": "e13b",
+      "from": "wreck",
+      "handle": "leave_wreck",
+      "to": "dock"
+    },
+    {
+      "id": "e13c",
+      "from": "dock",
+      "handle": "next",
+      "to": "report"
+    },
+    {
+      "id": "e14",
+      "from": "report",
+      "handle": "hand_over",
+      "to": "payout"
+    },
+    {
+      "id": "e15",
+      "from": "payout",
+      "handle": "double",
+      "to": "done_double"
+    },
+    {
+      "id": "e16",
+      "from": "payout",
+      "handle": "else",
+      "to": "done"
+    },
+    {
+      "id": "e17",
+      "from": "done",
+      "handle": "next",
+      "to": "back"
+    },
+    {
+      "id": "e18",
+      "from": "done_double",
+      "handle": "next",
+      "to": "back"
+    }
+  ]
+}
