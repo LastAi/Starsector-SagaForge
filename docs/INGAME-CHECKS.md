@@ -16,7 +16,7 @@ Everything else is covered by the automated tests (`npm test`, and `bash build.s
 - **M0 formats:** the items recorded as "Confirmed in game (2026-11-11)" in `docs/FORMATS.md`.
 - The per-milestone lists (M1–M7) were not run item by item; the walkthrough covers their main
   paths.
-- **Linux: pending** (needs a tester with Linux, see the last section).
+- **Linux: on hold** until a dedicated Linux tester is found (see the last section).
 
 ## M0: formats (test mod `mods\SagaForgeFormatTest`)
 
@@ -185,7 +185,8 @@ Setup:
 
 ## Linux (when there is a Linux build)
 
-Status: **pending** (not run yet as of 2026-11-11).
+Status: **on hold** (2026-11-11): no dedicated Linux tester has been found yet. The checks below
+are kept for when one is.
 
 1. `npm run dist:linux` on Linux (or `./run.sh`). The AppImage starts, and settings are kept in a
    `data` folder next to it.

@@ -9,14 +9,19 @@ way vanilla does, so mods made with it stay compatible with other mods:
 - items are CSV rows.
 
 Quests, people, systems and encounters are exported as JSON that the companion library
-**SagaLib** ([Starsector-SagaLib](https://github.com/LastAi/Starsector-SagaLib), CC BY 4.0) runs
+**SagaLib** ([Starsector-SagaLib](https://github.com/LastAi/Starsector-SagaLib), MIT) runs
 in game, so content mods ship no code. Saga Forge's own license is MIT (see `LICENSE`). Mods made
 with it belong to their authors.
 
 **Status: 1.0** (2026-11-11), for Starsector 0.98a. Milestones M0–M8 of
 [docs/PLAN.md](docs/PLAN.md) are built, the automated tests pass, and the full example walkthrough
-passed in game ([docs/INGAME-CHECKS.md](docs/INGAME-CHECKS.md)). The Linux build is not tested
-yet. Changes: [CHANGELOG.md](CHANGELOG.md).
+passed in game ([docs/INGAME-CHECKS.md](docs/INGAME-CHECKS.md)). Changes:
+[CHANGELOG.md](CHANGELOG.md).
+
+> **Linux: available but untested.** Saga Forge supports Linux (`./run.sh` from source, or
+> `npm run dist:linux` for an AppImage), but it has only been tested on Windows so far. If you try
+> it on Linux, reports in [Issues](https://github.com/LastAi/Starsector-SagaForge/issues) are very
+> welcome.
 
 > **Work in progress: the workflows.** Everything listed below works, but the way you move
 > through the editor (creating a quest, wiring dialog, exporting) is still being refined. Over the

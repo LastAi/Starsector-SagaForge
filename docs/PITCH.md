@@ -50,7 +50,7 @@ made in Ship Editor are picked in Saga Forge's faction and fleet pages.
 | One greeting rule with too many conditions silently replaces vanilla's greeting for every fleet | The FireBest check finds it before export |
 | Renaming a stage in an update silently breaks quests in progress | Save warnings and stage aliases keep players' progress |
 
-**What SagaLib does.** SagaLib (`lastai_sagalib`, CC BY 4.0) is a small library mod, like
+**What SagaLib does.** SagaLib (`lastai_sagalib`, MIT) is a small library mod, like
 LazyLib or MagicLib, that mods made with Saga Forge depend on. It reads their JSON and does what
 vanilla needs Java for: it runs each quest as a normal vanilla contact or bar mission (journal,
 markers, time limit, rewards, abandon), builds new star systems and places people, spawns

@@ -37,6 +37,6 @@ steps of its walkthrough passed in game, including an update with a renamed stag
 save's progress.
 
 **Known limits**
-- The Linux build is not tested yet.
+- Linux is supported (run from source, or build the AppImage) but not tested yet.
 - The Windows zip is not code-signed and uses the default Electron icon.
 - Many editor fields have only placeholders, no labels or help yet.

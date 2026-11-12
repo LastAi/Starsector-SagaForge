@@ -1,8 +1,8 @@
 # Saga Forge — project plan
 
 Status: **built — Saga Forge 1.0 and SagaLib 1.0** (2026-11-11). Milestones M0–M8 are done
-and the acceptance walkthrough passed in game (`docs/INGAME-CHECKS.md`); the Linux test is still
-pending. Where the build differs from this plan, `docs/FORMATS.md` and SagaLib's
+and the acceptance walkthrough passed in game (`docs/INGAME-CHECKS.md`); the Linux test is on hold
+until a Linux tester is found. Where the build differs from this plan, `docs/FORMATS.md` and SagaLib's
 `docs/FORMAT.md` are the reference. The plan itself was final on 2026-11-10. All open
 questions are decided (§9). Facts marked **(verify)** are not open questions: they are checks
 that milestone 0 runs in game, with a fallback written next to each, so none of them blocks
@@ -185,11 +185,10 @@ no installed mod uses "saga" in its name, so it's unambiguous. It is built and
 tested with `bash build.sh` like ReadAloud. MagicLib's JSON bounties show that the community
 accepts data-driven quests that need a library.
 
-**License:** **Creative Commons Attribution 4.0 (CC BY 4.0)**. Anyone may use, bundle, copy,
-change and redistribute it, including commercially, as long as they credit the author and link
-the license. Mods that only *depend* on SagaLib (list it in `mod_info.json`) ship none of its
-files, so they owe nothing. The repo gets a `LICENSE` file with the CC BY 4.0 legal code and a
-short credit line people can copy. **Saga Forge itself** (the editor app) is **MIT**, with a
+**License:** **MIT** (changed on 2026-11-11, at the 1.0 release; planned and first published as
+CC BY 4.0). Anyone may use, bundle, copy, change and redistribute it, including commercially,
+keeping the copyright notice. Mods that only *depend* on SagaLib (list it in `mod_info.json`)
+ship none of its files, so they owe nothing. **Saga Forge itself** (the editor app) is **MIT**, with a
 `LICENSE` file in `tools/saga-forge`. Mods made with it belong to their authors; the editor
 adds nothing to them that carries a license.
 
@@ -1023,7 +1022,7 @@ Decided (draft 2):
 
 Decided (draft 3):
 
-- **Q12** License: **CC BY 4.0** (§3.1).
+- **Q12** License: **CC BY 4.0** (§3.1); changed to **MIT** at the 1.0 release (2026-11-11).
 - **Q13** No hard dependencies; **optional support** for other mods through bridges (§3.1).
   None planned yet; MagicLib bounties are the first candidate (§10).
 - **Q14** Answered from the API source: the game calls `setMissionId(<row id>)` on each new
