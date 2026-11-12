@@ -18,6 +18,12 @@ with it belong to their authors.
 passed in game ([docs/INGAME-CHECKS.md](docs/INGAME-CHECKS.md)). The Linux build is not tested
 yet. Changes: [CHANGELOG.md](CHANGELOG.md).
 
+> **Work in progress: the workflows.** Everything listed below works, but the way you move
+> through the editor (creating a quest, wiring dialog, exporting) is still being refined. Over the
+> next few days it will be updated to be clearer and easier to use, including labels and short
+> help on every field. Feedback and ideas are welcome in
+> [Issues](https://github.com/LastAi/Starsector-SagaForge/issues).
+
 ![Quest planner in Play mode](docs/img/quests.png)
 
 ## Running it
