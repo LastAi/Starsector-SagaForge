@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased: Starsector 0.98.5a support
+## 1.1.0 (2026-11-17)
 
-Works with both 0.98a and 0.98.5a. Not tried against a running 0.98.5a game yet (see
-`docs/INGAME-CHECKS.md`, "0.98.5a").
+For Starsector **0.98a and 0.98.5a**. Needs **SagaLib 1.2** in game. The workflow work of task #36
+(phases 0–8, `docs/WORK-ORDER.md`), each step tested in game on 0.98.5a (`docs/INGAME-CHECKS.md`).
+The forum post draft of Mark as released is switched off for now (post templates come later).
+
+### Starsector 0.98.5a support
 
 - **Every rules file is read.** The game index follows the `settings.json` `"rules"` list of
   0.98.5a (vanilla's Diktat storyline is in `rules/askoniaCrisis2.csv`, 5,510 rules), in every
