@@ -3,15 +3,15 @@
   import { Handle, Position } from '@xyflow/svelte'
   import type { QuestPlan } from '../../../shared/model'
 
-  interface Props { data: { quest: QuestPlan; start: string; people: string[]; problems: number } }
+  interface Props { data: { quest: QuestPlan; start: string; people: string[]; problems: number; inactive?: boolean } }
   let { data }: Props = $props()
   const q = $derived(data.quest)
   const ends = $derived(q.nodes.filter((n) => n.type === 'end').map((n) => (n as { outcome: string }).outcome))
 </script>
 
-<div class="card" class:dialog={q.kind === 'dialog'}>
+<div class="card" class:dialog={q.kind === 'dialog'} class:inactive={data.inactive}>
   <Handle type="target" position={Position.Left} />
-  <div class="h"><span>{q.title}</span>{#if data.problems}<span class="p">{data.problems}</span>{/if}</div>
+  <div class="h"><span>{q.title}{#if data.inactive} [Inactive]{/if}</span>{#if data.problems}<span class="p">{data.problems}</span>{/if}</div>
   <div class="b">
     <div class="muted">{data.start}</div>
     {#if q.kind === 'quest'}<div>{q.stages.length} stage{q.stages.length === 1 ? '' : 's'}{ends.length ? ` · ends: ${[...new Set(ends)].join(', ')}` : ''}</div>{:else}<div class="muted">conversation only</div>{/if}
@@ -24,6 +24,7 @@
 <style>
   .card { width: 210px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; box-shadow: 0 4px 12px rgba(0,0,0,.4); color: var(--text); }
   .card.dialog { border-style: dashed; }
+  .card.inactive { opacity: .45; }
   .h { padding: 4px 8px; background: #2b7fc4; color: #fff; font-weight: 600; border-radius: 5px 5px 0 0; display: flex; justify-content: space-between; }
   .card.dialog .h { background: #3a4452; }
   .p { background: var(--bad); border-radius: 8px; padding: 0 5px; font-size: 11px; }

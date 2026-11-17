@@ -1,5 +1,6 @@
 /** Creating and editing quest plans (PLAN.md §4.4, §5). Pure helpers used by the Quest page. */
 import { PLAN_FORMAT, type DialogNode, type NodeType, type QEdge, type QNode, type QuestPlan, type Phrase } from './model'
+import { renameTodoElement } from './todo'
 
 export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40)
 
@@ -36,8 +37,10 @@ export function newNode(type: NodeType, id: string, x: number, y: number): QNode
     case 'stage': return { ...base, type, stage: '' }
     case 'encounter': return { ...base, type, encounter: '' }
     case 'wait': return { ...base, type, mode: 'arrive' }
+    case 'raid': return { ...base, type, title: 'Raid', text: 'Your marines are ready.', objective: 'Raid the compound', danger: 'MEDIUM', difficulty: 100, xp: 3000 }
     case 'end': return { ...base, type, outcome: 'success' }
-    case 'link': return { ...base, type, mode: 'trigger', target: 'PopulateOptions', fire: 'FireAll' }
+    // the vanilla-safe ending: back to the menu, or closed where there is none (a wreck)
+    case 'link': return { ...base, type, mode: 'menu', target: '' }
     case 'note': return { ...base, type, text: '' }
   }
 }
@@ -49,6 +52,7 @@ export function handlesOf(n: QNode): { id: string; label: string }[] {
     case 'dialog': return n.options.length ? n.options.map((o) => ({ id: o.id, label: o.text })) : [{ id: 'next', label: '(continue)' }]
     case 'branch': return [...n.cases.map((c) => ({ id: c.id, label: c.label })), { id: 'else', label: 'otherwise' }]
     case 'encounter': return [{ id: 'next', label: 'after spawning' }, { id: 'defeated', label: 'Defeated' }, { id: 'avoided', label: 'Avoided' }]
+    case 'raid': return [{ id: 'done', label: 'Raid done' }, { id: 'back', label: 'Backed out' }]
     case 'end': return [{ id: 'next', label: '' }]
     default: return []
   }
@@ -71,6 +75,7 @@ export function renameNode(q: QuestPlan, from: string, to: string): void {
     if (n.type === 'link' && n.mode === 'node' && n.target === from) n.target = to
   }
   for (const e of q.edges) { if (e.from === from) e.from = to; if (e.to === from) e.to = to }
+  renameTodoElement(q, 'nodes', from, to)
 }
 
 /**

@@ -9,8 +9,11 @@
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
   import FactionForm from '../factions/FactionForm.svelte'
+  import NameListForm from '../factions/NameListForm.svelte'
+  import { cleanNames, personNameRows, shipNameLists } from '../../../shared/export/names'
   import Modal from '../ui/Modal.svelte'
   import IdInput from '../ui/IdInput.svelte'
+  import Field from '../ui/Field.svelte'
   import ImageView from '../ui/ImageView.svelte'
   import Splitter from '../Splitter.svelte'
   import { layout, saveLayout } from '../layout.svelte'
@@ -28,6 +31,8 @@
   const ownIds = $derived(new Set(own.map((f) => f.id)))
   const match = (id: string, name: string) => !filter || `${id} ${name}`.toLowerCase().includes(filter.toLowerCase())
   const others = $derived(index.factions.filter((f) => !ownIds.has(f.id) && f.definedBy !== project.loaded?.sourceId && match(f.id, f.name)))
+  /** Walk F31: names more than one faction shares ("ArmaA" ×3): those show their id too. */
+  const sameName = $derived.by(() => { const n = new Map<string, number>(); for (const f of index.factions) n.set(f.name, (n.get(f.name) ?? 0) + 1); return new Set([...n].filter(([, c]) => c > 1).map(([k]) => k)) })
   const entry = $derived(own.find((f) => f.id === sel) ?? null)
   const info = (id: string) => index.factions.find((f) => f.id === id)
   const srcName = (id: string) => (id === 'starsector-core' ? 'vanilla' : index.sources.find((s) => s.id === id)?.name ?? id)
@@ -61,14 +66,14 @@
   const preview = $derived.by(() => {
     if (!entry) return ''
     const old = project.loaded?.files[entry.file]?.text
-    try { return factionText($state.snapshot(entry) as FactionEdit, old, srcName(info(entry.id)?.definedBy ?? '')) } catch (e) { return `(can't show: ${(e as Error).message})` }
+    try { return factionText($state.snapshot(entry) as FactionEdit, old) } catch (e) { return `(can't show: ${(e as Error).message})` }
   })
   const fileState = $derived(entry ? (project.loaded?.files[entry.file] ? (project.loaded.files[entry.file].text === preview ? 'unchanged' : 'changed') : 'new file') : '')
 
   // ---- new faction / change a faction / delete / change id
   let newName = $state('')
-  let showNew = $state(false)
-  let showChange = $state(false)
+  let showNew = $state(app.smokeModal === 'new') // screenshot mode can open it
+  let showChange = $state(app.smokeModal === 'change')
   let changeTarget = $state('')
   const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
   const newId = $derived(project.prefix + slug(newName).replace(new RegExp(`^${project.prefix}`), ''))
@@ -137,13 +142,15 @@
   }
 
   // ---- a list entry a merge can't remove
-  let cantRemove = $state<{ path: string; value: string } | null>(null)
+  let cantRemove = $state<{ path: string; value: string } | null>(app.smokeModal === 'cantremove' ? { path: 'knownShips.hulls', value: 'onslaught' } : null)
   function scripted() {
     const c = cantRemove
     const id = sel
     if (!c || !id) return
     project.change((mm) => {
-      const list = (mm.factionsRuntime.scripted[id] ??= [])
+      // re-read after creating: the state proxy wraps a new array, so pushing to the plain one would be lost
+      mm.factionsRuntime.scripted[id] ??= []
+      const list = mm.factionsRuntime.scripted[id]
       if (!list.some((s) => s.path === c.path && s.value === c.value)) list.push({ op: 'remove', path: c.path, value: c.value })
     })
     cantRemove = null
@@ -164,6 +171,45 @@
   }
   const allFactionOptions = $derived([...index.factions.map((f) => ({ id: f.id, name: f.name })), ...additions.filter((a) => !index.factions.some((f) => f.id === a.id)).map((a) => ({ id: a.id, name: String(a.raw.displayName ?? a.id) })), { id: 'player', name: 'Player' }])
   const desc = $derived(sel ? m?.descriptions[`FACTION:${sel}`]?.text1 ?? '' : '')
+
+  // ---- name lists (R3): selected as "@people:<id>" / "@ships:<id>"
+  const nameSel = $derived.by((): { kind: 'people' | 'ships'; id: string } | null => {
+    const r = /^@(people|ships):(.+)$/.exec(sel ?? '')
+    return r ? { kind: r[1] as 'people' | 'ships', id: r[2] } : null
+  })
+  const namePreview = $derived.by(() => {
+    const ns = nameSel
+    if (!ns || !m) return ''
+    if (ns.kind === 'people') {
+      const p = m.names.people.find((x) => x.id === ns.id)
+      const rows = p ? personNameRows([p]) : []
+      const shown = rows.slice(0, 200).map((r) => [r.name, r.gender, r.usage, r.category].map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(','))
+      return ['name,gender,usage,category', ...shown, ...(rows.length > 200 ? [`… ${rows.length - 200} more`] : [])].join('\n')
+    }
+    const l = m.names.ships.find((x) => x.id === ns.id)
+    return l ? JSON.stringify(shipNameLists([l]), null, 2) : ''
+  })
+  let showNewList = $state(app.smokeModal === 'newlist')
+  let newListKind = $state<'people' | 'ships'>('people')
+  let newListName = $state('')
+  const newListId = $derived.by(() => {
+    const s = slug(newListName).replace(new RegExp(`^${project.prefix}`), '')
+    if (!s) return ''
+    return newListKind === 'people' ? project.prefix + s : (project.prefix + s).toUpperCase()
+  })
+  function createList() {
+    const id = newListId
+    if (!id || !m) return
+    const taken = newListKind === 'people' ? m.names.people.some((p) => p.id === id) : m.names.ships.some((p) => p.id === id)
+    if (taken) { app.error = `This mod already has a name list "${id}".`; return }
+    project.change((mm) => {
+      if (newListKind === 'people') mm.names.people.push({ id, male: [], female: [], first: [], last: [] })
+      else mm.names.ships.push({ id, names: [] })
+    })
+    showNewList = false
+    newListName = ''
+    app.selected.factions = `@${newListKind}:${id}`
+  }
 </script>
 
 <div class="page" style="grid-template-columns:{layout.left}px 1px minmax(0,1fr) 1px {layout.right}px">
@@ -183,10 +229,20 @@
           <li class:on={sel === f.id}><button class="li" onclick={() => (app.selected.factions = f.id)}><span class="swatch" style="background:{swatch(fi?.color)}"></span>{fi?.name ?? f.id} <span class="badge b-ovr">override</span><span class="sub">{srcName(fi?.definedBy ?? '')}</span></button></li>
         {:else}<li class="muted small">None.</li>{/each}
       </ul>
+      <div class="sect">Name lists <button disabled={!m} onclick={() => (showNewList = true)} title="Names for this mod's generated people or ships">+ New list</button></div>
+      <ul class="list">
+        {#each (m?.names.people ?? []).filter((p) => match(p.id, 'names')) as p (p.id)}
+          <li class:on={sel === `@people:${p.id}`}><button class="li" onclick={() => (app.selected.factions = `@people:${p.id}`)}><span class="ico">👤</span><span class="mono">{p.id}</span><span class="sub">people · {cleanNames([...p.male, ...p.female, ...p.first, ...p.last]).length}</span></button></li>
+        {/each}
+        {#each (m?.names.ships ?? []).filter((p) => match(p.id, 'ships')) as l (l.id)}
+          <li class:on={sel === `@ships:${l.id}`}><button class="li" onclick={() => (app.selected.factions = `@ships:${l.id}`)}><span class="ico">🚀</span><span class="mono">{l.id}</span><span class="sub">ships · {cleanNames(l.names).length}</span></button></li>
+        {/each}
+        {#if !(m?.names.people.length || m?.names.ships.length)}<li class="muted small">None: factions use the game's names.</li>{/if}
+      </ul>
       <div class="sect">Everyone else (read-only)</div>
       <ul class="list ro">
         {#each others as f (f.id)}
-          <li class:on={sel === f.id}><button class="li" onclick={() => (app.selected.factions = f.id)}><span class="swatch" style="background:{swatch(f.color)}"></span>{f.name}<span class="sub">{srcName(f.definedBy)}</span></button></li>
+          <li class:on={sel === f.id}><button class="li" title={f.id} onclick={() => (app.selected.factions = f.id)}><span class="swatch" style="background:{swatch(f.color)}"></span>{f.name}{#if sameName.has(f.name)}<span class="mono idtag">{f.id}</span>{/if}<span class="sub">{srcName(f.definedBy)}</span></button></li>
         {/each}
       </ul>
     </div>
@@ -194,7 +250,9 @@
   <Splitter axis="x" value={layout.left} min={180} max={() => 520} label="Resize list" onChange={(v) => (layout.left = v)} onDone={saveLayout} onReset={() => { layout.left = 280; saveLayout() }} />
 
   <section class="main">
-    {#if entry && ed}
+    {#if nameSel}
+      {#key sel}<NameListForm kind={nameSel.kind} id={nameSel.id} onDeleted={() => (app.selected.factions = null)} />{/key}
+    {:else if entry && ed}
       <div class="head">
         {#if entry.kind === 'addition'}
           <ImageView path={String(entry.raw.crest ?? '')} w={28} h={28} round />
@@ -218,12 +276,13 @@
           {#if t === 'relations' && entry.kind === 'addition'}
             <div class="group">
               <div class="gt"><span>Starting relations</span><span class="badge b-lib">set by SagaLib on new game</span></div>
-              <table class="t">
-                <thead><tr><th>Faction</th><th>Start</th><th></th><th></th></tr></thead>
+              <table class="t rel">
+                <colgroup><col /><col class="c-start" /><col class="c-level" /><col class="c-x" /></colgroup>
+                <thead><tr><th>Faction</th><th>Start</th><th>Level</th><th></th></tr></thead>
                 <tbody>
                   {#each Object.entries(relations) as [other, v] (other)}
                     <tr><td>{allFactionOptions.find((o) => o.id === other)?.name ?? other} <span class="mono muted">{other}</span></td>
-                      <td><input type="range" min="-1" max="1" step="0.05" value={v} oninput={(e) => setRel(other, Number(e.currentTarget.value))} /> <span class="mono">{v >= 0 ? '+' : ''}{v.toFixed(2)}</span></td>
+                      <td><input type="range" min="-1" max="1" step="0.05" value={v} oninput={(e) => setRel(other, Number(e.currentTarget.value))} /> <input type="number" class="mono relv" min="-1" max="1" step="0.05" value={v} title="Type an exact value, -1 to 1" onchange={(e) => { const n = Number(e.currentTarget.value); if (Number.isFinite(n)) setRel(other, Math.max(-1, Math.min(1, n))) }} /></td>
                       <td class:good={v >= 0.24} class:bad={v <= -0.49}>{repLevelName(v, app.defs.repLevels)}</td>
                       <td><button class="mini" onclick={() => setRel(other, undefined)}>✕</button></td></tr>
                   {/each}
@@ -262,7 +321,11 @@
   <Splitter axis="x" value={layout.right} min={260} max={() => 700} sign={-1} label="Resize preview" onChange={(v) => (layout.right = v)} onDone={saveLayout} onReset={() => { layout.right = 340; saveLayout() }} />
 
   <aside class="right">
-    {#if entry}
+    {#if nameSel && namePreview}
+      <h3>Exported as <span class="badge b-new">{nameSel.kind === 'people' ? 'rows in an owned block' : 'merged by key'}</span></h3>
+      <pre class="files">{namePreview}</pre>
+      <div class="muted small">{nameSel.kind === 'people' ? 'name, gender (m / f / empty = both), usage (f = first, l = last), category. The game adds these rows to its own names.' : 'The game appends this list to any list with the same id.'}</div>
+    {:else if entry}
       <h3>{entry.kind === 'addition' ? 'File preview' : 'Patch file'} <span class="badge" class:b-new={entry.kind === 'addition'} class:b-ovr={entry.kind === 'override'}>{entry.kind === 'override' ? 'only this mod\'s changes' : fileState}</span></h3>
       <pre class="files">{preview}</pre>
       {#if entry.kind === 'addition'}
@@ -288,18 +351,38 @@
 {#if showNew}
   <Modal title="New faction" onClose={() => (showNew = false)}>
     <div class="grid2">
-      <label for="nf">Name</label><input id="nf" type="text" bind:value={newName} placeholder="e.g. Vanguard Compact" />
-      <span class="muted">Id</span><span class="mono">{newId || '—'}</span>
+      <Field label="Name" for="nf" help="Its display name; the other names on the Identity tab start from it."><input id="nf" type="text" bind:value={newName} placeholder="e.g. Vanguard Compact" /></Field>
+      <Field label="Id" help="The faction id in files, conditions and saves."><span class="mono">{newId || '—'}</span></Field>
     </div>
     <p class="muted small">Creates <span class="mono">data/world/factions/{newId}.faction</span> with the keys vanilla factions have, and lists it in the mod's <span class="mono">factions.csv</span>. The id can be changed later until the mod is released.</p>
     {#snippet actions()}<button onclick={() => (showNew = false)}>Cancel</button><button class="primary" disabled={!newName.trim()} onclick={createFaction}>Create</button>{/snippet}
   </Modal>
 {/if}
 
+{#if showNewList}
+  <Modal title="New name list" onClose={() => (showNewList = false)}>
+    <div class="grid2 wide">
+      <Field label="For" help="People's names: a name category (first and last names) for generated officers, administrators and contacts. Ship names: a list ships are named from.">
+        <select bind:value={newListKind}><option value="people">people's names</option><option value="ships">ship names</option></select>
+      </Field>
+      <Field label="Name" for="nl-name" help="Becomes the list's id, with the mod's prefix (ship lists in capitals, as vanilla's GREEK or SPACE).">
+        <input id="nl-name" type="text" bind:value={newListName} placeholder={newListKind === 'people' ? 'e.g. cats' : 'e.g. cat ships'} />
+      </Field>
+      <Field label="Id" help="The id factions use in Person name sets / Ship name sources."><span class="mono">{newListId || '—'}</span></Field>
+    </div>
+    <p class="muted small">Written on Export to the mod's <span class="mono">{newListKind === 'people' ? 'data/characters/person_names.csv' : 'data/strings/ship_names.json'}</span>; the game adds it to its own names. Then pick it in a faction's Names &amp; ranks.</p>
+    {#snippet actions()}<button onclick={() => (showNewList = false)}>Cancel</button><button class="primary" disabled={!newListId} onclick={createList}>Create</button>{/snippet}
+  </Modal>
+{/if}
+
 {#if showChange}
   <Modal title="Change a faction" onClose={() => (showChange = false)}>
     <p class="muted">Pick a faction defined by vanilla or another mod. Saga Forge writes only your changes, at the same path as the original, and the game merges them.</p>
-    <IdInput value={changeTarget} options={index.factions.filter((f) => !ownIds.has(f.id) && f.definedBy !== project.loaded?.sourceId)} strict onCommit={(v) => (changeTarget = v)} placeholder="faction id, e.g. hegemony" />
+    <div class="grid2">
+      <Field label="Faction" help="Its id; the list shows each faction with its name.">
+        <IdInput value={changeTarget} options={index.factions.filter((f) => !ownIds.has(f.id) && f.definedBy !== project.loaded?.sourceId)} strict onCommit={(v) => (changeTarget = v)} placeholder="e.g. hegemony" />
+      </Field>
+    </div>
     {#snippet actions()}<button onclick={() => (showChange = false)}>Cancel</button><button class="primary" disabled={!changeTarget} onclick={() => changeFaction()}>Change it</button>{/snippet}
   </Modal>
 {/if}
@@ -307,7 +390,7 @@
 {#if showChangeId}
   <Modal title="Change the faction's id" onClose={() => (showChangeId = false)}>
     <p>The file is renamed, and relations, descriptions and people that use the id follow. If the mod is already released, saves keep the old faction: avoid this after release (Problems will warn).</p>
-    <input type="text" class="mono" bind:value={changeIdTo} />
+    <div class="grid2"><Field label="New id" for="cf-to" help="Lowercase letters, digits and _, starting with the mod's prefix."><input id="cf-to" type="text" class="mono" bind:value={changeIdTo} /></Field></div>
     {#snippet actions()}<button onclick={() => (showChangeId = false)}>Cancel</button><button class="primary" onclick={changeId}>Change id</button>{/snippet}
   </Modal>
 {/if}
@@ -356,10 +439,19 @@
   table.t { width: 100%; border-collapse: collapse; font-size: 12px; }
   table.t th { text-align: left; color: var(--muted); font-weight: normal; border-bottom: 1px solid var(--border); padding: 4px 6px; }
   table.t td { border-bottom: 1px solid #1e242c; padding: 3px 6px; }
+  /* relations: fixed columns, so the level word ("Neutral" → "Inhospitable") never moves the slider */
+  table.rel { table-layout: fixed; }
+  table.rel .c-start { width: 260px; } table.rel .c-level { width: 110px; } table.rel .c-x { width: 44px; }
+  table.rel td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  table.rel input[type='range'] { width: 180px; vertical-align: middle; }
+  .idtag { font-size: 10px; color: var(--muted); margin-left: 6px; }
+  .relv { display: inline-block; width: 64px; text-align: right; }
   .good { color: var(--good); } .bad { color: var(--bad); }
   .help { font-size: 11px; color: var(--muted); margin-top: 6px; }
   textarea { width: 100%; resize: vertical; }
-  .grid2 { display: grid; grid-template-columns: 80px 1fr; gap: 6px 10px; align-items: center; }
+  .grid2 { display: grid; grid-template-columns: 80px 1fr; gap: 2px 10px; align-items: center; width: 440px; max-width: 100%; }
+  .grid2.wide { width: 520px; }
+  .ico { width: 14px; text-align: center; font-size: 11px; flex: none; }
   .chip.scripted { font-size: 11px; padding: 1px 7px; border-radius: 10px; border: 1px dashed var(--bad); color: var(--bad); }
   .scr { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
 </style>

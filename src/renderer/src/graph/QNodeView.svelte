@@ -3,6 +3,7 @@
   import { Handle, Position } from '@xyflow/svelte'
   import type { QNode, QuestPlan } from '../../../shared/model'
   import { handlesOf } from '../../../shared/quest'
+  import { branchPool, chances } from '../../../shared/pools'
 
   interface Props {
     data: { node: QNode; quest: QuestPlan; problems: { level: string; message: string }[]; path?: boolean; faded?: boolean; current?: boolean; label: (n: QNode) => string; personName: (id: string) => string }
@@ -11,11 +12,20 @@
   let { data, selected = false }: Props = $props()
   const n = $derived(data.node)
   const handles = $derived(handlesOf(n))
+  /** Phase 7a: a Random branch's chances per handle (its own cases; "else" is the nothing share). */
+  const chance = $derived.by((): Record<string, number> => {
+    if (n.type !== 'branch' || !n.random || n.random.pool) return {}
+    const p = branchPool(data.quest, n, [])
+    if (!p) return {}
+    const out: Record<string, number> = {}
+    for (const c of chances(p)) out[c.id === 'nothing' ? 'else' : c.id] = Math.round(c.chance * 100)
+    return out
+  })
   const COLORS: Record<string, string> = {
-    start: '#3c8d5a', dialog: '#2b7fc4', branch: '#b07a2a', action: '#4d8a8a', stage: '#a0558f', encounter: '#b84a4a',
+    start: '#3c8d5a', dialog: '#2b7fc4', branch: '#b07a2a', action: '#4d8a8a', stage: '#a0558f', encounter: '#b84a4a', raid: '#9a5a2a',
     wait: '#5a6f8f', end: '#555f6e', link: '#3a4452', note: '#6b6440'
   }
-  const TITLES: Record<string, string> = { start: 'Start', dialog: 'Dialog', branch: 'Branch', action: 'Action', stage: 'Stage', encounter: 'Encounter', wait: 'Wait / Arrive', end: 'End', link: 'Link', note: 'Note' }
+  const TITLES: Record<string, string> = { start: 'Start', dialog: 'Dialog', branch: 'Branch', action: 'Action', stage: 'Stage', encounter: 'Encounter', raid: 'Raid', wait: 'Wait / Arrive', end: 'End', link: 'Link', note: 'Note' }
   const errs = $derived(data.problems.filter((p) => p.level === 'error').length)
   const warns = $derived(data.problems.filter((p) => p.level !== 'error').length)
   const opt = (id: string) => (n.type === 'dialog' ? n.options.find((o) => o.id === id) : undefined)
@@ -32,10 +42,10 @@
       {#if n.displays.length}<div class="muted small">{n.displays.length} display{n.displays.length === 1 ? '' : 's'}</div>{/if}
     {:else if n.type === 'start'}
       {@const s = data.quest.start}
-      <div>{s.kind === 'contact' ? `contact: ${data.personName(s.person) || '?'}` : s.kind === 'bar' ? 'bar event' : s.kind === 'option' ? `option: ${s.optionText}` : s.kind === 'trigger' ? `trigger: ${s.trigger}` : 'started by another quest'}</div>
+      <div>{s.kind === 'contact' ? (s.person ? `contact: ${data.personName(s.person)}` : s.tagsAll || s.tagsAny ? `any contact tagged ${[s.tagsAll, s.tagsAny].filter(Boolean).join(' / ')}` : 'contact: ?') : s.kind === 'bar' ? 'bar event' : s.kind === 'option' ? `option: ${s.optionText}` : s.kind === 'trigger' ? `trigger: ${s.trigger}` : s.kind === 'barScene' ? `bar scene: ${s.optionText}` : s.kind === 'interject' ? `cuts into ${s.option}` : 'started by another quest'}</div>
       {#if data.quest.requires.length}<div class="muted small">needs {data.quest.requires.length} prerequisite{data.quest.requires.length === 1 ? '' : 's'}</div>{/if}
     {:else if n.type === 'branch'}
-      <div class="muted small">first matching case (FireBest)</div>
+      <div class="muted small">{n.random ? (n.random.pool ? `at random from pool ${n.random.pool}` : `at random by weight${n.random.scope === 'global' ? ' (world)' : ''}`) : 'first matching case (FireBest)'}</div>
     {:else if n.type === 'action'}
       {#each n.ops.slice(0, 4) as op, i (i)}<div class="mono small">{op.op === 'set' ? `${op.key} = ${op.value}` : op.op === 'line' ? op.line : `${op.op} ${Object.values(op).slice(1).join(' ')}`}</div>{/each}
       {#if !n.ops.length}<div class="muted small">(nothing yet)</div>{/if}
@@ -44,12 +54,14 @@
       <div>{st ? st.title : '(pick a stage)'}</div>{#if st?.journal}<div class="muted small q">{st.journal}</div>{/if}
     {:else if n.type === 'encounter'}
       <div class="mono">{n.encounter || '(pick an encounter)'}</div>
+    {:else if n.type === 'raid'}
+      <div>{n.objective || '(objective)'}</div><div class="muted small">danger {n.danger.toLowerCase()}{n.difficulty > 0 ? ` · strength ${n.difficulty}` : " · the colony's defences"}</div>
     {:else if n.type === 'wait'}
       <div>{n.mode === 'arrive' ? `player reaches ${n.entity || '?'}` : `after ${n.days ?? '?'} days`}</div>
     {:else if n.type === 'end'}
       <div class:good={n.outcome === 'success'} class:bad={n.outcome !== 'success'}>{n.outcome}{n.reward ? ` · reward ${n.reward}` : ''}</div>
     {:else if n.type === 'link'}
-      <div class="mono small">{n.mode === 'trigger' ? `${n.fire ?? 'FireAll'} ${n.target}` : n.mode === 'option' ? `→ option ${n.target}` : `→ node ${n.target}`}</div>
+      <div class="mono small">{n.mode === 'menu' ? 'back to the menu (or close)' : n.mode === 'bar' ? 'back to the bar' : n.mode === 'trigger' ? `${n.fire ?? 'FireAll'} ${n.target}` : n.mode === 'option' ? `→ option ${n.target}` : `→ node ${n.target}`}</div>
     {:else if n.type === 'note'}
       <div class="notetext">{n.text || 'Note'}</div>
     {/if}
@@ -59,6 +71,7 @@
     <div class="opt" class:story={!!o?.story} class:once={!!o?.showOnce} class:cond={!!o?.showIf?.length}>
       <span class="ot">{h.label}</span>
       {#if o?.story}<span class="tag">{o.story.cost} SP</span>{/if}{#if o?.showOnce}<span class="tag">once</span>{/if}{#if o?.showIf?.length}<span class="tag">if</span>{/if}
+      {#if chance[h.id] !== undefined}<span class="tag">{chance[h.id]}%</span>{/if}
       <Handle type="source" position={Position.Right} id={h.id} />
     </div>
   {/each}

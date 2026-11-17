@@ -4,6 +4,7 @@
   import { project } from '../state/project.svelte'
   import { testCtx, saveTestCtx } from '../state/testctx.svelte'
   import IdInput from '../ui/IdInput.svelte'
+  import { PLACE_PRESETS, type PlacePreset } from '../../../shared/rules/context'
 
   interface Props {
     /** Condition commands the current rule(s) use that the editor can't evaluate. */
@@ -16,11 +17,14 @@
   const people = $derived([...(project.m?.people.map((p) => ({ id: p.id, name: `${p.name.first} ${p.name.last}` })) ?? []), ...(app.index?.people ?? [])])
   const factions = $derived([...(project.m?.factions.filter((f) => f.kind === 'addition').map((f) => ({ id: f.id, name: String((f as { raw: Record<string, unknown> }).raw.displayName ?? f.id) })) ?? []), ...(app.index?.factions ?? [])])
   const markets = $derived(app.index?.markets ?? [])
+  const places = $derived((project.m?.systems ?? []).flatMap((x) => x.entities.map((e) => ({ id: e.id, name: e.name }))))
+  const preset = $derived(PLACE_PRESETS.find((p) => p.id === (testCtx.place ?? 'none')) ?? PLACE_PRESETS[0])
   const upd = (fn: () => void) => { fn(); saveTestCtx() }
 </script>
 
 <div class="ctx">
   <div class="h">Test context</div>
+  <div class="f-help top">Sample values the preview fills tokens ($playerName, $credits…) and conditions with: who the player is, who they talk to, and where. Editor only; nothing here is exported.</div>
   <div class="g">
     <label for="tc-pf">Player</label>
     <span class="row"><input id="tc-pf" type="text" value={testCtx.playerFirst} onchange={(e) => upd(() => (testCtx.playerFirst = e.currentTarget.value))} /><input type="text" value={testCtx.playerLast} aria-label="Player last name" onchange={(e) => upd(() => (testCtx.playerLast = e.currentTarget.value))} /></span>
@@ -28,6 +32,10 @@
     <select id="tc-g" value={testCtx.playerGender} onchange={(e) => upd(() => (testCtx.playerGender = e.currentTarget.value as 'MALE' | 'FEMALE'))}><option value="FEMALE">female (her / she)</option><option value="MALE">male (him / he)</option></select>
     <span class="lbl">Speaker</span><IdInput value={testCtx.person} options={people} onCommit={(v) => upd(() => (testCtx.person = v))} placeholder="person id" />
     <span class="lbl">Faction</span><IdInput value={testCtx.faction} options={factions} onCommit={(v) => upd(() => (testCtx.faction = v))} placeholder="(the speaker's)" />
+    <label for="tc-pl">Place</label>
+    <select id="tc-pl" value={testCtx.place ?? 'none'} onchange={(e) => upd(() => (testCtx.place = e.currentTarget.value as PlacePreset))}>{#each PLACE_PRESETS as p (p.id)}<option value={p.id}>{p.label}</option>{/each}</select>
+    <span></span><span class="f-help">{preset.help}{Object.keys(preset.memory).length ? ` Sets ${Object.keys(preset.memory).join(', ')}.` : ''}</span>
+    <span class="lbl">Place id</span><IdInput value={testCtx.entity ?? ''} options={places} onCommit={(v) => upd(() => (testCtx.entity = v || undefined))} placeholder="($id when no speaker)" />
     <span class="lbl">Market</span><IdInput value={testCtx.market} options={markets} onCommit={(v) => upd(() => (testCtx.market = v))} placeholder="market id" />
     <label for="tc-cr">Credits</label><input id="tc-cr" type="number" value={testCtx.credits} onchange={(e) => upd(() => (testCtx.credits = Number(e.currentTarget.value)))} />
     <label for="tc-sp">Story points</label><input id="tc-sp" type="number" value={testCtx.storyPoints} onchange={(e) => upd(() => (testCtx.storyPoints = Number(e.currentTarget.value)))} />
@@ -35,6 +43,7 @@
   </div>
   {#if memoryKeys.length}
     <div class="h2">Memory read here</div>
+    <div class="f-help">Memory keys this text's conditions test; set them to see each case.</div>
     <div class="g">
       {#each memoryKeys as k (k)}
         <span class="lbl mono" title={k}>{k}</span>
@@ -55,6 +64,7 @@
   .ctx { padding: 8px 10px; overflow: auto; height: 100%; font-size: 12px; background: var(--panel); }
   .h { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
   .h2 { font-size: 11px; color: var(--muted); margin: 10px 0 4px; }
+  .top { margin-bottom: 6px; }
   .g { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 4px 8px; align-items: center; }
   .g label, .lbl { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .g input, .g select { width: 100%; padding: 3px 6px; }

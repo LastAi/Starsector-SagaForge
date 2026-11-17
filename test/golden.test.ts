@@ -8,7 +8,7 @@ import path from 'node:path'
 import { compileRule, compileRules, Engine, newContext } from '../src/shared/rules/engine'
 import { parseCondition } from '../src/shared/rules/parse'
 import { newSimState, sagaHooks, reconcile, type SimWorld } from '../src/shared/play'
-import type { Phrase, QuestPlan } from '../src/shared/model'
+import type { Phrase, PoolPlan, QuestPlan } from '../src/shared/model'
 
 // In the workspace: SagaLib's own folder. In the published repo: the copy the export puts in
 // test/golden. SAGALIB_DIR points at a SagaLib checkout.
@@ -27,7 +27,13 @@ describe.skipIf(!files.length)('golden cases (shared with SagaLib)', () => {
     const g = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) as Golden
     it(`${f}: ${g.name}`, () => {
       let quests = g.quests as QuestPlan[]
-      const world: SimWorld = { quests, phrases: new Map(g.phrases.map((p) => [p.token, p])) }
+      // pools are in SagaLib's file format: once / cooldownDays / max on the entry
+      type RtEntry = { id: string; weight: number; conditions?: string[]; once?: 'playthrough' | 'object'; cooldownDays?: number; max?: number }
+      const pools: PoolPlan[] = ((g as { pools?: { id: string; draw?: string; nothing?: number; entries: RtEntry[] }[] }).pools ?? []).map((p) => ({
+        id: p.id, name: p.id, draw: 'pickOne', nothing: p.nothing ?? 0,
+        entries: p.entries.map((e) => ({ id: e.id, weight: e.weight, conditions: e.conditions ?? [], limit: { once: e.once, cooldownDays: e.cooldownDays, max: e.max } }))
+      }))
+      const world: SimWorld = { quests, phrases: new Map(g.phrases.map((p) => [p.token, p])), pools }
       const ctx = newContext()
       ctx.player.credits = 0
       const e = new Engine(compileRules([]), ctx, sagaHooks(world, newSimState()))

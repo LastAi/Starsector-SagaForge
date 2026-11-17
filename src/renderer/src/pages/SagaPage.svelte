@@ -11,11 +11,18 @@
   import type { TestProfile, Phrase } from '../../../shared/model'
   import SagaCard from '../graph/SagaCard.svelte'
   import PhraseEditor from '../quests/PhraseEditor.svelte'
+  import PoolsPanel from '../saga/PoolsPanel.svelte'
+  import ScatterPanel from '../saga/ScatterPanel.svelte'
+  import EventsPanel from '../saga/EventsPanel.svelte'
+  import ProgressPanel from '../saga/ProgressPanel.svelte'
   import IdInput from '../ui/IdInput.svelte'
+  import Field from '../ui/Field.svelte'
   import { conditionTemplates } from '../quests/edit'
   import { personLook } from '../state/testctx.svelte'
+  import { inactiveQuests } from '../../../shared/inactive'
 
-  let tab = $state<'board' | 'timeline' | 'flags' | 'profiles' | 'phrases'>((app.selected.sagaTab as 'board') ?? 'board')
+  // screenshot mode: "saga::<tab>"
+  let tab = $state<'board' | 'timeline' | 'flags' | 'profiles' | 'phrases' | 'pools' | 'scatter' | 'events' | 'progress'>(((app.smoke ? app.smokeArg : null) ?? app.selected.sagaTab ?? 'board') as 'board')
   $effect(() => { app.selected.sagaTab = tab })
   const m = $derived(project.m)
   const reg = $derived(m && project.loaded ? buildRegistry(m, handRules(project.loaded.files['data/campaign/rules.csv']?.text, project.loaded.sourceId), app.rules?.filter((r) => r.sourceId !== project.loaded?.sourceId) ?? []) : new Map())
@@ -24,17 +31,19 @@
   // ---- board
   const startText = (q: NonNullable<typeof m>['quests'][number]) => {
     const s = q.start
-    return s.kind === 'contact' ? `contact: ${personLook(s.person)?.name ?? s.person}` : s.kind === 'bar' ? 'bar event' : s.kind === 'option' ? `option: ${s.optionText}` : s.kind === 'trigger' ? `on ${s.trigger}` : 'started by another quest'
+    return s.kind === 'contact' ? (s.person ? `contact: ${personLook(s.person)?.name ?? s.person}` : `any contact tagged ${[s.tagsAll, s.tagsAny].filter(Boolean).join(' / ') || '?'}`) : s.kind === 'bar' ? 'bar event' : s.kind === 'option' ? `option: ${s.optionText}` : s.kind === 'trigger' ? `on ${s.trigger}` : 'started by another quest'
   }
   let nodes = $state.raw<Node[]>([])
   let edges = $state.raw<Edge[]>([])
   $effect(() => {
     if (!m) { nodes = []; edges = []; return }
     void JSON.stringify(m.quests.map((q) => [q.id, q.title, q.requires, q.start])), void JSON.stringify(m.project.saga.positions)
+    void JSON.stringify(m.people.map((p) => p.inactive)), void JSON.stringify(m.quests.map((q) => q.inactive))
+    const off = inactiveQuests(m)
     nodes = m.quests.map((q, i) => {
       const p = m.project.saga.positions[q.id] ?? [40 + (i % 4) * 260, 40 + Math.floor(i / 4) * 170]
       const people = [...new Set(q.nodes.flatMap((n) => (n.type === 'dialog' && n.speaker ? [personLook(n.speaker)?.name ?? n.speaker] : [])))]
-      return { id: q.id, type: 'card', position: { x: p[0], y: p[1] }, data: { quest: q, start: startText(q), people, problems: problems.live.filter((x) => x.ref?.id === q.id && x.level === 'error').length } }
+      return { id: q.id, type: 'card', position: { x: p[0], y: p[1] }, data: { quest: q, start: startText(q), people, problems: problems.live.filter((x) => x.ref?.id === q.id && x.level === 'error').length, inactive: off.has(q.id) } }
     })
     const es: Edge[] = []
     for (const q of m.quests) {
@@ -109,6 +118,10 @@
       <button class:on={tab === 'flags'} onclick={() => (tab = 'flags')}>Flags registry ({reg.size}){#if flagProbs.some((p) => p.level === 'warning')}<span class="cnt">{flagProbs.filter((p) => p.level === 'warning').length}</span>{/if}</button>
       <button class:on={tab === 'profiles'} onclick={() => (tab = 'profiles')}>Test profiles ({m?.testProfiles.length ?? 0})</button>
       <button class:on={tab === 'phrases'} onclick={() => (tab = 'phrases')}>Mod-wide phrases ({m?.phrases.length ?? 0})</button>
+      <button class:on={tab === 'pools'} onclick={() => (tab = 'pools')} title="Named random pools (Phase 7a)">Pools ({m?.pools?.length ?? 0})</button>
+      <button class:on={tab === 'scatter'} onclick={() => (tab = 'scatter')} title="Objects placed at new game (Phase 7e)">Scatter ({m?.scatter?.length ?? 0})</button>
+      <button class:on={tab === 'events'} onclick={() => (tab = 'events')} title="World events: things that happen without the player (Phase 8d)">Events ({m?.events?.length ?? 0})</button>
+      <button class:on={tab === 'progress'} onclick={() => (tab = 'progress')} title="Progress events: the mod's own event bars (Phase 8d-3)">Progress ({m?.progress?.length ?? 0})</button>
     </div>
     <span class="muted small">{tab === 'board' ? 'Solid arrows: prerequisites. Dashed: a flag one quest sets and another reads. Drag cards; double-click opens the quest.' : ''}</span>
   </div>
@@ -166,10 +179,19 @@
       <div class="scroll pad">
         {#if prof}
           <div class="grid2">
-            <label for="tp-n">Name</label><input id="tp-n" type="text" value={prof.name} onchange={(e) => { const v = e.currentTarget.value; edProf((p) => { p.name = v }) }} />
-            <span class="lbl">Id</span><span class="mono">{prof.id}</span>
+            <Field label="Name" for="tp-n" help="Shown in Play mode's profile list and in SagaLib's dev menu in game.">
+              <input id="tp-n" type="text" value={prof.name} onchange={(e) => {
+                const v = e.currentTarget.value
+                // walk F27: a profile's id follows its name (dev mode only, never in a release)
+                const nid = uniqueId(slug(v) || 'profile', (m?.testProfiles ?? []).filter((x) => x.id !== prof.id).map((x) => x.id))
+                edProf((p) => { p.name = v; p.id = nid })
+                app.selected.profile = nid
+              }} />
+            </Field>
+            <Field label="Id" help="How SagaLib names the profile in its log."><span class="mono">{prof.id}</span></Field>
           </div>
           <div class="sect2">Quests</div>
+          <p class="f-help">Where each quest stands when the profile is applied: not started, running at a stage, or already ended.</p>
           <table class="t">
             <tbody>
               {#each m.quests.filter((q) => q.kind === 'quest') as q (q.id)}
@@ -182,27 +204,46 @@
             </tbody>
           </table>
           <div class="sect2">Flags</div>
+          <p class="f-help">Memory keys and the values they get (e.g. $global.vgc_signal_heard = true).</p>
           {#each Object.entries(prof.flags) as [k, v] (k)}
             <div class="row"><span class="mono">{k}</span><input type="text" value={v} onchange={(e) => { const x = e.currentTarget.value; edProf((p) => { p.flags[k] = x }) }} /><button class="mini" onclick={() => edProf((p) => { delete p.flags[k] })}>✕</button></div>
           {/each}
           <div class="row"><IdInput value={newFlag} options={[...reg.keys()].map((k) => ({ id: k }))} placeholder="$global.key" onCommit={(v) => (newFlag = v)} /><button class="mini" onclick={() => { const k = newFlag.trim(); if (k) { edProf((p) => { p.flags[k] = 'true' }); newFlag = '' } }}>+ flag</button></div>
           <div class="sect2">Player</div>
           <div class="grid2">
-            <label for="tp-c">Credits</label><input id="tp-c" type="number" value={prof.player.credits ?? ''} onchange={(e) => { const v = e.currentTarget.value; edProf((p) => { p.player.credits = v === '' ? undefined : Number(v) }) }} />
-            <label for="tp-s">Story points</label><input id="tp-s" type="number" value={prof.player.storyPoints ?? ''} onchange={(e) => { const v = e.currentTarget.value; edProf((p) => { p.player.storyPoints = v === '' ? undefined : Number(v) }) }} />
-            <span class="lbl">Commission</span><IdInput value={prof.player.commission ?? ''} options={factions} placeholder="(none)" onCommit={(v) => edProf((p) => { p.player.commission = v || undefined })} />
-            <span class="lbl">Start at</span><input type="text" class="mono" value={prof.player.startAt ?? ''} placeholder="entity id (dev mode, new game)" onchange={(e) => { const v = e.currentTarget.value; edProf((p) => { p.player.startAt = v || undefined }) }} />
-            <span class="lbl">Reputation</span>
-            <div>{#each Object.entries(prof.player.rep ?? {}) as [f, r] (f)}<div class="row"><span class="mono">{f}</span><input type="number" step="0.05" min="-1" max="1" value={r} onchange={(e) => { const v = Number(e.currentTarget.value); edProf((p) => { p.player.rep![f] = v }) }} /><button class="mini" onclick={() => edProf((p) => { delete p.player.rep![f] })}>✕</button></div>{/each}
-              <IdInput value="" options={factions} placeholder="+ faction" clearOnCommit onCommit={(v) => { if (v) edProf((p) => { (p.player.rep ??= {})[v] = 0.5 }) }} /></div>
-            <span class="lbl">Cargo</span>
-            <div>{#each prof.player.cargo ?? [] as c, i (i)}<div class="row"><span class="mono">{c.item}</span><input type="number" value={c.qty} onchange={(e) => { const v = Number(e.currentTarget.value); edProf((p) => { p.player.cargo![i].qty = v }) }} /><button class="mini" onclick={() => edProf((p) => { p.player.cargo!.splice(i, 1) })}>✕</button></div>{/each}
-              <IdInput value="" options={items} placeholder="+ item" clearOnCommit onCommit={(v) => { if (v) edProf((p) => { (p.player.cargo ??= []).push({ item: v, qty: 1 }) }) }} /></div>
+            <Field label="Credits" for="tp-c" help="The player's credits. Empty: unchanged.">
+              <input id="tp-c" type="number" value={prof.player.credits ?? ''} onchange={(e) => { const v = e.currentTarget.value; edProf((p) => { p.player.credits = v === '' ? undefined : Number(v) }) }} />
+            </Field>
+            <Field label="Story points" for="tp-s" help="The player's story points. Empty: unchanged.">
+              <input id="tp-s" type="number" value={prof.player.storyPoints ?? ''} onchange={(e) => { const v = e.currentTarget.value; edProf((p) => { p.player.storyPoints = v === '' ? undefined : Number(v) }) }} />
+            </Field>
+            <Field label="Commission" help="The faction the player holds a commission with. Empty: none.">
+              <IdInput value={prof.player.commission ?? ''} options={factions} placeholder="(none)" onCommit={(v) => edProf((p) => { p.player.commission = v || undefined })} />
+            </Field>
+            <Field label="Start at" for="tp-sa" help="An entity or market id: with dev mode on, the profile puts the player's fleet there, at a new game or (SagaLib 1.2) from the Ctrl+F9 dev menu mid-game.">
+              <input id="tp-sa" type="text" class="mono" value={prof.player.startAt ?? ''} placeholder="e.g. vgc_haven" onchange={(e) => { const v = e.currentTarget.value; edProf((p) => { p.player.startAt = v || undefined }) }} />
+            </Field>
+            <Field label="Reputation" help="Faction and relation from -1 to 1 (0.5 = Welcoming…). Others are left as they are.">
+              <div>{#each Object.entries(prof.player.rep ?? {}) as [f, r] (f)}<div class="row"><span class="mono">{f}</span><input type="number" step="0.05" min="-1" max="1" value={r} onchange={(e) => { const v = Number(e.currentTarget.value); edProf((p) => { p.player.rep![f] = v }) }} /><button class="mini" onclick={() => edProf((p) => { delete p.player.rep![f] })}>✕</button></div>{/each}
+                <IdInput value="" options={factions} placeholder="+ faction" clearOnCommit onCommit={(v) => { if (v) edProf((p) => { (p.player.rep ??= {})[v] = 0.5 }) }} /></div>
+            </Field>
+            <Field label="Cargo" help="Items put in the player's cargo, with quantities.">
+              <div>{#each prof.player.cargo ?? [] as c, i (i)}<div class="row"><span class="mono">{c.item}</span><input type="number" value={c.qty} onchange={(e) => { const v = Number(e.currentTarget.value); edProf((p) => { p.player.cargo![i].qty = v }) }} /><button class="mini" onclick={() => edProf((p) => { p.player.cargo!.splice(i, 1) })}>✕</button></div>{/each}
+                <IdInput value="" options={items} placeholder="+ item" clearOnCommit onCommit={(v) => { if (v) edProf((p) => { p.player.cargo ??= []; p.player.cargo.push({ item: v, qty: 1 }) }) }} /></div>
+            </Field>
           </div>
           <p><button class="mini danger" onclick={() => { const id = prof.id; project.change((mm) => { mm.testProfiles = mm.testProfiles.filter((p) => p.id !== id) }); app.selected.profile = null }}>Delete profile</button></p>
         {:else}<div class="muted">No test profile selected.</div>{/if}
       </div>
     </div>
+  {:else if tab === 'pools'}
+    <PoolsPanel {templates} />
+  {:else if tab === 'scatter'}
+    <ScatterPanel />
+  {:else if tab === 'events'}
+    <EventsPanel />
+  {:else if tab === 'progress'}
+    <ProgressPanel />
   {:else if tab === 'phrases'}
     <div class="scroll pad">
       <p class="muted small">Phrases used by any text of the mod. A character's own phrases are on the People page; one-off variations are added inside a Dialog node. SagaLib fills them in, in game.</p>
@@ -244,8 +285,8 @@
   .list { list-style: none; margin: 0; padding: 0 4px; }
   .list li.on { background: #1f2a38; outline: 1px solid var(--accent-2); border-radius: 4px; }
   .li { width: 100%; text-align: left; border: none; background: none; padding: 4px 8px; }
-  .grid2 { display: grid; grid-template-columns: 110px minmax(0, 420px); gap: 5px 10px; align-items: center; }
-  .grid2 label, .lbl { color: var(--muted); font-size: 12px; }
+  .grid2 { display: grid; grid-template-columns: 110px minmax(0, 420px); gap: 2px 10px; align-items: center; }
+  p.f-help { margin: 0 0 4px; }
   .row { display: flex; gap: 6px; align-items: center; margin-bottom: 3px; font-size: 12px; }
   .row input { padding: 2px 6px; }
   .mini { padding: 0 8px; font-size: 11px; }

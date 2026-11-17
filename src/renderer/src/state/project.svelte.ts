@@ -16,7 +16,8 @@ class ProjectStore {
   deletedFactionFiles = $state<string[]>([])
   lastSave = $state<WriteResult | null>(null)
   /** Images picked from outside the mod, copied into it on save: absolute source → path in the mod. */
-  pendingCopies = $state<{ from: string; to: string }[]>([])
+  /** Images waiting for Save: a picked file (`from`), or processed PNG bytes from the import dialog (R5). */
+  pendingCopies = $state<{ from?: string; to: string; bytes?: Uint8Array; replace?: boolean }[]>([])
 
   get m(): ModModel | null { return this.doc?.value ?? null }
   get dirty(): boolean { return !!this.doc?.dirty || this.deletedFactionFiles.length > 0 || this.pendingCopies.length > 0 }
@@ -46,6 +47,11 @@ class ProjectStore {
   /** Copy a picked image into the mod on the next save; returns its game path. */
   copyIn(abs: string, to: string): string {
     this.pendingCopies = [...this.pendingCopies.filter((c) => c.to !== to), { from: abs, to }]
+    return to
+  }
+  /** An imported image (cropped, resized, PNG) written on Save; `replace` overwrites a file already in the mod (backed up). */
+  addImage(to: string, bytes: Uint8Array, replace = false): string {
+    this.pendingCopies = [...this.pendingCopies.filter((c) => c.to !== to), { to, bytes, replace }]
     return to
   }
 

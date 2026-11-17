@@ -1,20 +1,21 @@
 <script lang="ts">
   /** Problems (PLAN.md §6, mock-up problems.html): live problems, Check mod results, fixes, ignore with a reason. */
   import type { Problem, ProblemLevel } from '../../../shared/api'
-  import { renameFlag } from '../../../shared/flags'
-  import { applySaveFix } from '../../../shared/release'
   import { app, type PageId } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
-  import { problems } from '../state/problems.svelte'
+  import { problems, applyProblemFix } from '../state/problems.svelte'
 
   const LEVELS: { id: ProblemLevel; label: string; cls: string }[] = [
-    { id: 'error', label: 'Errors', cls: 'e' }, { id: 'warning', label: 'Warnings', cls: 'w' }, { id: 'save', label: 'Save warnings', cls: 's' },
+    { id: 'error', label: 'Errors', cls: 'e' }, { id: 'todo', label: 'To do', cls: 't' }, { id: 'warning', label: 'Warnings', cls: 'w' }, { id: 'save', label: 'Save warnings', cls: 's' },
     { id: 'style', label: 'Style', cls: 'st' }, { id: 'info', label: 'Info', cls: 'i' }
   ]
-  let show = $state<Record<ProblemLevel, boolean>>({ error: true, warning: true, save: true, style: true, info: false })
+  let show = $state<Record<ProblemLevel, boolean>>({ error: true, todo: true, warning: true, save: true, style: true, info: app.smokeModal === 'info' })
   let filter = $state('')
   let sel = $state(-1)
-  const list = $derived(problems.all.filter((p) => show[p.level] && (!filter || `${p.area} ${p.message}`.toLowerCase().includes(filter.toLowerCase()))))
+  // walk F30: most severe first (errors, to-dos, warnings…), otherwise in the order the checks found them
+  const rank = (l: ProblemLevel) => LEVELS.findIndex((x) => x.id === l)
+  const list = $derived(problems.all.filter((p) => show[p.level] && (!filter || `${p.area} ${p.message}`.toLowerCase().includes(filter.toLowerCase())))
+    .map((p, i) => ({ p, i })).sort((a, b) => rank(a.p.level) - rank(b.p.level) || a.i - b.i).map((x) => x.p))
   const ignored = $derived(project.m?.project.ignores ?? [])
 
   function open(p: Problem) {
@@ -24,18 +25,19 @@
     app.go(r.page as PageId, r.id ?? null)
     if (r.page === 'quests') app.selected.questNode = r.sub?.split('/')[0] ?? null
     if (r.page === 'saga' && r.id === 'flags') app.selected.sagaTab = 'flags'
+    if (r.page === 'saga' && r.id === 'pools') { app.selected.sagaTab = 'pools'; app.selected.pool = r.sub ?? null }
+    if (r.page === 'saga' && r.id === 'scatter') app.selected.sagaTab = 'scatter'
+    if (r.page === 'saga' && r.id === 'progress') { app.selected.sagaTab = 'progress'; app.selected.progressEvent = r.sub ?? null }
+    if (r.page === 'saga' && r.id === 'events') { app.selected.sagaTab = 'events'; app.selected.eventScheduler = r.sub ?? null }
   }
 
   function fix(p: Problem, action: string, arg: unknown) {
-    if (action === 'renameFlag') { const a = arg as { from: string; to: string }; project.change((m) => renameFlag(m, a.from, a.to)) }
-    else if (action === 'listFaction') project.change((m) => { const f = m.factions.find((x) => x.id === arg); if (f?.kind === 'addition') f.listed = true })
-    else if (action === 'aliasStage' || action === 'addToExisting') project.change((m) => { applySaveFix(m, action, arg) })
-    else open(p)
+    if (!applyProblemFix(action, arg)) open(p)
   }
 
-  function ignore(p: Problem) {
+  async function ignore(p: Problem) {
     if (!p.key) return
-    const reason = prompt('Why can this be ignored? (stored in sagaforge/project.json, so it travels with the mod)', '')
+    const reason = await app.ask('Why can this be ignored? (kept in sagaforge/project.json, so it travels with the mod)', '', 'Ignore')
     if (reason === null) return
     project.change((m) => { m.project.ignores.push({ key: p.key!, reason: reason || '(no reason given)' }) })
   }
@@ -45,7 +47,7 @@
 <div class="page">
   <div class="toolbar">
     {#each LEVELS as l (l.id)}
-      <label class="lv"><input type="checkbox" bind:checked={show[l.id]} /> <span class="ico {l.cls}">{l.id === 'error' ? '!' : l.id === 'save' ? 'S' : l.id === 'style' ? '¶' : l.id === 'info' ? 'i' : '?'}</span> {l.label} ({problems.counts[l.id]})</label>
+      <label class="lv"><input type="checkbox" bind:checked={show[l.id]} /> <span class="ico {l.cls}">{l.id === 'error' ? '!' : l.id === 'todo' ? '✎' : l.id === 'save' ? 'S' : l.id === 'style' ? '¶' : l.id === 'info' ? 'i' : '?'}</span> {l.label} ({problems.counts[l.id]})</label>
     {/each}
     <input type="search" placeholder="Filter…" bind:value={filter} />
     <span class="spacer"></span>
@@ -56,7 +58,7 @@
     {#each list as p, i (i)}
       {@const l = level(p.level)}
       <div class="prow" class:on={sel === i}>
-        <span class="ico {l.cls}">{p.level === 'error' ? '!' : p.level === 'save' ? 'S' : p.level === 'style' ? '¶' : p.level === 'info' ? 'i' : '?'}</span>
+        <span class="ico {l.cls}">{p.level === 'error' ? '!' : p.level === 'todo' ? '✎' : p.level === 'save' ? 'S' : p.level === 'style' ? '¶' : p.level === 'info' ? 'i' : '?'}</span>
         <span class="area">{p.area}</span>
         <div>
           <div>{p.message}</div>
@@ -91,7 +93,7 @@
   .place { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .fix { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
   .ico { width: 16px; height: 16px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 10px; font-weight: 700; color: #000; }
-  .ico.e { background: var(--bad); color: #fff; } .ico.w { background: var(--warn); } .ico.s { background: #4fb3ff; } .ico.st { background: #c9a0ff; } .ico.i { background: var(--muted); }
+  .ico.e { background: var(--bad); color: #fff; } .ico.t { background: #e8a83c; color: #000; } .ico.w { background: var(--warn); } .ico.s { background: #4fb3ff; } .ico.st { background: #c9a0ff; } .ico.i { background: var(--muted); }
   .mini { padding: 1px 8px; font-size: 11px; }
   .empty { padding: 20px; }
   .ign { padding: 10px; font-size: 12px; }

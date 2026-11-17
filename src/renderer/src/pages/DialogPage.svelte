@@ -17,7 +17,7 @@
   import Splitter from '../Splitter.svelte'
   import { layout, saveLayout } from '../layout.svelte'
 
-  let query = $state(app.selected.dialogQuery ?? 'gaData')
+  let query = $state(app.selected.dialogQuery ?? (app.smoke ? app.smokeArg : null) ?? 'gaData')
   let loading = $state(true)
   let nodes = $state.raw<Node[]>([])
   let edges = $state.raw<Edge[]>([])
@@ -98,11 +98,11 @@
 <div class="page" style="grid-template-columns:{layout.left}px 1px minmax(0,1fr) 1px {layout.right}px">
   <aside class="left">
     <input class="search" type="search" placeholder="Rule id, trigger, option id or text…" bind:value={query} oninput={() => (app.selected.dialogQuery = query)} />
-    <div class="muted small pad">{loading ? 'Reading every rules.csv…' : `${rs?.all.length ?? 0} rules from ${Object.keys(app.index?.ruleCounts ?? {}).length} sources. ${results.length >= 300 ? 'First 300 matches.' : `${results.length} matches.`}`}</div>
+    <div class="muted small pad">{loading ? 'Reading every rules file…' : `${rs?.all.length ?? 0} rules from ${Object.keys(app.index?.ruleCounts ?? {}).length} sources${(app.index?.ruleFiles?.length ?? 1) > 1 ? ` and ${app.index?.ruleFiles?.length} listed rule files` : ''}. ${results.length >= 300 ? 'First 300 matches.' : `${results.length} matches.`}`}</div>
     <ul class="list">
       {#each results as r (r.row.id + r.row.sourceId)}
         <li class:on={sel === r.row.id}><button class="li" onclick={() => (app.selected.dialog = r.row.id)}>
-          <span class="mono id">{r.row.id}</span><span class="sub">{r.row.trigger} · {srcName(r.row.sourceId)}</span>
+          <span class="mono id">{r.row.id}</span><span class="sub">{r.row.trigger} · {srcName(r.row.sourceId)}{#if r.row.file !== 'data/campaign/rules.csv'} · {r.row.file.split('/').pop()}{/if}</span>
         </button></li>
       {/each}
     </ul>
@@ -120,7 +120,7 @@
         </SvelteFlow>
         {#if stubs.length}<div class="stubs muted small">Also fires (not drawn, too broad): {stubs.join(', ')}</div>{/if}
       {:else}
-        <div class="center muted">Search the game's dialog on the left (e.g. <span class="mono">gaData</span>, <span class="mono">rao</span>, a trigger like <span class="mono">OpenCommLink</span>) and pick a rule to see its conversation as a chart.</div>
+        <div class="center muted"><p>Search the game's dialog on the left (e.g. <span class="mono">gaData</span>, <span class="mono">rao</span>, a trigger like <span class="mono">OpenCommLink</span>) and pick a rule to see its conversation as a chart.</p></div>
       {/if}
     </div>
     <Splitter axis="y" value={layout.dock} min={140} max={() => window.innerHeight - 260} sign={-1} label="Resize preview" onChange={(v) => (layout.dock = v)} onDone={saveLayout} onReset={() => { layout.dock = 330; saveLayout() }} />

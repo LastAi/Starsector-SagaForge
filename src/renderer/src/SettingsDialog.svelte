@@ -3,6 +3,8 @@
   import type { GameIndex, ModsMode, UserDefinitions } from '../../shared/api'
   import { defsFor, knownDefs } from '../../shared/defs'
   import { app } from './state/app.svelte'
+  import { project } from './state/project.svelte'
+  import { chooseTarget, versionInfo } from './state/versions.svelte'
 
   interface Props {
     index: GameIndex
@@ -55,6 +57,41 @@
     try { app.settings = await window.api.setSetting('extensions', { ...app.settings.extensions, [id]: on }); onIndex(await window.api.getIndex(true)) } catch (e) { error = clean(e) } finally { working = false }
   }
   const ws = $derived(index.modsMode === 'workspace')
+
+  // ---- #47: the migration install
+  const vinfo = $derived(versionInfo(app.versions))
+  async function setMigration(dir: string | null) {
+    error = null
+    if (dir === null && app.versions?.target === 'migration' && !confirm('The active mod targets the migration install. Remove it anyway? The mod goes back to the main install.')) return
+    working = true
+    try {
+      const v = await window.api.setMigrationInstall(dir)
+      if (v.error) { error = v.error; return }
+      app.versions = v
+      app.resetGameData()
+      onIndex(await window.api.getIndex(true))
+    } catch (e) { error = clean(e) } finally { working = false }
+  }
+  async function pickMigration() {
+    const dir = await window.api.pickFolder(app.versions?.migration?.dir ?? null, 'Choose the other Starsector install (for migration)')
+    if (dir) await setMigration(dir)
+  }
+  // ---- R32: the releases folder
+  async function setReleases(dir: string | null) {
+    error = null
+    try { app.settings = await window.api.setSetting('releasesDir', dir) } catch (e) { error = clean(e) }
+  }
+  async function chooseReleases() {
+    const dir = await window.api.pickFolder(app.settings.releasesDir, 'Choose the folder for release zips')
+    if (dir) await setReleases(dir)
+  }
+  async function finish() {
+    const v = app.versions
+    if (!v?.migration) return
+    if (!confirm(`Make ${v.migration.dir} (${v.migration.version}) the main install and remove the migration slot?\n\nMods that still target ${v.main?.version} will be opened with ${v.migration.version} from now on; their Migration report shows what to change.`)) return
+    working = true
+    try { app.versions = await window.api.finishMigration(); app.resetGameData(); onIndex(await window.api.getIndex(true)) } catch (e) { error = clean(e) } finally { working = false }
+  }
 </script>
 
 <div class="backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) onClose() }}>
@@ -62,8 +99,28 @@
     <h2 id="settings-title">Settings</h2>
 
     <h3>Starsector folder</h3>
-    <div class="row"><span class="mono path">{index.install.root}</span><button onclick={onChangeGameFolder}>Change…</button></div>
-    <div class="muted small">Game version {index.install.gameVersion ?? 'unknown'}. The base game (starsector-core) is never changed.</div>
+    <div class="row"><span class="mono path">{app.versions?.main?.dir ?? index.install.root}</span><span class="ver">{app.versions?.main?.version ?? index.install.gameVersion ?? '?'}</span><button onclick={onChangeGameFolder}>Change…</button></div>
+    <div class="muted small">The base game (starsector-core) is never changed.</div>
+
+    <!-- #47 (TARGET-VERSION-ASSESSMENT.md §3.1): a second install, only for moving a mod to another game version -->
+    <h3>Migration install <span class="muted small">(optional)</span></h3>
+    {#if app.versions?.migration}
+      <div class="row"><span class="mono path">{app.versions.migration.dir}</span><span class="ver">{app.versions.migration.ok ? app.versions.migration.version ?? '?' : 'not found'}</span>
+        <button onclick={pickMigration} disabled={working}>Change…</button><button onclick={() => setMigration(null)} disabled={working}>Remove</button></div>
+    {:else}
+      <div class="row"><span class="muted path">Not set</span><button onclick={pickMigration} disabled={working}>Choose…</button></div>
+    {/if}
+    <div class="muted small">Only for moving a mod to a new game version: Saga Forge compares the two installs and shows what your mod needs to change. Neither install is ever written to.</div>
+    {#if vinfo && app.versions}
+      <div class="target">
+        <span>Target for {project.loaded?.modInfo.name ?? 'the active mod'}:</span>
+        {#each [vinfo.newerSlot, vinfo.olderSlot] as s (s)}
+          <label><input type="radio" name="target" checked={app.versions.target === s} disabled={working || !project.loaded} onchange={() => chooseTarget(s)} /> {app.versions[s]?.version} ({s === vinfo.newerSlot ? 'newer' : 'older'}{s === 'main' ? ', main' : ', migration'})</label>
+        {/each}
+      </div>
+      {#if index.modsMode === 'game'}<div class="warn small">Your mods are in the game's mods folder, so the other install can't see them. A separate workspace folder (below) lets both games load the same mod folder.</div>{/if}
+      <div class="row"><button onclick={finish} disabled={working}>Finish migration…</button><span class="muted small">Makes {app.versions.migration?.version} the main install and empties this slot.</span></div>
+    {/if}
 
     <h3>Where your mods are</h3>
     <div class="modes" role="radiogroup" aria-label="Where your mods are">
@@ -92,6 +149,14 @@
       <div class="muted small">{mine.length} mod{mine.length === 1 ? '' : 's'} available as the active mod.</div>
     {/if}
     {#if error}<div class="bad">{error}</div>{/if}
+
+    <!-- R32: where Mark as released puts release zips -->
+    <h3>Releases folder</h3>
+    <div class="row"><span class="mono path">{app.settings.releasesDir}</span>
+      <button onclick={chooseReleases} disabled={working}>Change…</button>
+      {#if app.settings.releasesDirChosen}<button onclick={() => setReleases(null)} disabled={working}>Default</button>{/if}
+      <button onclick={() => window.api.showInFolder(app.settings.releasesDir)} disabled={working}>Open</button></div>
+    <div class="muted small">Mark as released packs each version here as <span class="mono">[game version] Mod name version.zip</span>. Never inside a mod or a Starsector folder. Default: Saga Forge's data folder › releases.</div>
 
     <h3>Checks</h3>
     <label class="ext">
@@ -147,6 +212,9 @@
   .block { display: block; margin-top: 2px; }
   .small { font-size: 12px; margin-top: 4px; }
   .bad { color: var(--bad); margin-top: 8px; }
+  .ver { font-family: var(--mono); font-size: 12px; color: var(--accent); white-space: nowrap; }
+  .target { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 8px 0; font-size: 13px; }
+  .warn { color: var(--warn); margin: 4px 0; }
   .actions { display: flex; justify-content: flex-end; margin-top: 20px; }
   .dialog { max-height: calc(100vh - 40px); overflow-y: auto; }
   .ext { display: flex; gap: 10px; align-items: flex-start; margin-top: 6px; cursor: pointer; }

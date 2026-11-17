@@ -64,7 +64,25 @@ input[type='number'], textarea {
   border: 1px solid var(--border);
   border-radius: 4px;
 }
+/* form fields (ui/Field.svelte): label, control, and a help line that stays visible */
+.f-lbl { color: var(--muted); font-size: 12px; align-self: start; padding-top: 4px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.f-lbl label, .f-lbl span { color: var(--muted); }
+.f-later { border: 1px dashed var(--border); background: none; color: var(--muted); font-size: 10px; padding: 0 5px; border-radius: 8px; line-height: 15px; }
+.f-later:hover { color: #e8a83c; border-color: #e8a83c; }
+.f-later.on { border-style: solid; border-color: #e8a83c; color: #000; background: #e8a83c; }
+.f-todo { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: #e8a83c; background: #2a1f10; border: 1px solid #6b4a1f; border-radius: 4px; padding: 4px 6px; }
+.f-todo input { width: 100%; font-size: 11px; padding: 2px 6px; }
+.f-ctl { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.f-ctl > input:not([type='checkbox']):not([type='color']):not([type='radio']), .f-ctl > select, .f-ctl > textarea { width: 100%; }
+.f-ctl > input[type='checkbox'] { align-self: flex-start; margin-top: 5px; }
+.f-help { font-size: 11px; line-height: 1.35; color: var(--muted); opacity: .85; margin-bottom: 3px; }
+.f-wide { grid-column: 1 / -1; }
+.f-lbl.f-wide { padding-top: 6px; }
+
 /* the open list of a dropdown: same colors as the app, readable on Windows and Linux */
 select option, select optgroup { background: var(--panel-2); color: var(--text); }
 select option:disabled { color: var(--muted); }
 select option:checked { background: var(--accent-2); color: #fff; }
+.f-name { display: flex; align-items: center; gap: 4px; }
+.f-ref { border: none; background: none; color: var(--accent); padding: 0 2px; font-size: 12px; line-height: 1; cursor: help; }
+.f-ref:hover { color: #fff; }

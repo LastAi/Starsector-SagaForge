@@ -16,7 +16,18 @@ import { locationProblems } from '../locations'
 import { encounterProblems } from '../encounters'
 import { saveChecker } from '../release'
 import { styleChecks } from './style'
-import { itemProblems } from './items'
+import { itemProblems, missingImageProblems } from './items'
+import { todoProblems } from '../todo'
+import { inactiveProblems, softenInactive } from '../inactive'
+import { imageSizeProblems } from './images'
+import { nameProblems } from './names'
+import { worldProblems } from './world'
+import { fleetProblems } from '../fleets'
+import { versionProblems } from '../versionrefs'
+import { poolProblems } from './pools'
+import { eventProblems } from './events'
+import { progressProblems } from './progress'
+import type { VersionDiff } from '../versiondiff'
 
 export interface CheckContext {
   model: ModModel
@@ -26,10 +37,20 @@ export interface CheckContext {
   /** Every rules.csv row of the game and all mods (Check mod only; live checks pass null). */
   rules: RuleRow[] | null
   styleChecks: boolean
+  /**
+   * Whether each image path in imagePaths(model) exists in the mod, the game or an installed mod
+   * (or is waiting to be copied in on save). Check mod only; live checks leave it out.
+   */
+  files?: Record<string, boolean> | null
+  /** Sizes of the mod's own images in the kinds' folders (Check mod only), for the size check (R5). */
+  imageSizes?: Record<string, { w: number; h: number }> | null
+  /** #47: the comparison with the other install and which side is targeted (two installs only). */
+  version?: { diff: VersionDiff; targetIsNewer: boolean } | null
 }
 
 type Checker = (ctx: CheckContext) => Problem[]
-const CHECKERS: Checker[] = [basicProblems, factionProblems, allQuestProblems, flagsChecker, locationProblems, encounterProblems, saveChecker, styleChecks, itemProblems]
+const CHECKERS: Checker[] = [basicProblems, factionProblems, allQuestProblems, flagsChecker, locationProblems, encounterProblems, saveChecker, styleChecks, itemProblems, missingImageProblems, (ctx) => todoProblems(ctx.model), (ctx) => inactiveProblems(ctx.model), imageSizeProblems, nameProblems, worldProblems, fleetProblems, poolProblems, eventProblems, progressProblems,
+  (ctx) => (ctx.version ? versionProblems(ctx.model, ctx.version.diff, ctx.version.targetIsNewer, ctx.defs) : [])]
 
 function flagsChecker(ctx: CheckContext): Problem[] {
   const own = handRules(ctx.loaded.files['data/campaign/rules.csv']?.text, ctx.loaded.sourceId)
@@ -48,7 +69,8 @@ export function checkModel(ctx: CheckContext): Problem[] {
     }
   }
   const ignored = new Map(ctx.model.project.ignores.map((i) => [i.key, i.reason]))
-  return out.filter((p) => !(p.key && ignored.has(p.key)) && (ctx.styleChecks || p.level !== 'style'))
+  // problems inside inactive content are warnings (R10)
+  return softenInactive(ctx.model, out).filter((p) => !(p.key && ignored.has(p.key)) && (ctx.styleChecks || p.level !== 'style'))
 }
 
 function basicProblems(ctx: CheckContext): Problem[] {

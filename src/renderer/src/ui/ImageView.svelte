@@ -14,7 +14,9 @@
     url = null
     missing = false
     if (!p) return
-    const req = pending ? images.picked(pending.from) : images.url(p, sourceId ?? project.loaded?.sourceId)
+    // an image waiting for Save: processed bytes (import, R5) or a picked file
+    const req = pending?.bytes ? Promise.resolve(URL.createObjectURL(new Blob([pending.bytes as BlobPart], { type: 'image/png' })))
+      : pending?.from ? images.picked(pending.from) : images.url(p, sourceId ?? project.loaded?.sourceId)
     req.then((u) => { if (path === p) { url = u; missing = !u } })
   })
 </script>

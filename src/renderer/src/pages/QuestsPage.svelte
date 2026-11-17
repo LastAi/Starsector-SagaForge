@@ -2,16 +2,20 @@
   /** Quest planner (PLAN.md §5, mock-up quest.html): flow chart, inspector, dialog preview, Play mode, Rules view. */
   import { SvelteFlow, Background, Controls, MiniMap, type Node, type Edge, type Connection } from '@xyflow/svelte'
   import '@xyflow/svelte/dist/style.css'
+  import { untrack } from 'svelte'
   import type { NodeType, QNode, QuestPlan, DialogNode } from '../../../shared/model'
   import { newNode, newQuest, uniqueId, handlesOf, reachable, slug, stageGroups } from '../../../shared/quest'
+  import { QUEST_TEMPLATES, fromSavedTemplate, markTemplateBlanks } from '../../../shared/templates'
+  import { questScript, scriptMarkdown } from '../../../shared/script'
   import StageFrame from '../graph/StageFrame.svelte'
   import { itemKindLookup } from '../../../shared/export/items'
   import { compileQuest, nodeRuleId, phraseCombos } from '../../../shared/export/questrules'
+  import { lockedEntityIds } from '../../../shared/patterns'
   import { compileRules, Engine, emptyView, type DialogView } from '../../../shared/rules/engine'
-  import { newSimState, sagaHooks } from '../../../shared/play'
+  import { newSimState, sagaHooks, applyMockTargets } from '../../../shared/play'
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
-  import { problems } from '../state/problems.svelte'
+  import { problems, applyProblemFix } from '../state/problems.svelte'
   import { personLook, itemIcon, illustrationPath, makePlayContext, testCtx } from '../state/testctx.svelte'
   import { editQuest } from '../quests/edit'
   import { play, world, allPhrases } from '../quests/play.svelte'
@@ -23,24 +27,44 @@
   import DialogPreview from '../dialog/DialogPreview.svelte'
   import TestContextPanel from '../dialog/TestContextPanel.svelte'
   import Modal from '../ui/Modal.svelte'
+  import TargetEditor from '../quests/TargetEditor.svelte'
+  import { newTarget, targetPlaces } from '../../../shared/targets'
+  import Field from '../ui/Field.svelte'
+  import { later } from '../ui/later'
+  import IdInput from '../ui/IdInput.svelte'
   import Splitter from '../Splitter.svelte'
   import { layout, saveLayout } from '../layout.svelte'
   import { lastRelease, renameStage } from '../../../shared/release'
+  import { dropTodoElement } from '../../../shared/todo'
+  import { inactiveQuests } from '../../../shared/inactive'
 
   const m = $derived(project.m)
   const qid = $derived(app.selected.quests ?? m?.quests[0]?.id ?? null)
   const quest = $derived(m?.quests.find((q) => q.id === qid) ?? null)
   const selNode = $derived(app.selected.questNode ?? null)
   const node = $derived(quest?.nodes.find((n) => n.id === selNode) ?? null)
-  let center = $state<'chart' | 'rules'>('chart')
+  let center = $state<'chart' | 'script' | 'rules'>(app.smokeModal === 'script' ? 'script' : 'chart')
   let dockTab = $state<'preview' | 'problems' | 'log'>('preview')
   let flow: FlowHandle | null = null
+  // walk F30: the inspector starts at the top for each node (it kept the last panel's scroll)
+  let rightEl = $state<HTMLElement>()
+  $effect(() => { void app.selected.questNode; void app.selected.quests; if (rightEl) rightEl.scrollTop = 0 })
   const phrases = $derived([...(m?.phrases ?? []), ...(m?.people.flatMap((p) => p.phrases) ?? [])])
-  const compiled = $derived(quest ? compileQuest(quest, { sagalib: true, phrases, itemKind: itemKindLookup(m?.items ?? [], app.index?.items ?? []) }) : null)
-  const qProblems = $derived(problems.live.filter((p) => p.ref?.page === 'quests' && p.ref.id === qid))
+  const compiled = $derived(quest ? compileQuest(quest, { sagalib: true, phrases, itemKind: itemKindLookup(m?.items ?? [], app.index?.items ?? []), lockedEntities: lockedEntityIds(m?.quests ?? []) }) : null)
+  const SEVERITY = ['error', 'todo', 'warning', 'save', 'style', 'info']
+  const qProblems = $derived(problems.live.filter((p) => p.ref?.page === 'quests' && p.ref.id === qid).map((p, i) => ({ p, i }))
+    .sort((a, b) => SEVERITY.indexOf(a.p.level) - SEVERITY.indexOf(b.p.level) || a.i - b.i).map((x) => x.p))
   const nodeProblems = (nid: string) => qProblems.filter((p) => p.ref?.sub === nid || p.ref?.sub?.startsWith(`${nid}/`))
   const personName = (id: string) => { const l = personLook(id); return l?.name ?? id }
-  const nodeLabel = (n: QNode) => (n.type === 'dialog' || n.type === 'branch' || n.type === 'action' ? n.title ?? '' : n.type === 'stage' ? quest?.stages.find((s) => s.id === n.stage)?.id ?? '' : '')
+  /** Map marker suggestions: this mod's entities and markets, the game's markets and their entities, people. */
+  const markerOptions = $derived([
+    // Phase 7c: the quest's random targets ("target:<var>": the place SagaLib picked)
+    ...(quest ? targetPlaces(quest) : []),
+    ...(m?.systems.flatMap((s) => s.entities.flatMap((e) => [{ id: e.id, name: `${e.name} (${s.name})` }, ...(e.market && e.market.id !== e.id ? [{ id: e.market.id, name: `${e.market.name} market` }] : [])])) ?? []),
+    ...(m?.people.map((p) => ({ id: p.id, name: `${p.name.first} ${p.name.last}` })) ?? []),
+    ...(app.index?.markets.flatMap((x) => [{ id: x.id, name: `${x.name} market` }, ...x.entities.map((id) => ({ id, name: x.name }))]) ?? [])
+  ])
+  const nodeLabel = (n: QNode) => (n.type === 'dialog' || n.type === 'branch' || n.type === 'action' || n.type === 'raid' ? n.title ?? '' : n.type === 'stage' ? quest?.stages.find((s) => s.id === n.stage)?.id ?? '' : '')
 
   // ---- chart nodes/edges, rebuilt from the plan
   let nodes = $state.raw<Node[]>([])
@@ -93,6 +117,7 @@
     const eids = new Set(de.map((e) => e.id))
     editQuest(qid, (q) => {
       q.nodes = q.nodes.filter((n) => !nids.has(n.id) || n.type === 'start')
+      for (const id of nids) dropTodoElement(q, 'nodes', id)
       q.edges = q.edges.filter((e) => !eids.has(e.id) && !nids.has(e.from) && !nids.has(e.to))
     })
     if (selNode && nids.has(selNode)) app.selected.questNode = null
@@ -102,12 +127,26 @@
   let menu = $state<{ x: number; y: number; fx: number; fy: number; from?: { node: string; handle: string } } | null>(null)
   const TYPES: { type: NodeType; label: string }[] = [
     { type: 'dialog', label: 'Dialog' }, { type: 'branch', label: 'Branch' }, { type: 'action', label: 'Action' }, { type: 'stage', label: 'Stage' },
-    { type: 'encounter', label: 'Encounter' }, { type: 'wait', label: 'Wait / Arrive' }, { type: 'end', label: 'End' }, { type: 'link', label: 'Link (into existing dialog)' }, { type: 'note', label: 'Note' }
+    { type: 'encounter', label: 'Encounter' }, { type: 'wait', label: 'Wait / Arrive' }, { type: 'raid', label: 'Raid (ground raid)' }, { type: 'end', label: 'End' }, { type: 'link', label: 'Link (into existing dialog)' }, { type: 'note', label: 'Note' }
   ]
   function openMenu(ev: MouseEvent, from?: { node: string; handle: string }) {
     if (!flow || play.active) return
     const p = flow.toFlow(ev.clientX, ev.clientY)
     menu = { x: ev.clientX, y: ev.clientY, fx: p.x, fy: p.y, from }
+  }
+  /** The map marker of the nearest Stage node upstream of `from` (following links backwards). */
+  function upstreamMarker(q: QuestPlan, from: string): string | undefined {
+    const seen = new Set<string>()
+    const queue = [from]
+    while (queue.length) {
+      const id = queue.shift()!
+      if (seen.has(id)) continue
+      seen.add(id)
+      const n = q.nodes.find((x) => x.id === id)
+      if (n?.type === 'stage') return q.stages.find((s) => s.id === n.stage)?.marker
+      for (const e of q.edges) if (e.to === id) queue.push(e.from)
+    }
+    return undefined
   }
   function addNode(type: NodeType) {
     const mn = menu
@@ -116,14 +155,20 @@
     const id = uniqueId(type === 'dialog' ? 'dialog' : type, quest.nodes.map((n) => n.id))
     editQuest(qid, (q) => {
       const n = newNode(type, id, Math.round(mn.fx), Math.round(mn.fy))
-      if (type === 'stage' && q.stages[0]) (n as { stage: string }).stage = q.stages[0].id
+      // walk W4: a new Stage node takes the first stage no Stage node uses yet (not always the first one)
+      if (n.type === 'stage') n.stage = q.stages.find((s) => !q.nodes.some((x) => x.type === 'stage' && x.stage === s.id))?.id ?? ''
+      // …and a new Arrive waits at the map marker of the stage before it
+      if (n.type === 'wait' && n.mode === 'arrive' && mn.from) n.entity = upstreamMarker(q, mn.from.node) ?? n.entity
       q.nodes.push(n)
-      if (mn.from) {
+      // a note is a comment on the chart: it never takes over the link it was dragged from
+      if (mn.from && type !== 'note') {
         q.edges = q.edges.filter((e) => !(e.from === mn.from!.node && e.handle === mn.from!.handle))
         q.edges.push({ id: uniqueId(`e_${mn.from.node}_${mn.from.handle}`, q.edges.map((e) => e.id)), from: mn.from.node, handle: mn.from.handle, to: id })
       }
     })
     app.selected.questNode = id
+    // walk F30: a node dropped near the edge or under the minimap comes into view
+    setTimeout(() => flow?.reveal(id), 80)
   }
 
   async function doLayout() {
@@ -161,18 +206,43 @@
   }
 
   // ---- quests list
-  let showNew = $state(false)
+  let showNew = $state(app.smokeModal === 'new') // screenshot mode can open it
+  let showInactive = $state(true)
+  const offQuests = $derived(m ? inactiveQuests(m) : new Map<string, 'flag' | 'contact'>())
   let newTitle = $state('')
   let newKind = $state<'quest' | 'dialog'>('quest')
   const newId = $derived(project.prefix + slug(newTitle).replace(new RegExp(`^${project.prefix}`), ''))
+  // R30: start from a template (built-in or saved); its blanks become to-dos
+  let newTemplate = $state('')
+  let savedTemplates = $state<{ file: string; quest: QuestPlan }[]>([])
+  $effect(() => { if (showNew) window.api.listQuestTemplates().then((l) => (savedTemplates = l)).catch(() => {}) })
   function createQuest() {
     const id = newId
     if (!id || m?.quests.some((q) => q.id === id)) { app.error = `The id "${id}" is already used.`; return }
-    project.change((mm) => { mm.quests.push(newQuest(id, newTitle.trim(), newKind)) })
+    const title = newTitle.trim()
+    const builtIn = QUEST_TEMPLATES.find((t) => `builtin:${t.id}` === newTemplate)
+    const saved = savedTemplates.find((t) => `saved:${t.file}` === newTemplate)
+    const q = builtIn ? markTemplateBlanks(builtIn.build(id, title)) : saved ? markTemplateBlanks(fromSavedTemplate(saved.quest, id, title)) : newQuest(id, title, newKind)
+    project.change((mm) => { mm.quests.push(q) })
+    newTemplate = ''
     app.go('quests', id)
     app.selected.questNode = null
     showNew = false
     newTitle = ''
+  }
+  /** R30: keep this quest as a template for new quests (in Saga Forge's own data folder, for every mod). */
+  // (a dialog, not prompt(): Electron has no prompt())
+  let showSaveTemplate = $state(false)
+  let templateName = $state('')
+  async function saveAsTemplate() {
+    const name = templateName.trim()
+    if (!quest || !name) return
+    try {
+      const q = $state.snapshot(quest) as QuestPlan
+      await window.api.saveQuestTemplate(name, { ...q, inactive: undefined, todo: undefined })
+      showSaveTemplate = false
+      app.flash(`Saved the template "${name}". New quest › Start from offers it.`)
+    } catch (e) { app.error = String((e as Error)?.message ?? e) }
   }
   function deleteQuest() {
     if (!quest || !confirm(`Delete the quest "${quest.title}"? Undo can bring it back until you save.`)) return
@@ -218,6 +288,7 @@
       const base = hooks.token!
       const e = new Engine(rs, makePlayContext(), { ...hooks, token: (en, tok) => (force?.has(tok) ? force.get(tok) : base(en, tok)) })
       for (const v of quest.variables) if (v.type !== 'target') e.set(`$global.${quest.id}_${v.name}`, v.type === 'number' ? Number(v.initial) || 0 : v.initial)
+      applyMockTargets(e, quest)
       if (rule.option) e.set('$option', rule.option)
       e.apply(rule)
       const optTrig = `${quest.id}_${node.id}_options`
@@ -248,6 +319,7 @@
     if (!to || to === sr.from) { stageRename = null; return }
     if (quest?.stages.some((s) => s.id === to)) { app.error = `A stage with the id "${to}" exists already.`; return }
     project.change((mm) => renameStage(mm, sr.quest, sr.from, to, stageReleased ? stageHow as 'alias' | 'drop' : 'drop'))
+    if (openStage === sr.from) openStage = to
     stageRename = null
   }
 
@@ -264,47 +336,87 @@
       play.start(quest).then(() => { for (const n of picks) { const o = play.view.options[n - 1]; if (o) play.choose(o.id) } })
     }
   })
+  // screenshot mode: the 4th part opens a dialog or panel ("stages", "stagerename", "nodemenu", "changeid")
+  /** The stage whose form is open in the outline (walk W4: edits used to fold it shut). */
+  /** Phase 7c: the target variable whose search is being edited. */
+  let targetOpen = $state<string | null>(app.smokeModal?.startsWith('target=') ? app.smokeModal.slice('target='.length) : null)
+  let openStage = $state<string | null>(app.smokeModal === 'stages' ? (untrack(() => quest?.stages[0]?.id) ?? null) : null)
+  // a Stage node's "+ New stage…" asks for its form to open here
+  $effect(() => { const want = app.selected.questStage; if (want) { openStage = want; app.selected.questStage = null } })
+  let smokeModalDone = false
+  $effect(() => {
+    const mo = app.smokeModal
+    if (!mo || !quest || smokeModalDone) return
+    smokeModalDone = true
+    if (mo === 'stagerename' && quest.stages[0]) { stageRename = { quest: quest.id, from: quest.stages[0].id }; stageTo = quest.stages[0].id; stageHow = 'alias' }
+    if (mo === 'changeid') { changeIdTo = quest.id; showChangeId = true }
+    if (mo === 'savetemplate') { templateName = quest.title; showSaveTemplate = true }
+    if (mo === 'nodemenu') setTimeout(() => {
+      const el = document.querySelector('.qcanvas')?.getBoundingClientRect()
+      if (el && flow) { const p = flow.toFlow(el.left + el.width / 2, el.top + 60); menu = { x: el.left + el.width / 2, y: el.top + 60, fx: p.x, fy: p.y } }
+    }, 1500)
+  })
 </script>
 
 <svelte:window onkeydown={onKey} />
 
 <div class="page" style="grid-template-columns:{layout.left}px 1px minmax(0,1fr) 1px {layout.right}px">
   <aside class="left">
-    <div class="sect">Quests <button disabled={!m} onclick={() => (showNew = true)}>+ New quest</button></div>
+    <div class="sect">Quests <span class="sectr"><label class="chk" title="Show quests that are inactive (planned, not exported)"><input type="checkbox" bind:checked={showInactive} /> inactive</label><button disabled={!m} onclick={() => (showNew = true)}>+ New quest</button></span></div>
     <ul class="list">
-      {#each m?.quests ?? [] as q (q.id)}
-        <li class:on={q.id === qid}><button class="li" onclick={() => { app.selected.quests = q.id; app.selected.questNode = null; play.stop() }}><span>{q.title}</span><span class="sub mono">{q.kind === 'dialog' ? 'dialog only' : q.id}</span></button></li>
+      {#each (m?.quests ?? []).filter((q) => showInactive || !offQuests.has(q.id)) as q (q.id)}
+        <li class:on={q.id === qid} class:inactive={offQuests.has(q.id)}><button class="li" onclick={() => { app.selected.quests = q.id; app.selected.questNode = null; play.stop() }}><span>{q.title}{#if offQuests.has(q.id)} <span class="muted" title={offQuests.get(q.id) === 'contact' ? 'Its contact is inactive' : 'Marked inactive'}>[Inactive]</span>{/if}</span><span class="sub mono">{q.kind === 'dialog' ? 'dialog only' : q.id}</span></button></li>
       {:else}<li class="muted small pad">{m ? 'No quests yet.' : 'Pick an active mod first.'}</li>{/each}
     </ul>
     {#if quest}
-      <div class="sect">Stages (journal) <button onclick={() => edQ((q) => { q.stages.push({ id: uniqueId('stage', q.stages.map((s) => s.id)), title: 'New stage', journal: '', kind: 'normal', renamedFrom: [] }) })}>+</button></div>
+      <div class="sect">Stages (journal) <button title="Add a stage (its form opens below)" onclick={() => { const id = uniqueId('stage', quest.stages.map((s) => s.id)); edQ((q) => { q.stages.push({ id, title: 'New stage', journal: '', kind: 'normal', renamedFrom: [] }) }); openStage = id }}>+</button></div>
       <div class="outline">
         {#each quest.stages as s, i (s.id)}
-          <details>
+          <details open={openStage === s.id} ontoggle={(e) => { if (e.currentTarget.open) openStage = s.id; else if (openStage === s.id) openStage = null }}>
             <summary><span class="dot" class:succ={s.kind === 'success'} class:fail={s.kind === 'fail'}></span><span class="mono sid">{s.id}</span> {s.title}</summary>
             <div class="sform">
-              <input type="text" value={s.title} placeholder="title" onchange={(e) => { const v = e.currentTarget.value; edQ((q) => { q.stages[i].title = v }) }} />
-              <textarea rows="2" placeholder="Journal text" value={s.journal} onchange={(e) => { const v = e.currentTarget.value; edQ((q) => { q.stages[i].journal = v }) }}></textarea>
-              <input type="text" value={s.nextStep ?? ''} placeholder="Next step line (intel)" onchange={(e) => { const v = e.currentTarget.value; edQ((q) => { q.stages[i].nextStep = v || undefined }) }} />
-              <input type="text" class="mono" value={s.marker ?? ''} placeholder="map marker entity id" onchange={(e) => { const v = e.currentTarget.value; edQ((q) => { q.stages[i].marker = v || undefined }) }} />
-              <select value={s.kind} onchange={(e) => { const v = e.currentTarget.value as 'normal' | 'success' | 'fail'; edQ((q) => { q.stages[i].kind = v }) }}><option value="normal">normal</option><option value="success">ends the quest: success</option><option value="fail">ends the quest: failure</option></select>
-              <div class="muted small">Old ids (players in them move here): <input type="text" class="mono" value={s.renamedFrom.join(' ')} onchange={(e) => { const v = e.currentTarget.value.split(/\s+/).filter(Boolean); edQ((q) => { q.stages[i].renamedFrom = v }) }} /></div>
-              <div class="row2"><button class="mini" onclick={() => { stageRename = { quest: quest.id, from: s.id }; stageTo = s.id; stageHow = 'alias' }}>Change id…</button><button class="mini" onclick={() => edQ((q) => { q.stages.splice(i, 1) })}>Delete stage</button></div>
+              <Field wide label="Id" help="Saves remember the player's stage by this id. Never shown in game. Change it only with Change id…, which can keep the old id as an alias.">
+                <div class="row2"><span class="mono">{s.id}</span><button class="mini" onclick={() => { stageRename = { quest: quest.id, from: s.id }; stageTo = s.id; stageHow = 'alias' }}>Change id…</button></div>
+              </Field>
+              <Field wide label="Title" for={`st-t-${i}`} help="The stage's name: the intel list shows it under the quest's name when the next-step line is empty, and the chart shows it on the stage's frame.">
+                <input id={`st-t-${i}`} type="text" value={s.title} placeholder="e.g. Find the convoy" onchange={(e) => { const v = e.currentTarget.value; edQ((q) => { q.stages[i].title = v }) }} />
+              </Field>
+              <Field wide label="Journal text" for={`st-j-${i}`} help="The paragraph in the intel screen's panel for this quest while the player is at this stage. Empty: the title is shown.">
+                <textarea id={`st-j-${i}`} rows="3" placeholder="e.g. A Compact convoy went dark in the Kestrel belt. Find it." value={s.journal} onchange={(e) => { const v = e.currentTarget.value; edQ((q) => { q.stages[i].journal = v }) }}></textarea>
+              </Field>
+              <Field wide label="Next-step line" for={`st-n-${i}`} help="The short line under the quest's name in the intel list and the stage-change notification. Empty: the title is used.">
+                <input id={`st-n-${i}`} type="text" value={s.nextStep ?? ''} placeholder="e.g. Search the Kestrel belt" onchange={(e) => { const v = e.currentTarget.value; edQ((q) => { q.stages[i].nextStep = v || undefined }) }} />
+              </Field>
+              <Field wide label="Map marker" later={later(quest, `stages#${s.id}.marker`, edQ)} help="Where the map's quest marker points during this stage: an entity id (planet, station, wreck), a market id, or a person id (their market). Empty: no marker.">
+                <IdInput value={s.marker ?? ''} options={markerOptions} placeholder="e.g. vgc_convoy_wreck" onCommit={(v) => edQ((q) => { q.stages[i].marker = v || undefined })} />
+              </Field>
+              <Field wide label="Kind" for={`st-k-${i}`} help="Normal stages keep the quest running. A success or failure stage ends the quest that way as soon as it is reached (the journal moves it to Completed or Failed).">
+                <select id={`st-k-${i}`} value={s.kind} onchange={(e) => { const v = e.currentTarget.value as 'normal' | 'success' | 'fail'; edQ((q) => { q.stages[i].kind = v }) }}><option value="normal">normal: the quest goes on</option><option value="success">ends the quest: success</option><option value="fail">ends the quest: failure</option></select>
+              </Field>
+              <Field wide label="Old ids" for={`st-o-${i}`} help="Ids this stage had in earlier releases, separated by spaces. Players whose saves are at an old id move to this stage when they load. Change id… fills this in for you.">
+                <input id={`st-o-${i}`} type="text" class="mono" value={s.renamedFrom.join(' ')} placeholder="none" onchange={(e) => { const v = e.currentTarget.value.split(/\s+/).filter(Boolean); edQ((q) => { q.stages[i].renamedFrom = v }) }} />
+              </Field>
+              <div class="row2"><button class="mini" onclick={() => edQ((q) => { dropTodoElement(q, 'stages', q.stages[i].id); q.stages.splice(i, 1) })}>Delete stage</button></div>
             </div>
           </details>
         {/each}
       </div>
       <div class="sect">Variables <button onclick={() => edQ((q) => { q.variables.push({ name: uniqueId('var', q.variables.map((v) => v.name)), type: 'number', scope: 'quest', initial: '0' }) })}>+</button></div>
       <div class="outline">
+        {#if quest.variables.length}<div class="var vhead muted small"><span>Name</span><span>Type</span><span>Starts at</span><span></span></div>{/if}
         {#each quest.variables as v, i (v.name)}
           <div class="var">
             <input type="text" class="mono" value={v.name} onchange={(e) => { const nv = slug(e.currentTarget.value); if (nv) edQ((q) => { q.variables[i].name = nv }) }} />
-            <select value={v.type} onchange={(e) => { const t = e.currentTarget.value as typeof v.type; edQ((q) => { q.variables[i].type = t }) }}><option>number</option><option>string</option><option>bool</option><option>entity</option><option>person</option><option value="target">target (coming later)</option></select>
+            <select value={v.type} onchange={(e) => { const t = e.currentTarget.value as typeof v.type; edQ((q) => { q.variables[i].type = t; if (t === 'target' && !q.variables[i].target) q.variables[i].target = newTarget() }); if (t === 'target') targetOpen = v.name }}><option>number</option><option>string</option><option>bool</option><option>entity</option><option>person</option><option value="target">random target</option></select>
+            {#if v.type === 'target'}
+              <button class="mini init" title="What SagaLib picks when the quest is offered" onclick={() => (targetOpen = v.name)}>{v.target ? `${v.target.pick} · ${v.target.require.length + v.target.prefer.length} criteria` : 'set up…'}</button>
+            {:else}
             <input type="text" class="mono init" value={v.initial} title="initial value" onchange={(e) => { const nv = e.currentTarget.value; edQ((q) => { q.variables[i].initial = nv }) }} />
+            {/if}
             <button class="mini" onclick={() => edQ((q) => { q.variables.splice(i, 1) })}>✕</button>
           </div>
         {/each}
-        {#if quest.variables.length}<div class="muted small">In rules: <span class="mono">$global.{quest.id}_&lt;name&gt;</span></div>{/if}
+        <div class="f-help">Values the quest remembers in the save, such as the agreed pay. Conditions and Set actions use them; in rules they are <span class="mono">$global.{quest.id}_&lt;name&gt;</span>. The player never sees them unless a text uses the token.</div>
       </div>
     {/if}
   </aside>
@@ -327,12 +439,24 @@
         {#if showFind}<input type="search" placeholder="text, option or id…" bind:value={find} />{#each found.slice(0, 8) as f (f)}<button class="mini" onclick={() => { app.selected.questNode = f; flow?.fit([f]) }}>{f}</button>{/each}{/if}
       {/if}
       <span class="spacer"></span>
-      <div class="seg"><button class:on={center === 'chart'} onclick={() => (center = 'chart')}>Chart</button><button class:on={center === 'rules'} onclick={() => (center = 'rules')}>Rules ({compiled?.rows.length ?? 0})</button></div>
+      <div class="seg"><button class:on={center === 'chart'} onclick={() => (center = 'chart')}>Chart</button><button class:on={center === 'script'} onclick={() => (center = 'script')} title="The whole quest as a screenplay (R29)">Script</button><button class:on={center === 'rules'} onclick={() => (center = 'rules')}>Rules ({compiled?.rows.length ?? 0})</button></div>
       {#if quest}<button class="mini danger" onclick={deleteQuest}>Delete quest</button>{/if}
     </div>
     <div class="qcanvas">
       {#if !quest}
         <div class="center muted">{m ? 'Create a quest on the left, or pick one.' : 'Pick or create an active mod first.'}</div>
+      {:else if center === 'script' && m}
+        {@const blocks = questScript(quest, m)}
+        <div class="script">
+          <div class="srow"><span class="muted small">The quest in the order the player meets it. Click a line to select its node.</span><span class="spacer"></span><button class="mini" onclick={() => navigator.clipboard.writeText(scriptMarkdown(quest, blocks)).then(() => app.flash('Copied the script as Markdown.'))}>Copy as Markdown</button></div>
+          <h1>{quest.title}</h1>
+          {#each blocks as b, i (i)}
+            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+            <div class="sb {b.kind}" class:on={b.node === selNode} onclick={() => (app.selected.questNode = b.node)}>
+              {#if b.kind === 'scene'}{b.text}{:else if b.kind === 'choice'}<b>▸ {b.text}</b> <span class="muted">→ {b.to}</span>{:else if b.kind === 'note'}[{b.text}]{:else}{b.text}{/if}
+            </div>
+          {/each}
+        </div>
       {:else if center === 'rules'}
         <div class="rules">
           <table class="t">
@@ -396,7 +520,7 @@
           {/if}
         {:else if dockTab === 'problems'}
           <div class="plist">
-            {#each qProblems as p, i (i)}<button class="prow" onclick={() => { const s = p.ref?.sub?.split('/')[0]; if (s) app.selected.questNode = s }}><span class="ico {p.level === 'error' ? 'e' : 'w'}">{p.level === 'error' ? '!' : '?'}</span><span>{p.message}</span></button>{:else}<div class="muted small pad">No problems.</div>{/each}
+            {#each qProblems as p, i (i)}<div class="prow"><button class="pmsg" onclick={() => { const s = p.ref?.sub?.split('/')[0]; if (s) app.selected.questNode = s }}><span class="ico {p.level === 'error' ? 'e' : p.level === 'info' ? 'i' : 'w'}">{p.level === 'error' ? '!' : p.level === 'info' ? 'i' : '?'}</span><span>{p.message}</span></button>{#each p.fixes ?? [] as f, j (j)}{#if f.action !== 'open'}<button class="mini fixb" onclick={() => applyProblemFix(f.action, f.arg)}>{f.label}</button>{/if}{/each}</div>{:else}<div class="muted small pad">No problems.</div>{/each}
           </div>
         {:else}
           <div class="plist mono small">{#each play.log as l, i (i)}<div>{l}</div>{:else}<div class="muted pad">Press Play ▶ to run the quest; the log explains every step.</div>{/each}</div>
@@ -407,11 +531,11 @@
           <div class="h">Variables</div>
           {#each play.vars as [k, v] (k)}<div class="mono small"><span class="muted">{k}</span> = {v}</div>{:else}<div class="muted small">(none set yet)</div>{/each}
           <div class="h">Path</div><div class="mono small">{play.path.join(' → ')}</div>
-          <button class="mini" onclick={() => {
+          <button class="mini" onclick={async () => {
             const e = play.engineRef
             if (!e || !project.m) return
-            const name = prompt('Name of the test profile', 'From Play mode')
-            if (!name) return
+            const name = (await app.ask('Name of the test profile', 'From Play mode', 'Save profile'))?.trim()
+            if (!name || !project.m) return
             import('../../../shared/play').then(({ profileFromPlay }) => {
               const prof = profileFromPlay(e, uniqueId(slug(name), project.m!.testProfiles.map((p) => p.id)), name, project.m!.quests)
               project.change((mm) => { mm.testProfiles.push(prof) })
@@ -426,11 +550,11 @@
   </section>
   <Splitter axis="x" value={layout.right} min={280} max={() => 720} sign={-1} label="Resize inspector" onChange={(v) => (layout.right = v)} onDone={saveLayout} onReset={() => { layout.right = 340; saveLayout() }} />
 
-  <aside class="right">
+  <aside class="right" bind:this={rightEl}>
     {#if quest && node}
       <NodeInspector {quest} {node} />
     {:else if quest}
-      <QuestSettings {quest} onChangeId={() => { changeIdTo = quest.id; showChangeId = true }} />
+      <QuestSettings {quest} onChangeId={() => { changeIdTo = quest.id; showChangeId = true }} onSaveTemplate={() => { templateName = quest.title; showSaveTemplate = true }} />
     {/if}
   </aside>
 </div>
@@ -444,12 +568,20 @@
 
 {#if showNew}
   <Modal title="New quest" onClose={() => (showNew = false)}>
-    <div class="grid2">
-      <label for="nq-t">Title</label><input id="nq-t" type="text" bind:value={newTitle} placeholder="e.g. The Lost Convoy" />
-      <span class="muted">Id</span><span class="mono">{newId || '—'}</span>
-      <label for="nq-k">Kind</label><select id="nq-k" bind:value={newKind}><option value="quest">Quest (journal stages, SagaLib)</option><option value="dialog">Conversation only</option></select>
+    <div class="grid2 wide">
+      <Field label="Title" for="nq-t" help="The quest's name in the intel screen and the contact's mission list. You can change it any time."><input id="nq-t" type="text" bind:value={newTitle} placeholder="e.g. The Lost Convoy" /></Field>
+      <Field label="Id" help="Made from the title with the mod's prefix. It is the mission id, the start of every rule id, and what saves remember: don't change it after a release."><span class="mono">{newId || '—'}</span></Field>
+      <Field label="Start from" for="nq-tp" help="An empty quest, or a template: a ready chart with stages, placeholder text, a reward and a note. Its blanks (the contact, the places, the fleet) are listed under To do in Problems. Your own templates: Save as template on a quest's page.">
+        <select id="nq-tp" bind:value={newTemplate}>
+          <option value="">an empty quest</option>
+          <optgroup label="Templates">{#each QUEST_TEMPLATES as t (t.id)}<option value={`builtin:${t.id}`}>{t.label}: {t.summary}</option>{/each}</optgroup>
+          {#if savedTemplates.length}<optgroup label="Your templates">{#each savedTemplates as t (t.file)}<option value={`saved:${t.file}`}>{t.quest.title} ({t.file.replace(/\.quest\.json$/, '')})</option>{/each}</optgroup>{/if}
+        </select>
+      </Field>
+      {#if !newTemplate}
+        <Field label="Kind" for="nq-k" help="A quest has journal stages, a map marker and rewards, and needs SagaLib. A conversation only adds dialog (an option at a market, a greeting) with no journal entry."><select id="nq-k" bind:value={newKind}><option value="quest">Quest (journal stages, SagaLib)</option><option value="dialog">Conversation only</option></select></Field>
+      {/if}
     </div>
-    <p class="muted small">The quest id is also the mission id and the rule prefix; it must never change after release (PLAN.md §3.2).</p>
     {#snippet actions()}<button onclick={() => (showNew = false)}>Cancel</button><button class="primary" disabled={!newTitle.trim()} onclick={createQuest}>Create</button>{/snippet}
   </Modal>
 {/if}
@@ -458,22 +590,38 @@
   <Modal title="Change the stage's id" onClose={() => (stageRename = null)}>
     {#if stageReleased}
       <p>Stage <span class="mono">{stageRename.from}</span> is in release <b>{stageReleased}</b>. Players who are at this stage in their saves are tracked by this id.</p>
-      <div class="grid2"><label for="sr-to">New id</label><input id="sr-to" type="text" class="mono" bind:value={stageTo} disabled={stageHow === 'title'} /></div>
+      <div class="grid2 wide"><Field label="New id" for="sr-to" help="Lowercase letters, digits and _. Never shown in game."><input id="sr-to" type="text" class="mono" bind:value={stageTo} disabled={stageHow === 'title'} /></Field></div>
       <label class="opt"><input type="radio" bind:group={stageHow} value="alias" /> <b>Keep the old id as an alias</b> (recommended): SagaLib moves those players to the new id when they load.</label>
       <label class="opt"><input type="radio" bind:group={stageHow} value="drop" /> Change it without an alias: players at this stage lose their place.</label>
       <label class="opt"><input type="radio" bind:group={stageHow} value="title" /> Only change the display name (edit the title instead).</label>
     {:else}
       <p class="muted">This stage isn't in a release yet, so changing its id affects no saves.</p>
-      <div class="grid2"><label for="sr-to2">New id</label><input id="sr-to2" type="text" class="mono" bind:value={stageTo} /></div>
+      <div class="grid2 wide"><Field label="New id" for="sr-to2" help="Lowercase letters, digits and _. Never shown in game."><input id="sr-to2" type="text" class="mono" bind:value={stageTo} /></Field></div>
     {/if}
     {#snippet actions()}<button onclick={() => (stageRename = null)}>Cancel</button><button class="primary" onclick={doStageRename}>Change</button>{/snippet}
+  </Modal>
+{/if}
+
+{#if targetOpen && quest}
+  {@const tv = quest.variables.find((v) => v.name === targetOpen)}
+  <Modal title={`Random target: ${targetOpen}`} width={760} onClose={() => (targetOpen = null)}>
+    {#if tv}<TargetEditor quest={quest.id} name={tv.name} target={tv.target} onChange={(t) => { const n = targetOpen; edQ((q) => { const x = q.variables.find((v) => v.name === n); if (x) x.target = t }) }} />{/if}
+    {#snippet actions()}<button class="primary" onclick={() => (targetOpen = null)}>Done</button>{/snippet}
+  </Modal>
+{/if}
+
+{#if showSaveTemplate}
+  <Modal title="Save as template" onClose={() => (showSaveTemplate = false)}>
+    <p>A copy of this quest is kept in Saga Forge's own data folder. New quest › Start from offers it in every mod; the quest id is replaced, and the to-dos and the inactive mark are dropped.</p>
+    <div class="grid2 wide"><Field label="Template name" for="st-name" help="Shown in New quest › Start from. A template with the same name is replaced."><input id="st-name" type="text" bind:value={templateName} /></Field></div>
+    {#snippet actions()}<button onclick={() => (showSaveTemplate = false)}>Cancel</button><button class="primary" disabled={!templateName.trim()} onclick={saveAsTemplate}>Save template</button>{/snippet}
   </Modal>
 {/if}
 
 {#if showChangeId}
   <Modal title="Change the quest's id" onClose={() => (showChangeId = false)}>
     <p>The quest id is its mission id and rules prefix. After a release, players in the middle of the quest lose it: avoid this after release (Problems warns).</p>
-    <input type="text" class="mono" bind:value={changeIdTo} />
+    <div class="grid2 wide"><Field label="New id" for="cq-to" help="Lowercase letters, digits and _, starting with the mod's prefix. Conditions and test profiles that use the old id follow."><input id="cq-to" type="text" class="mono" bind:value={changeIdTo} /></Field></div>
     {#snippet actions()}<button onclick={() => (showChangeId = false)}>Cancel</button><button class="primary" onclick={changeId}>Change id</button>{/snippet}
   </Modal>
 {/if}
@@ -484,6 +632,9 @@
   .right { padding: 10px 12px; }
   .sect { padding: 8px 10px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
   .sect button { padding: 1px 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+  .sectr { display: flex; gap: 8px; align-items: center; }
+  .sectr .chk { display: flex; gap: 4px; align-items: center; text-transform: none; letter-spacing: 0; }
+  .list li.inactive { opacity: .5; }
   .list { list-style: none; margin: 0; padding: 0 4px; }
   .list li.on { background: #1f2a38; outline: 1px solid var(--accent-2); border-radius: 4px; }
   .li { display: flex; gap: 8px; width: 100%; border: none; background: none; padding: 4px 8px; text-align: left; white-space: nowrap; overflow: hidden; }
@@ -494,11 +645,14 @@
   .sid { color: var(--muted); font-size: 11px; }
   .dot { width: 9px; height: 9px; border-radius: 2px; background: #a0558f; flex: none; }
   .dot.succ { background: var(--good); } .dot.fail { background: var(--bad); }
-  .sform { display: flex; flex-direction: column; gap: 3px; padding: 4px 0 6px 15px; }
+  .sform { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 6px; padding: 4px 0 8px 15px; }
   .sform input, .sform textarea, .sform select { width: 100%; padding: 2px 6px; font-size: 12px; }
+  .sform .row2 { align-items: center; }
   .var { display: flex; gap: 3px; margin-bottom: 3px; }
   .var input { flex: 1; min-width: 0; padding: 2px 5px; font-size: 11px; }
   .var input.init { flex: 0 0 52px; }
+  .vhead { margin-bottom: 1px; }
+  .vhead span:nth-child(1) { flex: 1; } .vhead span:nth-child(2) { width: 72px; } .vhead span:nth-child(3) { width: 52px; } .vhead span:nth-child(4) { width: 22px; }
   .var select { font-size: 11px; padding: 1px 2px; width: 72px; }
   .main { display: grid; min-width: 0; min-height: 0; }
   .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--border); font-size: 12px; }
@@ -515,6 +669,17 @@
   .help { font-size: 11px; color: var(--muted); padding: 2px 10px; background: var(--panel); border-top: 1px solid var(--border); }
   .center { display: grid; place-items: center; height: 100%; padding: 20px; text-align: center; }
   .rules { overflow: auto; height: 100%; }
+  .script { overflow: auto; height: 100%; padding: 12px 28px 40px; max-width: 820px; font-size: 13px; line-height: 1.55; }
+  .script h1 { font-size: 18px; margin: 4px 0 12px; }
+  .script .srow { display: flex; gap: 8px; align-items: center; }
+  .sb { padding: 1px 6px; border-radius: 4px; cursor: pointer; }
+  .sb:hover { background: #1a2230; }
+  .sb.on { background: #1f2a38; outline: 1px solid var(--accent-2); }
+  .sb.scene { margin-top: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); font-size: 12px; }
+  .sb.speaker { text-align: center; font-weight: 600; margin-top: 4px; }
+  .sb.line { margin: 2px 0 6px; }
+  .sb.choice { padding-left: 24px; }
+  .sb.note { color: var(--muted); font-style: italic; font-size: 12px; }
   table.t { width: 100%; border-collapse: collapse; font-size: 11px; }
   table.t th { text-align: left; color: var(--muted); font-weight: normal; border-bottom: 1px solid var(--border); padding: 4px 6px; position: sticky; top: 0; background: var(--panel); }
   table.t td { border-bottom: 1px solid #1e242c; padding: 3px 6px; vertical-align: top; cursor: pointer; }
@@ -529,7 +694,10 @@
   .variants { display: flex; gap: 6px; overflow: auto; height: 100%; }
   .variant { flex: 1; min-width: 320px; display: flex; flex-direction: column; }
   .plist { overflow: auto; padding: 4px 8px; flex: 1; }
-  .prow { display: flex; gap: 8px; width: 100%; text-align: left; border: none; background: none; padding: 4px; font-size: 12px; border-bottom: 1px solid #1e242c; }
+  .prow { display: flex; gap: 8px; width: 100%; align-items: center; border-bottom: 1px solid #1e242c; }
+  .pmsg { display: flex; gap: 8px; flex: 1; text-align: left; border: none; background: none; padding: 4px; font-size: 12px; }
+  .fixb { flex: none; }
+  .ico.i { background: var(--accent-2); color: #fff; }
   .ico { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 700; flex: none; }
   .ico.e { background: var(--bad); color: #fff; } .ico.w { background: var(--warn); color: #000; }
   .vars { padding: 8px 10px; overflow: auto; background: var(--panel); font-size: 12px; }
@@ -542,6 +710,7 @@
   .small { font-size: 11px; }
   .pad { padding: 6px 10px; }
   .grid2 { display: grid; grid-template-columns: 70px 1fr; gap: 6px 10px; align-items: center; }
+  .grid2.wide { width: 440px; gap: 2px 10px; }
   .opt { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; font-size: 12px; }
   .row2 { display: flex; gap: 6px; }
   :global(.svelte-flow) { --xy-background-color: #0f1216; --xy-node-background-color: transparent; --xy-node-border: none; --xy-minimap-background-color: #161a20; }

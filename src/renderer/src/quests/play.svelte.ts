@@ -3,8 +3,10 @@
  * menus) with the rules engine and the TypeScript copy of SagaLib. Never changes the plan or the mod.
  */
 import { compileQuest, nodeRuleId, startOptionId, nodeTrigger, type CompiledQuest } from '../../../shared/export/questrules'
+import { lockedEntityIds } from '../../../shared/patterns'
+import { forceKey } from '../../../shared/pools'
 import { compileRules, Engine, type DialogView, type PlayerState, type RuleSet } from '../../../shared/rules/engine'
-import { newSimState, sagaHooks, startQuest, applyProfile, type SimState, type SimWorld } from '../../../shared/play'
+import { newSimState, sagaHooks, startQuest, applyProfile, raidOutcome, RAID_DONE, RAID_BACK, applyMockTargets, mockTargetId, type SimState, type SimWorld } from '../../../shared/play'
 import type { Phrase, QuestPlan, TestProfile } from '../../../shared/model'
 import type { Value } from '../../../shared/rules/parse'
 import { app } from '../state/app.svelte'
@@ -25,7 +27,7 @@ export function allPhrases(): Map<string, Phrase> {
 }
 
 export function world(): SimWorld {
-  return { quests: project.m?.quests ?? [], phrases: allPhrases(), itemName, factionName: (id) => factionLook(id)?.name ?? id }
+  return { quests: project.m?.quests ?? [], phrases: allPhrases(), itemName, factionName: (id) => factionLook(id)?.name ?? id, pools: project.m?.pools ?? [] }
 }
 
 class PlayState {
@@ -49,6 +51,12 @@ class PlayState {
   private rs: RuleSet | null = null
 
   get engineRef(): Engine | null { return this.engine }
+  /** Phase 7a: the next roll of this pool picks `entry` (as SagaLib's dev-mode force key). */
+  forcePool(pool: string, entry: string) {
+    if (!this.engine) return
+    this.engine.set(forceKey(pool), entry)
+    this.log = [...this.log, `Next roll of ${pool}: ${entry} (forced)`]
+  }
 
   async start(q: QuestPlan, fromNode?: string): Promise<void> {
     const game = await app.loadRuleSet()
@@ -56,8 +64,8 @@ class PlayState {
     const phrases = [...w.phrases.values()]
     const itemKind = itemKindLookup(project.m?.items ?? [], app.index?.items ?? [])
     // every quest of the mod (other quests' SF_ commands and conditions work too), then the game's rules
-    const rows = (project.m?.quests ?? []).flatMap((x) => compileQuest(x, { sagalib: true, phrases, itemKind }).rows)
-    this.compiled = compileQuest(q, { sagalib: true, phrases, itemKind })
+    const rows = (project.m?.quests ?? []).flatMap((x) => compileQuest(x, { sagalib: true, phrases, itemKind, lockedEntities: lockedEntityIds(project.m?.quests ?? []) }).rows)
+    this.compiled = compileQuest(q, { sagalib: true, phrases, itemKind, lockedEntities: lockedEntityIds(project.m?.quests ?? []) })
     this.quest = q
     this.rs = compileRules([...rows, ...game.all.map((r) => r.row)])
     const ctx = makePlayContext()
@@ -71,6 +79,8 @@ class PlayState {
     const e = this.engine
     // the quest is being offered: SagaLib sets its variables when the mission is created
     for (const v of q.variables) if (v.type !== 'target' && e.get(`$global.${q.id}_${v.name}`) === undefined) e.set(`$global.${q.id}_${v.name}`, v.type === 'number' ? Number(v.initial) || 0 : v.type === 'bool' ? v.initial === 'true' : v.initial)
+    // Phase 7c: random targets stand in with their mocks (picked when the quest is offered)
+    applyMockTargets(e, q)
     if (fromNode) this.enterNode(fromNode)
     else this.enterStart(q)
     this.sync()
@@ -84,6 +94,11 @@ class PlayState {
       e.fireBest(`${q.id}_blurb${s.kind === 'bar' ? 'Bar' : ''}`)
       e.view.options = [{ id: startOptionId(q), text: s.optionText || q.title, order: 0, enabled: true }, { id: '__leave', text: 'Leave', order: 99, enabled: true, shortcut: 'ESCAPE' }]
       e.log.push({ kind: 'info', text: `The ${s.kind === 'bar' ? 'bar' : 'contact'} offers "${q.title}" (person_missions / bar_events row)` })
+    } else if (s.kind === 'barScene') {
+      // RC-R6: the bar shows the blurb and the option (its chance and once-limit apply in game)
+      e.para({ kind: 'text', text: s.blurb })
+      e.view.options = [{ id: startOptionId(q), text: s.optionText || q.title, order: 0, enabled: true }, { id: '__leave', text: 'Leave the bar', order: 99, enabled: true, shortcut: 'ESCAPE' }]
+      e.log.push({ kind: 'info', text: `Bar scene (AddBarEvents) when: ${[...s.conditions, s.probability !== undefined && s.probability < 1 ? `chance ${s.probability}` : '', s.once && s.once !== 'none' ? `once per ${s.once}` : ''].filter(Boolean).join(', ') || 'always'}` })
     } else if (s.kind === 'option') {
       e.view.options = [{ id: startOptionId(q), text: s.optionText, order: 0, enabled: true }]
       e.log.push({ kind: 'info', text: `Option added to ${s.trigger} when: ${s.conditions.join(', ') || 'always'}` })
@@ -128,6 +143,7 @@ class PlayState {
     if (!e) return
     this.snapshot()
     if (optionId === '__leave') { e.view.ended = true; e.log.push({ kind: 'info', text: 'You leave.' }) }
+    else if (optionId === RAID_DONE || optionId === RAID_BACK) raidOutcome(e, optionId === RAID_DONE ? 'done' : 'back')
     else e.select(optionId)
     this.markFired()
     this.sync()
@@ -148,6 +164,8 @@ class PlayState {
   arrive(entity: string): void {
     const e = this.engine
     if (!e) return
+    // Phase 7c: arriving at a random target = at its mock
+    if (entity.startsWith('target:') && this.quest) { const [v, part] = entity.slice('target:'.length).split('.'); entity = mockTargetId(this.quest.id, v) + (part ? `_${part}` : '') }
     this.snapshot()
     this.newDialog()
     e.set('$id', entity)

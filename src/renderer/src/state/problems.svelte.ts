@@ -1,8 +1,22 @@
 /** Problems: live checks of the open mod, the index's file problems, and Check mod results. */
 import type { Problem } from '../../../shared/api'
 import { checkModel } from '../../../shared/checks'
+import { imagePaths } from '../../../shared/checks/items'
+import { renameFlag } from '../../../shared/flags'
+import { applySaveFix } from '../../../shared/release'
+import { applyPatternFix, protectWreck } from '../../../shared/patterns'
+import { IMAGE_KINDS } from '../../../shared/imagekinds'
 import { app, cleanError } from './app.svelte'
 import { project } from './project.svelte'
+import { versions, versionInfo, chooseTarget, replacing } from './versions.svelte'
+import { replaceRefs } from '../../../shared/versionrefs'
+import type { DiffCategory } from '../../../shared/versiondiff'
+
+/** #47: the version comparison for the checks (two installs only). */
+function versionCtx() {
+  const vi = versionInfo(app.versions)
+  return vi && versions.diff ? { diff: versions.diff, targetIsNewer: vi.targetIsNewer } : null
+}
 
 class ProblemsStore {
   /** Results of the last Check mod (cross-file checks with every rule of the game and mods). */
@@ -14,7 +28,7 @@ class ProblemsStore {
     const index = app.index
     const loaded = project.loaded
     if (!m || !index || !loaded) return []
-    return checkModel({ model: m, index, defs: app.defs, loaded, rules: null, styleChecks: app.settings.styleChecks })
+    return checkModel({ model: m, index, defs: app.defs, loaded, rules: null, styleChecks: app.settings.styleChecks, version: versionCtx() })
   })
 
   all = $derived.by((): Problem[] => {
@@ -24,7 +38,7 @@ class ProblemsStore {
   })
 
   counts = $derived.by(() => {
-    const c = { error: 0, warning: 0, save: 0, style: 0, info: 0 }
+    const c = { error: 0, todo: 0, warning: 0, save: 0, style: 0, info: 0 }
     for (const p of this.all) c[p.level]++
     return c
   })
@@ -37,7 +51,15 @@ class ProblemsStore {
     this.checking = true
     try {
       const rules = await app.loadRules()
-      this.full = checkModel({ model: $state.snapshot(m) as typeof m, index, defs: app.defs, loaded, rules, styleChecks: app.settings.styleChecks })
+      const model = $state.snapshot(m) as typeof m
+      const files = await window.api.filesExist(imagePaths(model))
+      // the mod's own images, for the size check (R5)
+      const own = project.loaded?.sourceId
+      const mine = new Set<string>()
+      for (const k of IMAGE_KINDS) for (const f of await window.api.listImages(k.folder)) if (f.sourceId === own) mine.add(f.path)
+      const imageSizes = await window.api.imageSizes([...mine])
+      for (const c of project.pendingCopies) files[c.to] = true
+      this.full = checkModel({ model, index, defs: app.defs, loaded, rules, styleChecks: app.settings.styleChecks, files, imageSizes, version: versionCtx() })
       app.go('problems')
     } catch (e) {
       app.error = cleanError(e)
@@ -48,3 +70,37 @@ class ProblemsStore {
 }
 
 export const problems = new ProblemsStore()
+
+/**
+ * Apply a problem's fix through the undo history. Returns false for "open" fixes (the caller
+ * navigates). Fixes that create something (a wreck's protection) open it.
+ */
+export function applyProblemFix(action: string, arg: unknown): boolean {
+  const done = applyFix(action, arg)
+  // the last Check mod results no longer match the mod: show the live checks again
+  if (done && problems.full) { problems.full = null; app.flash('Fixed. Run Check mod again for the checks against other mods.') }
+  return done
+}
+
+function applyFix(action: string, arg: unknown): boolean {
+  if (action === 'renameFlag') { const a = arg as { from: string; to: string }; project.change((m) => renameFlag(m, a.from, a.to)); return true }
+  if (action === 'listFaction') { project.change((m) => { const f = m.factions.find((x) => x.id === arg); if (f?.kind === 'addition') f.listed = true }); return true }
+  if (action === 'aliasStage' || action === 'addToExisting') { project.change((m) => { applySaveFix(m, action, arg) }); return true }
+  if (action === 'protectWreck') {
+    let id: string | null = null
+    project.change((m) => { id = protectWreck(m, String(arg)) })
+    if (id) { app.go('quests', id); app.selected.questNode = null; app.flash('Added a conversation that protects the wreck. Edit its text here.') }
+    return true
+  }
+  if (action === 'arrivePlace') {
+    const a = arg as { quest: string; node: string; entity: string }
+    project.change((m) => { const n = m.quests.find((q) => q.id === a.quest)?.nodes.find((x) => x.id === a.node); if (n?.type === 'wait') n.entity = a.entity })
+    return true
+  }
+  if (action === 'linkToMenu' || action === 'spawnAt') { project.change((m) => { applyPatternFix(m, action, arg) }); return true }
+  // #47: version problems
+  if (action === 'versionRemove') { const a = arg as { cat: DiffCategory; id: string }; let n = 0; project.change((m) => { n = replaceRefs(m, a.cat, a.id, null) }); app.flash(`Removed ${n} use${n === 1 ? '' : 's'} of ${a.id}.`); return true }
+  if (action === 'versionReplace') { replacing.req = arg as { cat: DiffCategory; id: string }; return true }
+  if (action === 'versionTarget') { const vi = versionInfo(app.versions); if (vi) chooseTarget(vi.newerSlot); return true }
+  return false
+}

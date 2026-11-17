@@ -3,14 +3,15 @@
  * src/shared/defs/index.ts (user patch files, version matching); may drift.
  */
 import v098a from './0.98a.json'
+import v0985a from './0.98.5a.json'
 import type { GameDefinitions, RuleCommandDef, TokenDef } from './types'
 
 export type { GameDefinitions, RuleCommandDef, TokenDef }
 
-const BUILT_IN: GameDefinitions[] = [v098a as unknown as GameDefinitions]
-let DEFS: GameDefinitions[] = [...BUILT_IN]
-
-/** Definitions for a game version string like "0.98a-RC8"; falls back to the newest. */
+/**
+ * Definitions for a game version string like "0.98a-RC8" or "0.98.5a-RC5" (matched on the part
+ * before "-RC"; the longest match wins); falls back to the newest.
+ */
 export function defsFor(gameVersion?: string | null): GameDefinitions {
   const v = (gameVersion ?? '').toLowerCase()
   const hits = DEFS.filter((d) => v.startsWith(d.gameVersion.toLowerCase().replace(/-rc\d+$/, ''))).sort((a, b) => b.gameVersion.length - a.gameVersion.length)
@@ -53,9 +54,14 @@ function merge(base: unknown, patch: unknown): unknown {
 }
 
 export function mergeDefs(base: GameDefinitions, patch: DefsPatch): GameDefinitions {
-  const { extends: _ext, ...rest } = patch
+  const { extends: _ext, _about: _a, ...rest } = patch
   return merge(base, rest) as GameDefinitions
 }
+
+/** Built-in definitions, oldest first. 0.98.5a.json is a patch on 0.98a (only what changed). */
+const BUILT_IN: GameDefinitions[] = [v098a as unknown as GameDefinitions]
+BUILT_IN.push(mergeDefs(BUILT_IN[0], v0985a as unknown as DefsPatch))
+let DEFS: GameDefinitions[] = [...BUILT_IN]
 
 /** Apply user definition files (in order). Returns, per patch, null or why it could not be used. */
 export function registerDefs(patches: DefsPatch[]): (string | null)[] {

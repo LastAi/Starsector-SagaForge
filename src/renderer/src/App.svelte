@@ -16,10 +16,12 @@
     app.definitions = st.definitions
     app.settings = st.settings
     app.smoke = st.smoke
+    app.versions = st.versions ?? null
     if (st.smoke) {
-      const [page, id, arg] = st.smoke.split(":")
-      app.smokeArg = arg ?? null
-      app.go(page as typeof app.page, id ?? null)
+      const [page, id, arg, modal] = st.smoke.split(":")
+      app.smokeArg = arg || null
+      app.smokeModal = modal || null
+      app.go(page as typeof app.page, id || null)
     }
     startup = st
     if (st.install?.ok) install = st.install

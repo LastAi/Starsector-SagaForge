@@ -26,8 +26,10 @@ describe('parsing rules.csv cells', () => {
     expect(parseScriptLine('$askedCommission = true 0')).toMatchObject({ kind: 'set', key: '$askedCommission', value: 'true', expire: 0 })
     expect(parseScriptLine('$global.x = 3')).toMatchObject({ kind: 'set', value: '3', expire: undefined })
     expect(parseScriptLine('AddText "Hello there" textGrayColor')).toMatchObject({ kind: 'command', name: 'AddText', args: ['Hello there', 'textGrayColor'] })
-    expect(parseOptions('20:rao_ask:"I\'d like: a commission"\nleave:Leave')).toEqual([
-      { order: 20, id: 'rao_ask', text: "I'd like: a commission", raw: '20:rao_ask:"I\'d like: a commission"' },
+    // the game cuts a label at a further ":" (seen in game, task #48); vanilla never uses one
+    expect(parseOptions('20:rao_ask:"I\'d like a commission"\n95:sfr_b_opt:SFR test B: pick me\nleave:Leave')).toEqual([
+      { order: 20, id: 'rao_ask', text: "I'd like a commission", raw: '20:rao_ask:"I\'d like a commission"' },
+      { order: 95, id: 'sfr_b_opt', text: 'SFR test B', raw: '95:sfr_b_opt:SFR test B: pick me' },
       { id: 'leave', text: 'Leave', raw: 'leave:Leave' }
     ])
     expect(textVariants('A\nOR\nB')).toEqual(['A', 'B'])

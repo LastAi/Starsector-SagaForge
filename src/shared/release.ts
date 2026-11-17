@@ -9,6 +9,8 @@ import type { Problem } from './api'
 import type { CheckContext } from './checks'
 import { buildRegistry } from './flags'
 import { cmpVersionStrings } from './version'
+import { renameTodoElement } from './todo'
+import { inactivePeople, inactiveQuests } from './inactive'
 
 export function makeSnapshot(m: ModModel, version: string, date = new Date()): ReleaseSnapshot {
   const reg = buildRegistry(m, [])
@@ -39,10 +41,12 @@ export function lastRelease(releases: ReleaseSnapshot[]): ReleaseSnapshot | null
 export function saveWarnings(m: ModModel, rel: ReleaseSnapshot): Problem[] {
   const out: Problem[] = []
   const since = `since ${rel.version}`
+  const offQuests = inactiveQuests(m), offPeople = inactivePeople(m)
   const save = (message: string, ref: Problem['ref'], key: string, fixes?: Problem['fixes']): void => { out.push({ level: 'save', area: 'Save', message, ref, key: `save:${rel.version}:${key}`, fixes }) }
   for (const [qid, old] of Object.entries(rel.quests)) {
     const q = m.quests.find((x) => x.id === qid)
     if (!q) { save(`Quest "${qid}" was removed ${since}. Players in the middle of it see it end quietly.`, { page: 'quests' }, `quest:${qid}`); continue }
+    if (offQuests.has(qid)) { save(`"${q.title}" was made inactive ${since}${offQuests.get(qid) === 'contact' ? ' (its contact is inactive)' : ''}: it is no longer exported, so for players in the middle of it, it ends quietly.`, { page: 'quests', id: qid }, `quest:${qid}`); continue }
     for (const sid of old.stages) {
       if (q.stages.some((s) => s.id === sid)) continue
       const aliased = q.stages.find((s) => s.renamedFrom.includes(sid))
@@ -54,7 +58,8 @@ export function saveWarnings(m: ModModel, rel: ReleaseSnapshot): Problem[] {
   }
   const reg = buildRegistry(m, [])
   for (const f of rel.flags) if (!reg.get(f)?.setBy.length) save(`Flag ${f} is no longer set by the mod ${since}. Rules that read it in old saves still see the old value.`, { page: 'saga', id: 'flags', sub: f }, `flag:${f}`)
-  for (const p of rel.people) if (!m.people.some((x) => x.id === p)) save(`Person "${p}" was removed or renamed ${since}. Saves still have the old one; quests that use it break.`, { page: 'people' }, `person:${p}`)
+  for (const p of rel.people) if (offPeople.has(p)) save(`Person "${p}" was made inactive ${since}: no longer exported. Saves still have them; quests that use them break.`, { page: 'people', id: p }, `person:${p}`)
+  else if (!m.people.some((x) => x.id === p)) save(`Person "${p}" was removed or renamed ${since}. Saves still have the old one; quests that use it break.`, { page: 'people' }, `person:${p}`)
   for (const mk of rel.markets) if (!m.systems.some((s) => s.entities.some((e) => e.market?.id === mk))) save(`Market "${mk}" was removed or renamed ${since}. Saves still have the old one.`, { page: 'locations' }, `market:${mk}`)
   for (const [sid, s] of Object.entries(rel.systems)) {
     const now = m.systems.find((x) => x.id === sid)
@@ -98,6 +103,7 @@ export function renameStage(m: ModModel, quest: string, from: string, to: string
   s.id = to
   if (how === 'alias' && !s.renamedFrom.includes(from)) s.renamedFrom.push(from)
   for (const n of q.nodes) if (n.type === 'stage' && n.stage === from) n.stage = to
+  renameTodoElement(q, 'stages', from, to)
   const swap = (l: string) => l.replace(new RegExp(`(SF_AtStep ${quest} )${from}\\b`), `$1${to}`).replace(new RegExp(`(\\$global\\.${quest}_step == )${from}\\b`), `$1${to}`)
   for (const n of q.nodes) {
     if (n.type === 'dialog') { n.conditions = n.conditions.map(swap); for (const o of n.options) if (o.showIf) o.showIf = o.showIf.map(swap) }

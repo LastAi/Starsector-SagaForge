@@ -9,6 +9,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { parseLooseObject, LooseJsonError } from '../shared/loosejson'
 import { isInside, realpathLoose, workspaceProblem } from './workspace'
+import { readGameVersion } from './gameversion'
 import type { InstallInfo, ValidInstall, SourceInfo, Problem, ModsMode } from '../shared/api'
 
 export const isFile = (p: string): boolean => { try { return fs.statSync(p).isFile() } catch { return false } }
@@ -37,23 +38,6 @@ export function detectInstall(input: string): InstallInfo {
     root: given,
     error: 'No Starsector game data found here. Choose the folder that contains starsector.exe (Windows) or starsector.sh (Linux).'
   }
-}
-
-/** The game writes "Starting Starsector 0.98a-RC8 launcher" at the top of its log. */
-function readGameVersion(dirs: string[]): string | null {
-  for (const d of dirs) {
-    const f = path.join(d, 'starsector.log')
-    if (!isFile(f)) continue
-    try {
-      // the line is written at every start; the log may hold several runs, so take the last one
-      const size = fs.statSync(f).size
-      if (size > 64 * 1024 * 1024) continue
-      const text = fs.readFileSync(f, 'latin1')
-      const all = [...text.matchAll(/Starting Starsector (\S+)/g)]
-      if (all.length) return all[all.length - 1][1]
-    } catch { /* ignore */ }
-  }
-  return null
 }
 
 export function versionString(v: unknown): string {

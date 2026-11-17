@@ -324,6 +324,7 @@
       "y": 160,
       "mode": "arrive",
       "entity": "vgc_haven",
+      "takeover": true,
       "arriveText": "As you dock, a message from Commodore Reyes is waiting: she wants to see you at once."
     },
     {

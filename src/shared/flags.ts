@@ -4,11 +4,14 @@
  * Checks: read but never set ("did you mean"), set but never read, set with different types.
  */
 import type { Problem } from './api'
+import { eventRules } from './export/events'
+import { progressRules } from './export/progress'
 import type { ModModel } from './serialize'
 import type { RuleRow } from './rules/types'
 import { compileQuest } from './export/questrules'
 import { parseConditions, parseScript, TOKEN_RE } from './rules/parse'
 import { prereqConditions } from './export/questrules'
+import { targetKeys } from './targets'
 
 export interface FlagUse { where: string; quest?: string; node?: string; detail: string }
 export interface FlagEntry {
@@ -55,6 +58,10 @@ export function buildRegistry(m: ModModel, handRules: RuleRow[], externalRules: 
         if (s.kind === 'incr') e.types.add('number')
       } else if (s.kind === 'command' && (s.name === 'SF_Step' || s.name === 'SF_Start' || s.name === 'SF_End')) {
         entry(`$global.${s.args[0]}_${s.name === 'SF_Step' ? 'step' : 'state'}`).setBy.push({ ...use, detail: s.raw })
+      } else if (s.kind === 'command' && s.name === 'SF_RollPool') {
+        // Phase 7a: the pick, for the rules that follow, and the pool's last pick
+        entry('$sagaforge_pick').setBy.push({ ...use, detail: s.raw })
+        entry(`$global.sagaforge_pool_${s.args[0]}_last`).setBy.push({ ...use, detail: s.raw })
       }
     }
     for (const tok of `${r.text}\n${r.options}`.match(TOKEN_RE) ?? []) {
@@ -71,11 +78,33 @@ export function buildRegistry(m: ModModel, handRules: RuleRow[], externalRules: 
     // prerequisites read keys too
     for (const l of prereqConditions(q)) scanRow({ id: '', trigger: '', conditions: l, script: '', text: '', options: '', notes: '', sourceId: '', file: '', line: 0 }, { where: `${q.title} (prerequisite)`, quest: q.id, node: 'start' })
     // quest variables are set by SagaLib when the quest starts
-    for (const v of q.variables) entry(`$global.${q.id}_${v.name}`).setBy.push({ where: q.title, quest: q.id, detail: `variable (initial ${v.initial})` })
+    for (const v of q.variables) {
+      if (v.type !== 'target') { entry(`$global.${q.id}_${v.name}`).setBy.push({ where: q.title, quest: q.id, detail: `variable (initial ${v.initial})` }); continue }
+      // Phase 7c: SagaLib's search sets the pick and its facts when the quest is offered
+      entry(`$global.${q.id}_${v.name}`).setBy.push({ where: q.title, quest: q.id, detail: `random target (${v.target?.pick ?? '?'})` })
+      for (const k of targetKeys(q.id, v.name).slice(1)) entry(k).setBy.push({ where: q.title, quest: q.id, detail: `random target ${v.name}: ${k.slice(`$global.${q.id}_${v.name}_`.length)}` })
+    }
   }
   for (const p of phrases) for (const cs of p.cases) for (const l of cs.when) scanRow({ id: '', trigger: '', conditions: l, script: '', text: '', options: '', notes: '', sourceId: '', file: '', line: 0 }, { where: `phrase ${p.token}` })
   for (const prof of m.testProfiles) for (const k of Object.keys(prof.flags)) if (!reg.has(k)) { /* profiles only use keys; not a definition */ }
   for (const r of handRules) scanRow(r, { where: `rules.csv line ${r.line} (${r.id})` })
+  // Phase 8d: world events set $global.<event>_active while they run; their conditions and actions use and set keys
+  for (const sc of m.events ?? []) {
+    for (const e of sc.events) {
+      entry(`$global.${e.id}_active`).setBy.push({ where: `world event ${e.name || e.id}`, detail: 'true while the event runs' })
+      for (const l of e.conditions) scanRow({ id: '', trigger: '', conditions: l, script: '', text: '', options: '', notes: '', sourceId: '', file: '', line: 0 }, { where: `world event ${e.name || e.id}` })
+    }
+  }
+  for (const r of eventRules(m.events ?? [])) scanRow(r, { where: `world event (${r.id})` })
+  // Phase 8d-3: progress events set $global.<event>_stage (and _<stage>_outcome); their factors and actions use keys
+  for (const p of m.progress ?? []) {
+    entry(`$global.${p.id}_stage`).setBy.push({ where: `progress event ${p.name || p.id}`, detail: 'the last stage reached' })
+    for (const s of p.stages) if (s.outcomes?.length) entry(`$global.${p.id}_${s.id}_outcome`).setBy.push({ where: `progress event ${p.name || p.id}`, detail: `outcome of stage ${s.id}` })
+    for (const l of [...p.startConditions, ...p.factors.flatMap((f) => f.conditions)]) scanRow({ id: '', trigger: '', conditions: l, script: '', text: '', options: '', notes: '', sourceId: '', file: '', line: 0 }, { where: `progress event ${p.name || p.id}` })
+  }
+  for (const r of progressRules(m.progress ?? [])) scanRow(r, { where: `progress event (${r.id})` })
+  // SagaLib's own keys (Phase 7e: decivilised colonies, scatter; pools; days): set by the library at runtime
+  for (const e of reg.values()) if (!e.setBy.length && e.key.startsWith('$global.sagaforge_')) e.external = 'SagaLib'
   // keys set by vanilla or other mods
   if (externalRules.length) {
     const ext = new Map<string, string>()

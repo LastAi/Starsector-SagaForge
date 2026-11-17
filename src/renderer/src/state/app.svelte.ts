@@ -1,11 +1,11 @@
 /** App-wide UI state: the game index, settings, the current page and lazily loaded game data. */
-import type { AppSettings, GameIndex, ImageData, FontData, UserDefinitions } from '../../../shared/api'
+import type { AppSettings, GameIndex, ImageData, FontData, UserDefinitions, VersionState } from '../../../shared/api'
 import type { RuleRow } from '../../../shared/rules/types'
 import { compileRules, type RuleSet } from '../../../shared/rules/engine'
 import { defsFor } from '../../../shared/defs'
 import type { GameDefinitions } from '../../../shared/defs/types'
 
-export type PageId = 'saga' | 'factions' | 'people' | 'items' | 'quests' | 'locations' | 'encounters' | 'dialog' | 'problems'
+export type PageId = 'saga' | 'factions' | 'people' | 'items' | 'quests' | 'locations' | 'encounters' | 'fleets' | 'images' | 'dialog' | 'problems' | 'translation'
 
 export const PAGES: { id: PageId; label: string }[] = [
   { id: 'saga', label: 'Saga' },
@@ -15,13 +15,20 @@ export const PAGES: { id: PageId; label: string }[] = [
   { id: 'quests', label: 'Quests' },
   { id: 'locations', label: 'Locations' },
   { id: 'encounters', label: 'Encounters' },
+  { id: 'fleets', label: 'Fleets' },
+  { id: 'images', label: 'Images' },
   { id: 'dialog', label: 'Dialog' },
   { id: 'problems', label: 'Problems' }
 ]
 
 class AppState {
   index = $state.raw<GameIndex | null>(null)
-  settings = $state<AppSettings>({ styleChecks: false, extensions: {} })
+  /** #47: the main and migration installs and the target (null until startup). */
+  versions = $state.raw<VersionState | null>(null)
+  /** #47: the other install's index and vanilla rule ids, for the version comparison (lazy). */
+  otherIndex = $state.raw<GameIndex | null>(null)
+  otherRuleIds = $state.raw<string[] | null>(null)
+  settings = $state<AppSettings>({ styleChecks: false, extensions: {}, releasesDir: '', releasesDirChosen: false })
   definitions = $state.raw<UserDefinitions | null>(null)
   page = $state<PageId>((localStorage.getItem('sf.page') as PageId) || 'factions')
   /** Selection per page (id of the open object), remembered while the app runs. */
@@ -31,6 +38,8 @@ class AppState {
   smoke = $state<string | null>(null)
   /** Extra argument for screenshot mode (e.g. a tab to open). */
   smokeArg = $state<string | null>(null)
+  /** Screenshot mode: a dialog or panel to open ("page:id:arg:<modal>", e.g. new, change, export, stages). */
+  smokeModal = $state<string | null>(null)
   rules = $state.raw<RuleRow[] | null>(null)
   private rulesPromise: Promise<RuleRow[]> | null = null
   /** Every rule of the game and all mods, compiled for the engine (lazy). */
@@ -61,7 +70,23 @@ class AppState {
     this.rules = null
     this.rulesPromise = null
     this.ruleSet = null
+    this.otherIndex = null
+    this.otherRuleIds = null
     images.clear()
+  }
+
+  /** #47: load the other install's index and rule ids (once both installs are set). */
+  async loadOther(): Promise<void> {
+    if (!this.versions?.migration?.ok) { this.otherIndex = null; this.otherRuleIds = null; return }
+    if (!this.otherIndex) this.otherIndex = await window.api.getOtherIndex()
+    if (!this.otherRuleIds) this.otherRuleIds = await window.api.getOtherRuleIds()
+  }
+
+  /** A one-line question (Electron has no window.prompt()); Shell draws it. Resolves to the text, or null on Cancel. */
+  asking = $state<{ question: string; value: string; label: string; done: (v: string | null) => void } | null>(null)
+  ask(question: string, value = '', label = 'OK'): Promise<string | null> {
+    this.asking?.done(null)
+    return new Promise((resolve) => { this.asking = { question, value, label, done: (v) => { this.asking = null; resolve(v) } } })
   }
 
   flash(msg: string): void {

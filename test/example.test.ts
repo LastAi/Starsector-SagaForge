@@ -13,6 +13,7 @@ import { unguardedWrecks } from '../src/shared/checks/quests'
 import { itemKindLookup } from '../src/shared/export/items'
 import { planExport } from '../src/shared/export'
 import { compileQuest, startOptionId } from '../src/shared/export/questrules'
+import { lockedEntityIds } from '../src/shared/patterns'
 import { compileRules, emptyView, Engine, newContext } from '../src/shared/rules/engine'
 import { newSimState, sagaHooks, questState } from '../src/shared/play'
 import { modelToWrites, planTexts } from '../src/shared/serialize'
@@ -37,7 +38,8 @@ describe('Vanguard Compact example (acceptance)', () => {
   it('plays The Lost Convoy from the offer to the reward, through the ambush and the arrivals', () => {
     const m = vanguardModel()
     const phrases = [...m.phrases, ...m.people.flatMap((p) => p.phrases)]
-    const rows = m.quests.flatMap((q) => compileQuest(q, { sagalib: true, phrases, itemKind: itemKindLookup(m.items) }).rows)
+    // as Export compiles them: the wreck's lock keeps the quests' arrivals there as takeovers (RC-F2)
+    const rows = m.quests.flatMap((q) => compileQuest(q, { sagalib: true, phrases, itemKind: itemKindLookup(m.items), lockedEntities: lockedEntityIds(m.quests) }).rows)
     const sim = newSimState()
     const ctx = newContext()
     ctx.tokens.$playerLastName = 'Varga'

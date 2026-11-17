@@ -348,10 +348,11 @@ export function builtinCondition(e: Engine, name: string, args: string[]): boole
   const p = e.ctx.player
   const rep = (f: string) => (f === 'player' ? 1 : p.rep[f] ?? 0)
   switch (name) {
-    case 'RepIsAtWorst': return args[1] in REP_ACTIONS ? rep(args[0]) >= REP_ACTIONS[args[1]] : undefined
-    case 'RepIsAtBest': return args[1] in REP_ACTIONS ? rep(args[0]) <= REP_ACTIONS[args[1]] : undefined
-    case 'RepGTE': return rep(args[0]) >= Number(args[1])
-    case 'RepLTE': return rep(args[0]) <= Number(args[1])
+    // RepGTE / RepLTE are subclasses of RepIsAtWorst / RepIsAtBest and take a RepLevel too. The
+    // one-argument form (0.98.5a: active person, else the entity's faction) and a person id as the
+    // first argument aren't simulated: they stay unknown, so Play mode asks.
+    case 'RepIsAtWorst': case 'RepGTE': return args.length >= 2 && args[1] in REP_ACTIONS ? rep(args[0]) >= REP_ACTIONS[args[1]] : undefined
+    case 'RepIsAtBest': case 'RepLTE': return args.length >= 2 && args[1] in REP_ACTIONS ? rep(args[0]) <= REP_ACTIONS[args[1]] : undefined
     case 'PlayerHasCargo': case 'HasCommodity': return (p.cargo[args[0]] ?? 0) >= Number(args[1] ?? 1)
     case 'PlayerCredits': case 'HasCredits': return p.credits >= Number(args[0] ?? 0)
     case 'StoryPoints': return p.storyPoints >= Number(args[0] ?? 1)

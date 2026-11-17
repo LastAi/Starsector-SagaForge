@@ -39,6 +39,45 @@ export async function findImage(cache: IndexCache, gamePath: string, preferSourc
   return null
 }
 
+/** Image files in a folder of a directory, recursively (paths relative to `root`, forward slashes). */
+async function walkImages(root: string, folder: string, out: string[], limit: number): Promise<void> {
+  const start = path.join(root, ...folder.split('/'))
+  const stack = [start]
+  while (stack.length && out.length < limit) {
+    const dir = stack.pop()!
+    let entries: import('node:fs').Dirent[]
+    try { entries = await fsp.readdir(dir, { withFileTypes: true }) } catch { continue }
+    for (const e of entries) {
+      const abs = path.join(dir, e.name)
+      if (e.isDirectory()) stack.push(abs)
+      else if (MIME[path.extname(e.name).toLowerCase()]) out.push(path.relative(root, abs).replace(/\\/g, '/'))
+    }
+  }
+}
+
+/**
+ * Every image under a game folder (e.g. "graphics/portraits"), in the game and every source,
+ * the last-loaded source winning for a path, as in the game (the Images page and its pickers).
+ */
+export async function listImages(cache: IndexCache, folder: string): Promise<{ path: string; sourceId: string }[]> {
+  const rel = safeRel(folder)
+  if (!rel) return []
+  const byPath = new Map<string, string>()
+  for (const s of cache.sources) {
+    const found: string[] = []
+    await walkImages(s.dir, rel, found, 5000)
+    for (const p of found) byPath.set(p, s.id)
+  }
+  return [...byPath].map(([p, sourceId]) => ({ path: p, sourceId })).sort((a, b) => a.path.localeCompare(b.path))
+}
+
+/** Image files directly in a folder chosen by the user (for importing a whole folder). */
+export async function imagesInFolder(dir: string): Promise<string[]> {
+  let entries: import('node:fs').Dirent[]
+  try { entries = await fsp.readdir(dir, { withFileTypes: true }) } catch { return [] }
+  return entries.filter((e) => e.isFile() && MIME[path.extname(e.name).toLowerCase()]).map((e) => path.join(dir, e.name)).sort()
+}
+
 /** A BMFont by settings.json key ("defaultFont") or by path. Reads the .fnt text and its page images. */
 export async function findFont(cache: IndexCache, keyOrPath: string): Promise<FontData | null> {
   const fromSettings = cache.index.ui.fonts[keyOrPath]

@@ -7,7 +7,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { checkWritable, createMod, writeText, workspaceProblem, type WriteRules } from '../src/main/workspace'
 import { buildIndex, detectInstall } from '../src/main/gameindex'
-import { loadProject, writeFiles, modPath } from '../src/main/modproject'
+import { loadProject, writeFiles, modPath, removable } from '../src/main/modproject'
+import { planExport } from '../src/shared/export'
+import { emptyModel, type ModModel } from '../src/shared/serialize'
+import { newQuest } from '../src/shared/quest'
 import { hashText } from '../src/main/install'
 import { parseLooseObject } from '../src/shared/loosejson'
 import type { ValidInstall } from '../src/shared/api'
@@ -131,7 +134,7 @@ describe('mod project: load and write', () => {
     expect(fs.readFileSync(path.join(r3.backupDir!, 'sagaforge', 'project.json'), 'utf8')).toBe(old)
 
     // only plan files may be removed
-    await expect(writeFiles(modDir, { backup: false, writes: [{ path: 'data/campaign/rules.csv', text: '', remove: true }] }, wsRules)).rejects.toThrow(/Only plan files/)
+    await expect(writeFiles(modDir, { backup: false, writes: [{ path: 'data/campaign/rules.csv', text: '', remove: true }] }, wsRules)).rejects.toThrow(/can be removed/)
     // code is never written
     await expect(writeFiles(modDir, { backup: false, writes: [{ path: 'src/X.java', text: '' }] }, wsRules)).rejects.toThrow(/file type/)
   })
@@ -159,5 +162,53 @@ describe('mod project: load and write', () => {
     // the index records who changes hegemony
     expect(cache.index.factions.find((f) => f.id === 'hegemony')!.changedBy).toEqual(['my_mod'])
     expect(p.files['data/world/factions/factions.csv']).toBeTruthy()
+  })
+
+  it('exports, deletes a quest, exports again: its SagaLib file is removed and backed up (R11)', async () => {
+    const reload = async () => {
+      const cache = await buildIndex(install, { mode: 'workspace', workspaceDir: ws, activeModDir: modDir })
+      return { cache, loaded: await loadProject(cache, cache.sources.find((s) => s.id === 'my_mod')!) }
+    }
+    let tick = 0 // later than the earlier test's 2030 backups, which are pruned by name
+    const exportModel = async (m: ModModel) => {
+      const { cache, loaded } = await reload()
+      const plan = planExport(m, loaded, cache.index, null, { addDependency: true })
+      return writeFiles(modDir, { writes: plan.writes, backup: true }, wsRules, new Date(Date.UTC(2031, 0, 1, 0, 0, ++tick)))
+    }
+    const m = emptyModel('p11_')
+    m.quests.push(newQuest('p11_gone', 'Gone soon', 'quest'), newQuest('p11_stays', 'Stays', 'quest'))
+    const r1 = await exportModel(m)
+    expect(r1.conflicts).toEqual([])
+    const gone = path.join(modDir, 'data', 'sagaforge', 'quests', 'p11_gone.json')
+    expect(fs.existsSync(gone)).toBe(true)
+
+    m.quests = m.quests.filter((q) => q.id !== 'p11_gone')
+    const r2 = await exportModel(m)
+    expect(r2.conflicts).toEqual([])
+    expect(r2.written).toContain('data/sagaforge/quests/p11_gone.json')
+    expect(fs.existsSync(gone)).toBe(false)
+    expect(fs.existsSync(path.join(modDir, 'data', 'sagaforge', 'quests', 'p11_stays.json'))).toBe(true)
+    expect(fs.existsSync(path.join(r2.backupDir!, 'data', 'sagaforge', 'quests', 'p11_gone.json'))).toBe(true)
+    // the SagaLib index no longer lists it
+    expect(fs.readFileSync(path.join(modDir, 'data', 'config', 'sagaforge', 'content.csv'), 'utf8')).not.toContain('p11_gone')
+  })
+
+  it('writes imported image bytes, keeps an existing file, and replaces it with a backup when asked (R5)', async () => {
+    const png = (n: number) => new Uint8Array([137, 80, 78, 71, n])
+    const at = path.join(modDir, 'graphics', 'portraits', 'p11_cat.png')
+    const r1 = await writeFiles(modDir, { writes: [], backup: true, copies: [{ to: 'graphics/portraits/p11_cat.png', bytes: png(1) }] }, wsRules)
+    expect(r1.written).toEqual(['graphics/portraits/p11_cat.png'])
+    // without replace, an existing image is kept
+    await writeFiles(modDir, { writes: [], backup: true, copies: [{ to: 'graphics/portraits/p11_cat.png', bytes: png(2) }] }, wsRules)
+    expect([...fs.readFileSync(at)].at(-1)).toBe(1)
+    // with replace, the old one goes to the backups
+    const r3 = await writeFiles(modDir, { writes: [], backup: true, copies: [{ to: 'graphics/portraits/p11_cat.png', bytes: png(3), replace: true }] }, wsRules, new Date(Date.UTC(2032, 0, 1)))
+    expect([...fs.readFileSync(at)].at(-1)).toBe(3)
+    expect([...fs.readFileSync(path.join(r3.backupDir!, 'graphics', 'portraits', 'p11_cat.png'))].at(-1)).toBe(1)
+  })
+
+  it('removes only plan files, faction files and generated SagaLib files', () => {
+    for (const p of ['sagaforge/x.json', 'data/world/factions/a.faction', 'data/sagaforge/quests/q.json', 'data/sagaforge/people/p_people.json', 'data/config/sagaforge/content.csv']) expect(removable(p), p).toBe(true)
+    for (const p of ['data/campaign/rules.csv', 'data/sagaforge/../campaign/rules.csv', 'data/config/settings.json', 'data/sagaforge/quests/q.java', 'mod_info.json', 'graphics/portraits/a.png']) expect(removable(p), p).toBe(false)
   })
 })

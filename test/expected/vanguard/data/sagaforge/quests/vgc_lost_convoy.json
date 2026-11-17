@@ -1,7 +1,7 @@
 {
   "_sagaforge": {
     "generated": "by Saga Forge; edits are overwritten on export",
-    "hash": "020cc5ac"
+    "hash": "772226c5"
   },
   "format": 1,
   "id": "vgc_lost_convoy",
@@ -87,6 +87,24 @@
   "arrivals": [
     "vgc_convoy_wreck",
     "vgc_haven"
+  ],
+  "entityFlags": [
+    {
+      "entity": "vgc_convoy_wreck",
+      "flag": "$sagaforge_vgc_lost_convoy_arrive",
+      "steps": [
+        "search"
+      ],
+      "important": true
+    },
+    {
+      "entity": "vgc_haven",
+      "flag": "$sagaforge_vgc_lost_convoy_dock",
+      "steps": [
+        "return"
+      ],
+      "important": true
+    }
   ],
   "phrases": [],
   "flags": []

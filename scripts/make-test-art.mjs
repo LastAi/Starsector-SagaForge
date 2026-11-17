@@ -1,6 +1,6 @@
 // Procedural placeholder art for test mods and the example mod (our own work, free to use):
 //   node scripts/make-test-art.mjs <out dir> [colorHex] [colorHex2]
-// Writes flag.png (410×256), crest.png (128×128), icon_box.png (80×80), illustration.png (480×300),
+// Writes flag.png (410×256), crest.png (256×256), icon_box.png (80×80), illustration.png (480×300),
 // portrait.png (128×128). Plain Node: zlib + a tiny PNG encoder, no dependencies.
 import fs from 'node:fs'
 import path from 'node:path'
@@ -52,12 +52,13 @@ write('flag.png', png(410, 256, (x, y) => {
   if (Math.abs(x - 150) < 6 && d < 58) c = c2
   return [...c, 255]
 }))
-// crest: ring with a bar, transparent outside
-write('crest.png', png(128, 128, (x, y) => {
-  const d = Math.hypot(x - 63.5, y - 63.5)
+// crest (256×256 like all vanilla crests): ring with a bar, transparent outside
+write('crest.png', png(256, 256, (X, Y) => {
+  const x = X / 2, y = Y / 2
+  const d = Math.hypot(x - 63.75, y - 63.75)
   if (d > 62) return [0, 0, 0, 0]
   if (d > 52) return [...c2, 255]
-  if (Math.abs(x - 63.5) < 7) return [...c2, 255]
+  if (Math.abs(x - 63.75) < 7) return [...c2, 255]
   return [...dark(c1, 0.6 + 0.4 * (1 - d / 62)), 235]
 }))
 // cargo icon (80×80 like vanilla's): a box with a stripe

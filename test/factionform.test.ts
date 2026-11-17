@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { additionEditor, overrideEditor, newFactionDoc, repLevelName, colorToHex, hexToColor } from '../src/shared/factionform'
+import { additionEditor, overrideEditor, newFactionDoc, repLevelName, colorToHex, hexToColor, FACTION_TABS, visibleFields } from '../src/shared/factionform'
 import { emptyPatch, patchToJson } from '../src/shared/faction'
 import { factionText, type FactionOverrideEdit } from '../src/shared/serialize'
 import { parseLooseObject } from '../src/shared/loosejson'
@@ -66,5 +66,24 @@ describe('addition editor and template', () => {
     expect(repLevelName(0.3, levels)).toMatch(/welcoming/i)
     expect(colorToHex([63, 167, 160, 255])).toBe('#3fa7a0')
     expect(hexToColor('#3fa7a0', 200)).toEqual([63, 167, 160, 200])
+  })
+})
+
+describe('player portraits for the new-game picker (0.98.5a)', () => {
+  const names = FACTION_TABS.find((t) => t.id === 'names')!
+  const paths = (faction: string, version: string | null) => visibleFields(names, faction, version).map((f) => f.path).filter((p) => p.startsWith('portraits.'))
+
+  it('shows player_male / player_female only on the player faction with 0.98.5a definitions', () => {
+    expect(paths('player', '0.98.5a-RC5')).toEqual(['portraits.standard_male', 'portraits.standard_female', 'portraits.player_male', 'portraits.player_female'])
+    expect(paths('player', '0.98a-RC8')).toEqual(['portraits.standard_male', 'portraits.standard_female'])
+    expect(paths('hegemony', '0.98.5a-RC5')).toEqual(['portraits.standard_male', 'portraits.standard_female'])
+  })
+
+  it('adds new-game portraits to the player.faction patch as a merged list entry', () => {
+    const f: FactionOverrideEdit = { kind: 'override', id: 'player', file: 'data/world/factions/player.faction', patch: emptyPatch() }
+    const ed = overrideEditor(f, [{ sourceId: 'starsector-core', raw: { id: 'player', portraits: { player_male: ['graphics/portraits/portrait12.png'], standard_male: ['graphics/portraits/portrait_mercenary01.png'] } } }])
+    ed.addToList('portraits.player_male', 'graphics/portraits/mymod_hero.png')
+    expect(ed.value('portraits.player_male')).toEqual(['graphics/portraits/portrait12.png', 'graphics/portraits/mymod_hero.png'])
+    expect(patchToJson(f.patch)).toEqual({ portraits: { player_male: ['graphics/portraits/mymod_hero.png'] } })
   })
 })

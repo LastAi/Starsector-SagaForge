@@ -10,9 +10,20 @@
     actions?: Snippet
   }
   let { title, onClose, width = 620, children, actions }: Props = $props()
+  let el = $state<HTMLDivElement>()
+  /** Escape closes the topmost dialog (as clicking outside does). */
+  function onKey(e: KeyboardEvent) {
+    if (e.key !== 'Escape' || e.defaultPrevented || !el) return
+    const all = document.querySelectorAll('.backdrop')
+    if (all[all.length - 1] !== el) return
+    e.preventDefault()
+    onClose()
+  }
 </script>
 
-<div class="backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+<svelte:window onkeydown={onKey} />
+
+<div bind:this={el} class="backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) onClose() }}>
   <div class="dialog" role="dialog" aria-modal="true" aria-label={title} style="width:min({width}px, calc(100% - 40px))">
     <h2>{title}</h2>
     {@render children()}

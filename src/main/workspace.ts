@@ -25,10 +25,12 @@ export interface WriteRules {
   gameRoot: string | null
   /** True when modsRoot is the game's own mods folder (the user chose to work there). */
   gameMods: boolean
+  /** Other Starsector folders that must never be written (the migration install, #47). */
+  otherGameRoots?: string[]
 }
 
 // Saga Forge writes faction files, CSV/JSON data and copied images; never code or game executables.
-const WRITABLE_EXTS = new Set(['.faction', '.csv', '.json', '.png', '.jpg', '.jpeg', '.ogg'])
+const WRITABLE_EXTS = new Set(['.faction', '.csv', '.json', '.png', '.jpg', '.jpeg', '.ogg', '.version'])
 
 export function isInside(child: string, parent: string): boolean {
   const rel = path.relative(parent, child)
@@ -87,6 +89,10 @@ export function checkWritable(target: string, rules: WriteRules): string {
       throw new Error(`Refusing to write inside the Starsector folder: ${real}`)
     }
   }
+  // the other install (migration): never, not even its mods folder
+  for (const other of rules.otherGameRoots ?? []) {
+    if (isInside(real, realpathLoose(other))) throw new Error(`Refusing to write inside the other Starsector folder: ${real}`)
+  }
   if (!WRITABLE_EXTS.has(path.extname(real).toLowerCase())) throw new Error(`Refusing to write this file type: ${real}`)
   return real
 }
@@ -112,7 +118,13 @@ export function writeNewBytes(target: string, bytes: Uint8Array, rules: WriteRul
   return real
 }
 
-export interface NewMod { id: string; name: string; author?: string; gameVersion: string }
+export interface NewMod {
+  id: string; name: string; author?: string; gameVersion: string
+  /** More mod_info.json keys (a translation mod's version and dependencies, R31). */
+  info?: Record<string, unknown>
+  /** More files to write, by path in the mod (a translation mod's content.csv and CSV). */
+  files?: Record<string, string>
+}
 
 export const MOD_ID_PATTERN = /^[A-Za-z0-9_.-]{2,64}$/
 
@@ -129,9 +141,11 @@ export function createMod(mod: NewMod, rules: WriteRules): string {
     author: mod.author ?? '',
     version: '0.1.0',
     description: '',
-    gameVersion: mod.gameVersion
+    gameVersion: mod.gameVersion,
+    ...(mod.info ?? {})
   }
   const text = '{\n' + Object.entries(info).map(([k, v]) => `\t${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(',\n') + '\n}\n'
   writeText(path.join(dir, 'mod_info.json'), text, rules)
+  for (const [rel, t] of Object.entries(mod.files ?? {})) writeText(path.join(dir, ...rel.split('/')), t, rules)
   return dir
 }

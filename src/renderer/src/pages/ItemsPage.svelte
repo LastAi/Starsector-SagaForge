@@ -1,12 +1,17 @@
 <script lang="ts">
   /** Items (PLAN.md §4.7, mock-up items.html): the mod's new commodities and special items; existing items read-only. */
   import type { ItemDef } from '../../../shared/model'
-  import { newItem, itemRow } from '../../../shared/export/items'
+  import { newItem, itemRow, GENERIC_SPECIAL_PLUGIN } from '../../../shared/export/items'
+  import { ITEM_PLUGINS, pluginInfo } from '../../../shared/itemplugins'
   import { slug } from '../../../shared/quest'
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
   import ImageView from '../ui/ImageView.svelte'
   import Modal from '../ui/Modal.svelte'
+  import Field from '../ui/Field.svelte'
+  import { chooseImages } from '../state/imagepicker.svelte'
+  import { later } from '../ui/later'
+  import IdInput from '../ui/IdInput.svelte'
 
   const m = $derived(project.m)
   const index = $derived(app.index!)
@@ -19,7 +24,7 @@
   const ed = (fn: (it: ItemDef) => void) => { const id = sel; project.change((mm) => { const it = mm.items.find((x) => x.id === id); if (it) fn(it) }) }
 
   // ---- new item
-  let showNew = $state(false)
+  let showNew = $state(app.smokeModal === 'new') // screenshot mode can open it
   let newName = $state('')
   let newPreset = $state('quest_item')
   const newId = $derived(project.prefix + slug(newName).replace(new RegExp(`^${project.prefix}`), ''))
@@ -31,12 +36,10 @@
     showNew = false
     newName = ''
   }
+  /** Choose by picture, or import one (cropped and resized to 80x80) (R28). */
   async function pickIcon() {
-    const abs = await window.api.pickFile({ title: 'Choose the icon (PNG, 80×80 like vanilla)', filters: [{ name: 'PNG images', extensions: ['png'] }] })
-    if (!abs || !item) return
-    const to = `graphics/icons/cargo/${item.id}.png`
-    project.copyIn(abs, to)
-    ed((it) => { it.icon = to })
+    const [p] = await chooseImages('cargoIcon', { current: item?.icon })
+    if (p) ed((it) => { it.icon = p })
   }
   function applyPreset(id: string) {
     if (!item) return
@@ -67,6 +70,9 @@
     return out
   })
   const TAGS = $derived(app.defs.itemTags)
+  // R13: the game's plugin classes (the short name shows next to the full one); any typed class is accepted
+  const pluginOptions = ITEM_PLUGINS.map((x) => ({ id: x.id, name: `${x.name}: ${x.summary.split('.')[0]}` }))
+  const plugin = $derived(item?.special?.plugin ? pluginInfo(item.special.plugin) : undefined)
   const csvPreview = $derived(item ? Object.entries(itemRow($state.snapshot(item) as ItemDef)).filter(([, v]) => v !== '').map(([k, v]) => `${k}: ${v}`).join('\n') : '')
 </script>
 
@@ -94,27 +100,47 @@
         <span class="spacer"></span><span class="muted small">writes a row in <span class="mono">{item.kind === 'special' ? 'special_items.csv' : 'commodities.csv'}</span>{item.kind === 'commodity' ? ' + descriptions.csv' : ''}</span><button class="mini danger" onclick={remove}>Delete</button></div>
       <div class="body">
         <div class="grid2">
-          <label for="it-p">Preset</label>
-          <select id="it-p" value={item.preset ?? ''} onchange={(e) => applyPreset(e.currentTarget.value)}><option value="">(custom)</option>{#each app.defs.itemPresets as p (p.id)}<option value={p.id}>{p.name} ({p.kind})</option>{/each}</select>
-          <label for="it-n">Name</label><input id="it-n" type="text" value={item.name} onchange={(e) => { const v = e.currentTarget.value; ed((it) => { it.name = v }) }} />
-          <span class="lbl">Icon</span><div class="row"><ImageView path={item.icon} w={48} h={48} /><input type="text" class="mono" value={item.icon} onchange={(e) => { const v = e.currentTarget.value; ed((it) => { it.icon = v }) }} /><button onclick={pickIcon}>Pick…</button></div>
-          <label for="it-bp">Base price</label><input id="it-bp" type="number" value={item.basePrice} onchange={(e) => { const v = Number(e.currentTarget.value); ed((it) => { it.basePrice = v }) }} />
-          <label for="it-ss">Stack size</label><input id="it-ss" type="number" value={item.stackSize} onchange={(e) => { const v = Number(e.currentTarget.value); ed((it) => { it.stackSize = v }) }} />
-          <label for="it-cs">Cargo space</label><input id="it-cs" type="number" step="0.1" value={item.cargoSpace} onchange={(e) => { const v = Number(e.currentTarget.value); ed((it) => { it.cargoSpace = v }) }} />
-          <span class="lbl">Tags</span>
-          <div class="chips">
-            {#each item.tags as t (t)}<span class="chip">{t}<button class="x" onclick={() => ed((it) => { it.tags = it.tags.filter((x) => x !== t) })}>✕</button></span>{/each}
-            <select value="" onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; if (v) ed((it) => { if (!it.tags.includes(v)) it.tags.push(v) }) }}><option value="">+ tag…</option>{#each TAGS as t (t.tag)}<option value={t.tag} title={t.summary}>{t.tag}</option>{/each}</select>
-          </div>
+          <Field label="Preset" for="it-p" help="Fills in the kind, tags and columns for a common use (a quest item, a trade good…). Picking one again resets those fields.">
+            <select id="it-p" value={item.preset ?? ''} onchange={(e) => applyPreset(e.currentTarget.value)}><option value="">(custom)</option>{#each app.defs.itemPresets as p (p.id)}<option value={p.id}>{p.name} ({p.kind})</option>{/each}</select>
+          </Field>
+          <Field label="Name" for="it-n" help="Shown in the cargo screen, its tooltip, markets and the dialog's &quot;Gained&quot; lines.">
+            <input id="it-n" type="text" value={item.name} onchange={(e) => { const v = e.currentTarget.value; ed((it) => { it.name = v }) }} />
+          </Field>
+          <Field label="Icon" later={later(item, 'icon', ed)} help="The picture in the cargo grid and tooltips: an 80×80 PNG. Choose… picks one by its picture, or imports your own (cropped, resized, and named with the mod's prefix).">
+            <div class="row"><ImageView path={item.icon} w={48} h={48} /><input type="text" class="mono" value={item.icon} onchange={(e) => { const v = e.currentTarget.value; ed((it) => { it.icon = v }) }} /><button onclick={pickIcon} title="Choose by picture, or import your own (cropped and resized to 80×80)">Choose…</button></div>
+          </Field>
+          <Field label="Base price" for="it-bp" help="Credits per unit before market supply, demand and tariffs change it.">
+            <input id="it-bp" type="number" value={item.basePrice} onchange={(e) => { const v = Number(e.currentTarget.value); ed((it) => { it.basePrice = v }) }} />
+          </Field>
+          <Field label="Stack size" for="it-ss" help="How many units fit in one cargo-grid stack.">
+            <input id="it-ss" type="number" value={item.stackSize} onchange={(e) => { const v = Number(e.currentTarget.value); ed((it) => { it.stackSize = v }) }} />
+          </Field>
+          <Field label="Cargo space" for="it-cs" help="Cargo capacity each unit takes (vanilla goods use 1; small items 0.1 or less).">
+            <input id="it-cs" type="number" step="0.1" value={item.cargoSpace} onchange={(e) => { const v = Number(e.currentTarget.value); ed((it) => { it.cargoSpace = v }) }} />
+          </Field>
+          <Field label="Tags" help="Vanilla's item tags change how the game treats it, e.g. mission_item: markets refuse it and it isn't lost in battle. Hover a tag in the list for what it does.">
+            <div class="chips">
+              {#each item.tags as t (t)}<span class="chip" title={TAGS.find((x) => x.tag === t)?.summary}>{t}<button class="x" onclick={() => ed((it) => { it.tags = it.tags.filter((x) => x !== t) })}>✕</button></span>{/each}
+              <select value="" onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; if (v) ed((it) => { if (!it.tags.includes(v)) it.tags.push(v) }) }}><option value="">+ tag…</option>{#each TAGS as t (t.tag)}<option value={t.tag} title={t.summary}>{t.tag}</option>{/each}</select>
+            </div>
+          </Field>
           {#if item.kind === 'special'}
-            <label for="it-r">Rarity</label><input id="it-r" type="number" step="0.1" value={item.special?.rarity ?? 0} onchange={(e) => { const v = Number(e.currentTarget.value); ed((it) => { it.special = { ...(it.special ?? { plugin: '' }), rarity: v } }) }} />
-            <label for="it-pl">Plugin</label><input id="it-pl" type="text" class="mono" value={item.special?.plugin ?? ''} onchange={(e) => { const v = e.currentTarget.value; ed((it) => { it.special = { ...(it.special ?? { rarity: 0 }), plugin: v } }) }} />
-            <label for="it-pp">Plugin params</label><input id="it-pp" type="text" class="mono" value={item.special?.pluginParams ?? ''} onchange={(e) => { const v = e.currentTarget.value; ed((it) => { it.special = { ...(it.special ?? { rarity: 0, plugin: '' }), pluginParams: v } }) }} />
+            <Field label="Rarity" for="it-r" help="How often it turns up in salvage and loot; 0 = never (a quest gives it).">
+              <input id="it-r" type="number" step="0.1" value={item.special?.rarity ?? 0} onchange={(e) => { const v = Number(e.currentTarget.value); ed((it) => { it.special = { ...(it.special ?? { plugin: '' }), rarity: v } }) }} />
+            </Field>
+            <Field label="Plugin" help={`The Java class behind the item: its tooltip and what using it does. Pick one of the game's from the list, or type the full name of your own class. ${plugin ? `Selected: ${plugin.summary}` : item.special?.plugin ? 'Not one of the game\'s classes: fine if your mod contains it.' : ''}`}>
+              <IdInput value={item.special?.plugin ?? ''} options={pluginOptions} placeholder={GENERIC_SPECIAL_PLUGIN} onCommit={(v) => ed((it) => { it.special = { ...(it.special ?? { rarity: 0 }), plugin: v } })} />
+            </Field>
+            <Field label="Plugin params" for="it-pp" help={`Extra text the plugin reads (special_items.csv's "plugin params" column). ${plugin ? `For this plugin: ${plugin.params}` : 'What it holds depends on the plugin.'}`}>
+              <input id="it-pp" type="text" class="mono" value={item.special?.pluginParams ?? ''} onchange={(e) => { const v = e.currentTarget.value; ed((it) => { it.special = { ...(it.special ?? { rarity: 0, plugin: '' }), pluginParams: v } }) }} />
+            </Field>
           {/if}
         </div>
         <div class="sect2">Description <span class="muted">{item.kind === 'commodity' ? 'descriptions.csv · RESOURCE' : 'special_items.csv · desc'}</span></div>
+        <p class="f-help">The text in the item's tooltip (cargo screen, markets) and, unless it is hidden there, its Codex entry.</p>
         <textarea rows="5" value={item.description} spellcheck="true" onchange={(e) => { const v = e.currentTarget.value; ed((it) => { it.description = v }) }}></textarea>
         <details><summary class="muted small">Other columns ({Object.keys(item.otherColumns).length}) and the row as written</summary>
+          <p class="f-help">The CSV's remaining columns, written as they are. Leave them unless you know the column.</p>
           {#each Object.entries(item.otherColumns) as [k, v] (k)}
             <div class="row"><span class="mono col">{k}</span><input type="text" class="mono" value={v} onchange={(e) => { const x = e.currentTarget.value; ed((it) => { it.otherColumns[k] = x }) }} /></div>
           {/each}
@@ -138,10 +164,10 @@
 
 {#if showNew}
   <Modal title="New item" onClose={() => (showNew = false)}>
-    <div class="grid2">
-      <label for="ni-n">Name</label><input id="ni-n" type="text" bind:value={newName} placeholder="e.g. Convoy black box" />
-      <span class="lbl">Id</span><span class="mono">{newId || '—'}</span>
-      <label for="ni-p">Preset</label><select id="ni-p" bind:value={newPreset}>{#each app.defs.itemPresets as p (p.id)}<option value={p.id}>{p.name} ({p.kind})</option>{/each}</select>
+    <div class="grid2 modal">
+      <Field label="Name" for="ni-n" help="As the game shows it in cargo and dialog."><input id="ni-n" type="text" bind:value={newName} placeholder="e.g. Convoy black box" /></Field>
+      <Field label="Id" help="How quests and saves refer to it. Don't change it after a release."><span class="mono">{newId || '—'}</span></Field>
+      <Field label="Preset" for="ni-p" help="A starting point; every field can be changed afterwards."><select id="ni-p" bind:value={newPreset}>{#each app.defs.itemPresets as p (p.id)}<option value={p.id}>{p.name} ({p.kind})</option>{/each}</select></Field>
     </div>
     <p class="muted small">Quest item: not traded, not lost in combat, hidden in the Codex. Special items use vanilla's generic item plugin, so no code is needed.</p>
     {#snippet actions()}<button onclick={() => (showNew = false)}>Cancel</button><button class="primary" disabled={!newName.trim()} onclick={create}>Create</button>{/snippet}
@@ -165,8 +191,9 @@
   .head h2 { margin: 0; font-size: 15px; }
   .spacer { flex: 1; }
   .body { padding: 12px 14px; overflow: auto; max-width: 820px; }
-  .grid2 { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 5px 10px; align-items: center; }
-  .grid2 label, .lbl { color: var(--muted); font-size: 12px; }
+  .grid2 { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 3px 10px; align-items: center; }
+  .grid2.modal { width: 420px; }
+  p.f-help { margin: 0 0 4px; }
   .grid2 input, .grid2 select { width: 100%; }
   .row { display: flex; gap: 6px; align-items: center; margin-bottom: 3px; }
   .row input { flex: 1; }

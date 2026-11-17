@@ -6,6 +6,7 @@ import { newQuest } from '../src/shared/quest'
 import { hashText } from '../src/main/install'
 import { parseLooseObject } from '../src/shared/loosejson'
 import { handRules, findBlocks } from '../src/shared/export/blocks'
+import { parseCsvRecords } from '../src/shared/csvedit'
 import { defsFor } from '../src/shared/defs'
 import type { ProjectState } from '../src/shared/project'
 import type { GameIndex } from '../src/shared/api'
@@ -40,6 +41,48 @@ function model(): ModModel {
   return m
 }
 
+describe('export: offer timing and tag-pool contacts (RC-R5)', () => {
+  const rowOf = (text: string, id: string) => {
+    const recs = parseCsvRecords(text).map((r) => r.fields)
+    const h = recs[0].map((x) => x.trim())
+    const r = recs.find((f) => f[0] === id)!
+    return Object.fromEntries(h.map((k, i) => [k, r[i]]))
+  }
+  it('writes the timings and tags it is given, and vanilla\'s defaults otherwise', () => {
+    const m = model()
+    const q = m.quests[0]
+    // the defaults: what 1.0 always wrote
+    let out = apply({}, planExport(m, loadedFrom({}, m), index, null).writes)
+    expect(rowOf(out['data/campaign/person_missions.csv'], q.id)).toMatchObject({ 'min timeout': '30', 'max timeout': '60', tagsAll: '' })
+    // a tag pool: no person, any trade contact of the Compact, not a priority mission twice
+    q.start = { kind: 'contact', person: '', freq: 10, tagsAll: 'trade', tagsNotAny: 'pirates', tags: 'priority, non_repeatable', timeout: [5, 9] }
+    out = apply({}, planExport(m, loadedFrom({}, m), index, null).writes)
+    expect(rowOf(out['data/campaign/person_missions.csv'], q.id)).toMatchObject({ 'person id': '', tagsAll: 'trade', tagsNotAny: 'pirates', 'min timeout': '5', 'max timeout': '9' })
+    expect(out['data/campaign/person_missions.csv']).toContain('"priority, non_repeatable"')
+    // a bar event with its own timing
+    q.start = { kind: 'bar', freq: 10, prob: 1, duration: [10, 12], timeout: [1, 2], acceptedTimeout: [100, 120] }
+    out = apply({}, planExport(m, loadedFrom({}, m), index, null).writes)
+    expect(rowOf(out['data/campaign/bar_events.csv'], q.id)).toMatchObject({ 'min dur': '10', 'max dur': '12', 'min timeout': '1', 'max timeout': '2', 'min accepted timeout': '100', 'max accepted timeout': '120' })
+  })
+})
+
+describe('export: the mod version (task #36)', () => {
+  it('writes a new version into mod_info.json with the dependency, keeping its format', () => {
+    const m = model()
+    const files = { 'mod_info.json': '{\n\t"id": "vgc",\n\t"name": "Vanguard",\n\t"version": "1.0.0",\n}\n' }
+    const plan = planExport(m, loadedFrom(files, m), index, null, { addDependency: true, version: '1.1.0' })
+    const out = apply(files, plan.writes)
+    const v = parseLooseObject(out['mod_info.json']).value
+    expect(v.version).toBe('1.1.0')
+    expect((v.dependencies as { id: string }[]).map((d) => d.id)).toEqual(['lastai_sagalib'])
+    expect(out['mod_info.json']).toContain('\t"version": "1.1.0"')
+    expect(plan.files.find((f) => f.path === 'mod_info.json')!.summary).toBe('adds the SagaLib dependency (1.2.0) · version 1.0.0 → 1.1.0') // translatable dialog needs SagaLib 1.2 (R31)
+    // the same version: mod_info.json isn't touched
+    const same = planExport(m, loadedFrom(files, m), index, null, { version: '1.0.0' })
+    expect(same.writes.some((w) => w.path === 'mod_info.json')).toBe(false)
+  })
+})
+
 describe('export (PLAN.md §6)', () => {
   const hand = 'id,trigger,conditions,script,text,options,notes\nvgc_hand,OpenCommLink,$id == vgc_reyes,,Hand-written.,,\n'
 
@@ -58,7 +101,7 @@ describe('export (PLAN.md §6)', () => {
     expect(out['data/campaign/special_items.csv']).toContain('A scorched flight recorder.')
         expect(out['data/strings/descriptions.csv']).toContain('vgc_vanguard,FACTION,Free stations.')
     expect((parseLooseObject(out['data/config/settings.json']).value.graphics as { illustrations: Record<string, string> }).illustrations.vgc_wreck).toBe('graphics/illustrations/vgc_wreck.jpg')
-    expect(parseLooseObject(out['mod_info.json']).value.dependencies).toEqual([{ id: 'lastai_sagalib', name: 'SagaLib' }])
+    expect(parseLooseObject(out['mod_info.json']).value.dependencies).toEqual([{ id: 'lastai_sagalib', name: 'SagaLib', version: '1.2.0' }])
     expect(out['data/campaign/person_missions.csv']).toContain('vgc_lost_convoy,vgc_reyes,')
     expect(out['data/campaign/person_missions.csv']).toContain('lastai.sagalib.quest.SagaQuest')
     expect(out['data/config/sagaforge/content.csv']).toContain('vgc_lost_convoy,quest,data/sagaforge/quests/vgc_lost_convoy.json,vgc')
@@ -77,16 +120,16 @@ describe('export (PLAN.md §6)', () => {
     const m = model()
     const files = { 'data/campaign/rules.csv': hand }
     const out = apply(files, planExport(m, loadedFrom(files, m), index, null).writes)
-    const edited = { ...out, 'data/campaign/rules.csv': out['data/campaign/rules.csv'].replace('Accept the job', 'Accept it') }
+    const edited = { ...out, 'data/campaign/rules.csv': out['data/campaign/rules.csv'].replace('SF_Step ', 'SF_StepX ') } // R31: the texts are in text.json; edit a command
     const p1 = planExport(m, loadedFrom(edited, m), index, null)
     expect(p1.handEdited.map((h) => h.key)).toEqual(['quest=vgc_lost_convoy'])
     expect(p1.writes.find((w) => w.path === 'data/campaign/rules.csv')).toBeUndefined()
     const p2 = planExport(m, loadedFrom(edited, m), index, null, { overwrite: ['data/campaign/rules.csv|quest=vgc_lost_convoy'] })
-    expect(p2.writes.find((w) => w.path === 'data/campaign/rules.csv')!.text).toContain('Accept the job')
+    expect(p2.writes.find((w) => w.path === 'data/campaign/rules.csv')!.text).not.toContain('SF_StepX')
     const p3 = planExport(m, loadedFrom(edited, m), index, null, { detach: ['data/campaign/rules.csv|quest=vgc_lost_convoy'] })
     const det = p3.writes.find((w) => w.path === 'data/campaign/rules.csv')!.text
     expect(findBlocks(det)).toHaveLength(0)
-    expect(det).toContain('Accept it')
+    expect(det).toContain('SF_StepX')
     // the quest is deleted: its block goes, hand-written rows stay
     const gone = { ...m, quests: [] }
     const p4 = planExport(gone, loadedFrom(out, gone), index, null)

@@ -1,6 +1,7 @@
 // Screenshot mode: launches the built app with its own settings folder (.userdata/smoke), points it
 // at a Starsector install and a mods workspace, opens a page and writes a PNG, then quits.
 //   npm run build && node scripts/smoke.mjs <page>[:<arg>] [--game D:/Starsector] [--ws <dir>] [--mod <dir>] [--out <file>] [--exe <packaged exe>]
+//     [--migration <second install> [--target main|migration]]   (#47)
 // The workspace defaults to a copy-free fixture folder in .userdata/smoke/ws (mods are only read
 // unless --mod points at a mod there). Nothing in the game folder is ever written.
 import { spawnSync } from 'node:child_process'
@@ -17,9 +18,12 @@ const game = opt('game', process.env.STARSECTOR_DIR ?? 'D:/Starsector')
 const dataDir = path.join(root, '.userdata', 'smoke')
 const ws = path.resolve(opt('ws', path.join(dataDir, 'ws')))
 const mod = opt('mod', null)
+// #47: --migration <other install> [--target migration] sets the second install and the target
+const migration = opt('migration', null)
+const target = opt('target', 'main')
 fs.mkdirSync(ws, { recursive: true })
 fs.rmSync(path.join(dataDir, 'config.json'), { force: true })
-fs.writeFileSync(path.join(dataDir, 'config.json'), JSON.stringify({ starsectorDir: game, workspaceDir: ws, activeModDir: mod ? path.resolve(mod) : null }, null, 2))
+fs.writeFileSync(path.join(dataDir, 'config.json'), JSON.stringify({ starsectorDir: game, workspaceDir: ws, activeModDir: mod ? path.resolve(mod) : null, migrationDir: migration, target }, null, 2))
 for (const k of ['sf.page']) void k
 
 const exe = opt('exe', null)

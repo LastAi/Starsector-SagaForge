@@ -1,4 +1,4 @@
-# Saga Forge override of hegemony (another mod): only this mod's changes. The game merges this file
+# Saga Forge override of hegemony: only this mod's changes. The game merges this file
 # into the original: objects key by key, lists appended. Edit it in Saga Forge to keep it a patch.
 {
 	"hullFrequency": {

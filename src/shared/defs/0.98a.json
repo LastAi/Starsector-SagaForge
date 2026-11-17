@@ -4678,6 +4678,177 @@
    "summary": "Removes a spawned encounter."
   },
   {
+   "name": "SF_PlaceEntity",
+   "use": "script",
+   "className": "lastai.sagalib.rulecmd.SF_PlaceEntity",
+   "provider": "sagalib",
+   "forms": [
+    [
+     {
+      "name": "entity",
+      "type": "entity"
+     }
+    ]
+   ],
+   "display": "none",
+   "summary": "SagaLib 1.1: place an object that appears later (its \"appears\" setting) now, once."
+  },
+  {
+   "name": "SF_RollPool",
+   "use": "both",
+   "className": "lastai.sagalib.rulecmd.SF_RollPool",
+   "provider": "sagalib",
+   "forms": [
+    [
+     {
+      "name": "pool",
+      "type": "string"
+     }
+    ],
+    [
+     {
+      "name": "pool",
+      "type": "string"
+     },
+     {
+      "name": "scope",
+      "type": "enum",
+      "values": ["object", "global"]
+     }
+    ]
+   ],
+   "display": "none",
+   "summary": "SagaLib 1.2: pick one entry of a random pool by weight into $sagaforge_pick (for the dialog's object, or global). As a condition: true when something (not \"nothing\") was picked."
+  },
+  {
+   "name": "SF_IsTarget",
+   "use": "condition",
+   "className": "lastai.sagalib.rulecmd.SF_IsTarget",
+   "provider": "sagalib",
+   "forms": [
+    [
+     {
+      "name": "quest",
+      "type": "string"
+     },
+     {
+      "name": "var",
+      "type": "string"
+     }
+    ],
+    [
+     {
+      "name": "quest",
+      "type": "string"
+     },
+     {
+      "name": "var",
+      "type": "string"
+     },
+     {
+      "name": "part",
+      "type": "enum",
+      "values": ["person", "spawned"]
+     }
+    ]
+   ],
+   "display": "none",
+   "summary": "SagaLib 1.2: the dialog is at the quest's random target (its entity, its market, or anything in a system target); with \"person\": talking to the target's person; with \"spawned\": at what SF_SpawnAtTarget placed."
+  },
+  {
+   "name": "SF_SpawnAtTarget",
+   "use": "script",
+   "className": "lastai.sagalib.rulecmd.SF_SpawnAtTarget",
+   "provider": "sagalib",
+   "forms": [
+    [
+     {
+      "name": "quest",
+      "type": "string"
+     },
+     {
+      "name": "var",
+      "type": "string"
+     },
+     {
+      "name": "kind",
+      "type": "enum",
+      "values": ["entity", "derelict"]
+     },
+     {
+      "name": "type",
+      "type": "string"
+     }
+    ],
+    [
+     {
+      "name": "quest",
+      "type": "string"
+     },
+     {
+      "name": "var",
+      "type": "string"
+     },
+     {
+      "name": "kind",
+      "type": "enum",
+      "values": ["entity", "derelict"]
+     },
+     {
+      "name": "type",
+      "type": "string"
+     },
+     {
+      "name": "where",
+      "type": "enum",
+      "values": ["ORBITING_PARAM", "ORBITING_PLANET", "ORBITING_PLANET_OR_STAR", "HIDDEN", "HIDDEN_NOT_NEAR_STAR", "UNCOMMON", "ANY"]
+     }
+    ]
+   ],
+   "display": "none",
+   "summary": "SagaLib 1.2: vanilla's mission spawning near the quest's random target (a custom entity type, or a faction's derelict ship), removed when the quest ends; its id goes to $global.<quest>_<var>_spawned. Once per quest."
+  },
+  {
+   "name": "SF_RemoveEntity",
+   "use": "script",
+   "className": "lastai.sagalib.rulecmd.SF_RemoveEntity",
+   "provider": "sagalib",
+   "forms": [
+    [
+     {
+      "name": "entity",
+      "type": "entity"
+     },
+     {
+      "name": "decivilize",
+      "type": "enum",
+      "values": [
+       "decivilize"
+      ],
+      "optional": true
+     }
+    ]
+   ],
+   "display": "none",
+   "summary": "SagaLib 1.1: remove an object (it fades out), once. One with a market is only removed with decivilize."
+  },
+  {
+   "name": "SF_RemovePerson",
+   "use": "script",
+   "className": "lastai.sagalib.rulecmd.SF_RemovePerson",
+   "provider": "sagalib",
+   "forms": [
+    [
+     {
+      "name": "person",
+      "type": "person"
+     }
+    ]
+   ],
+   "display": "none",
+   "summary": "SagaLib 1.1: a person is written out of the story (dead, gone): removed from their market and never a fleet captain again."
+  },
+  {
    "name": "SF_BackToMenu",
    "use": "script",
    "className": "lastai.sagalib.rulecmd.SF_BackToMenu",

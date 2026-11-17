@@ -13,9 +13,10 @@
  *    the text after them AddText lines.
  */
 import type { RuleRow } from '../rules/types'
-import type { BranchNode, DialogNode, Display, OptionDef, Phrase, QEdge, QNode, QuestPlan, Visual } from '../model'
+import type { BranchNode, DialogNode, Display, OptionDef, Phrase, PoolPlan, QEdge, QNode, QuestPlan, Visual } from '../model'
 import type { Problem } from '../api'
 import { paragraphs, parseCondition } from '../rules/parse'
+import { arriveTakesOver, targetPartOf, targetVarOf } from '../targets'
 
 export interface CompileOptions {
   /** The mod uses SagaLib (quests always do; dialog-only content may not). */
@@ -26,6 +27,13 @@ export interface CompileOptions {
   sourceId?: string
   /** Commodity or special item (special items need AddRemoveAnyItem SPECIAL); unknown = commodity. */
   itemKind?: (id: string) => "commodity" | "special" | undefined
+  /**
+   * RC-F2: objects a "Protect this wreck" lock answers at. The lock owns their arrival (only
+   * Leave), so an Arrive there takes the arrival over at its step, as before.
+   */
+  lockedEntities?: Set<string>
+  /** Phase 7a: the mod's named pools, to check a Random branch's pool exists. */
+  pools?: PoolPlan[]
 }
 
 export interface CompiledQuest {
@@ -54,6 +62,8 @@ export const stepKey = (q: QuestPlan) => `$global.${q.id}_step`
 export const BACK_TO_MENU = 'FireAll PopulateOptions'
 /** The same with SagaLib: closes the dialog when there's no menu to go back to. */
 export const SAGA_BACK_TO_MENU = 'SF_BackToMenu'
+/** Phase 7b (RC-R6): back to the bar after a bar scene, with a Continue first (vanilla's own scenes). */
+export const BACK_TO_BAR = 'BarCMD returnFromEvent true'
 
 const quote = (s: string) => `"${s.replace(/"/g, "'")}"`
 
@@ -83,6 +93,21 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     return optionId(q, o.id)
   }
   for (const n of q.nodes) if (n.type === 'dialog') for (const o of n.options) optionNode[optId(n, o)] = n.id
+  // option ids are the quest's (<quest>_<option>): the same id in two dialogs gives two rules the
+  // same id and the same "$option" test, and the game can't tell them apart
+  {
+    const seen = new Map<string, string>()
+    for (const n of q.nodes) {
+      if (n.type !== 'dialog') continue
+      for (const o of n.options) {
+        const t = byId.get(outOf(n.id, o.id)?.to ?? '')
+        if (t?.type === 'link' && t.mode === 'option') continue // answers an existing option on purpose
+        const other = seen.get(o.id)
+        if (other && other !== n.id) problems.push({ level: 'error', area: 'Quest', message: `Option id "${o.id}" is used in two dialogs ("${other}" and "${n.id}"). Option ids belong to the quest, so the game can't tell them apart: change one in its ⋯ settings.`, ref: ref(n.id, o.id) })
+        else seen.set(o.id, n.id)
+      }
+    }
+  }
 
   // ---- entries
   const start = q.nodes.find((n) => n.type === 'start')
@@ -103,6 +128,10 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     if (startEdge?.to === n.id && inc.length === 1) {
       const s = q.start
       if (s.kind === 'trigger') entry[n.id] = { trigger: s.trigger, conds: [...s.conditions, ...prereqConds] }
+      // an interjection: its own start rule (below) checks the limits and jumps in
+      else if (s.kind === 'interject') entry[n.id] = { trigger: nodeTrigger(q, n.id), conds: [] }
+      // a bar scene: its own start rule (below) counts the once-limit and jumps in
+      else if (s.kind === 'barScene') entry[n.id] = { trigger: nodeTrigger(q, n.id), conds: [] }
       else if (s.kind === 'manual') entry[n.id] = { trigger: nodeTrigger(q, n.id), conds: [] }
       else entry[n.id] = { trigger: 'DialogOptionSelected', conds: [`$option == ${startOptionId(q)}`] }
       continue
@@ -135,7 +164,9 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
    */
   const cont = (n: QNode, script: string[] = [], to = outOf(n.id, 'next')?.to): string[] => {
     const lines = jumpTo(to)
-    if (lines.length || script.some((l) => /^(EndConversation|DismissDialog|SF_BackToMenu)\b/.test(l.trim()))) return lines
+    if (lines.length || script.some((l) => /^(EndConversation|DismissDialog|SF_BackToMenu|BarCMD)\b/.test(l.trim()))) return lines
+    // RC-R6: a bar scene's loose end goes back to the bar (vanilla's bar waits for returnFromEvent)
+    if (q.start.kind === 'barScene') return [BACK_TO_BAR]
     const how = opts.sagalib ? 'goes back to the menu, or closes where there is none (a wreck)' : 'goes back to the menu (FireAll PopulateOptions)'
     problems.push({ level: 'info', area: 'Quest', message: `"${(n as { title?: string }).title || n.id}" is the end of a conversation branch: the dialog ${how}. Add a Dialog or a Link to show something else.`, ref: ref(n.id), key: `menuback:${q.id}:${n.id}` })
     // with SagaLib: at a wreck or other entity PopulateOptions adds nothing and the dialog was left open (found in game, 2026-11-11)
@@ -143,6 +174,13 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     return [BACK_TO_MENU]
   }
   const linkJump = (l: Extract<QNode, { type: 'link' }>): string[] => {
+    // RC-R6: vanilla's way back from a bar scene (with "Continue" so the last text can be read);
+    // in a bar scene, "back to the menu" is the bar's menu too
+    if (l.mode === 'bar' || (l.mode === 'menu' && q.start.kind === 'barScene')) return [BACK_TO_BAR]
+    if (l.mode === 'menu') {
+      if (opts.sagalib) { usesSagaLib = true; return [SAGA_BACK_TO_MENU] }
+      return [BACK_TO_MENU]
+    }
     if (l.mode === 'trigger') return [`${l.fire ?? 'FireAll'} ${l.target}`]
     if (l.mode === 'option') return [`$option = ${l.target} 0`, 'FireBest DialogOptionSelected']
     return [`FireBest ${nodeTrigger(q, l.target)}`]
@@ -156,6 +194,11 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     const blurb = (isBar ? s.blurb : s.offerText) ?? ''
     push({ id: `${q.id}_blurb`, trigger: `${q.id}_blurb${isBar ? 'Bar' : ''}`, conditions: '', script: '', text: blurb, options: '' }, start?.id ?? 'start')
     push({ id: `${q.id}_option`, trigger: `${q.id}_option${isBar ? 'Bar' : ''}`, conditions: '', script: '', text: '', options: `${startOptionId(q)}:${s.optionText ?? q.title}` }, start?.id ?? 'start')
+  } else if (q.start.kind === 'barScene') {
+    // RC-R6: vanilla fires AddBarEvents when the bar opens; AddBarEvent adds the option and the blurb
+    const s = q.start
+    const bs = barScene(q, s)
+    push({ id: `${q.id}_start`, trigger: 'AddBarEvents', conditions: [...bs.conds, ...prereqConds].join('\n'), script: `AddBarEvent ${startOptionId(q)} ${quote(s.optionText || q.title)} ${quote(s.blurb)}`, text: '', options: '' }, start?.id ?? 'start')
   } else if (q.start.kind === 'option') {
     const s = q.start
     push({
@@ -172,6 +215,12 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     const first = startEdge.to
     if (s.kind === 'trigger') {
       push({ id: `${q.id}_start_go`, trigger: s.trigger, conditions: [...s.conditions, ...prereqConds].join('\n'), script: jumpTo(first).join('\n'), text: '', options: '' }, start!.id)
+    } else if (s.kind === 'interject') {
+      // RC-F2: cuts in when the option is picked, beating its own rule (more conditions), within its limits
+      const ij = interjection(q, s)
+      push({ id: `${q.id}_start_go`, trigger: 'DialogOptionSelected', conditions: [...ij.conds, ...prereqConds].join('\n'), script: [...ij.script, ...jumpTo(first)].join('\n'), text: '', options: '' }, start!.id)
+    } else if (s.kind === 'barScene') {
+      push({ id: `${q.id}_start_go`, trigger: 'DialogOptionSelected', conditions: `$option == ${startOptionId(q)}`, script: [...barScene(q, s).script, ...jumpTo(first)].join('\n'), text: '', options: '' }, start!.id)
     } else if (s.kind !== 'manual') {
       const mission = s.kind === 'contact' || s.kind === 'bar' ? [`$missionId = ${q.id}`] : []
       push({ id: `${q.id}_start_go`, trigger: 'DialogOptionSelected', conditions: `$option == ${startOptionId(q)}`, script: [...mission, ...jumpTo(first)].join('\n'), text: '', options: '' }, start!.id)
@@ -207,6 +256,29 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
         push({ id: nodeRuleId(q, n.id), trigger: en.trigger, conditions: en.conds.join('\n'), script: script.join('\n'), text: '', options: '' }, n.id)
         break
       }
+      case 'raid': {
+        // RC-F4: vanilla's story-raid pattern (rules.csv bffi/lke/gaATG raids): the objective's trigger
+        // fires during the raid, the continue trigger after vanilla's result screens, the go-back
+        // trigger when the player leaves the raid menu. No SagaLib.
+        const rid = nodeRuleId(q, n.id)
+        const trig = nodeTrigger(q, n.id)
+        const back = outOf(n.id, 'back')
+        const backLines = back ? jumpTo(back.to) : []
+        const tip = n.tooltip?.trim() ? ` ${quote(n.tooltip.trim())}` : ''
+        const script = [
+          `$raidDifficulty = ${Math.max(0, n.difficulty)} 0`,
+          `$raidGoBackTrigger = ${backLines.length ? `${trig}_back` : 'PopulateOptions'} 0`,
+          `$raidRestrictToTrigger = ${trig}_raid 0`,
+          `$raidContinueTrigger = ${trig}_done 0`,
+          `AddRaidObjective ${n.icon?.trim() || 'genericIcon'} ${quote(n.objective || 'Raid')} ${n.danger} ${Math.max(0, Math.round(n.xp))} ${trig}_raid true${tip}`
+        ]
+        push({ id: rid, trigger: en.trigger, conditions: en.conds.join('\n'), script: script.join('\n'), text: n.text, options: 'mktRaidNonMarket:Continue' }, n.id)
+        push({ id: `${rid}_raid`, trigger: `${trig}_raid`, conditions: '', script: '', text: n.raidText ?? '', options: '' }, n.id)
+        push({ id: `${rid}_done`, trigger: `${trig}_done`, conditions: '', script: cont(n, [], outOf(n.id, 'done')?.to).join('\n'), text: '', options: '' }, n.id)
+        if (backLines.length) push({ id: `${rid}_back`, trigger: `${trig}_back`, conditions: '', script: backLines.join('\n'), text: '', options: '' }, n.id)
+        if (!n.objective?.trim()) problems.push({ level: 'error', area: 'Quest', message: `Raid "${n.title || n.id}": the objective needs a name (it is shown in the raid menu).`, ref: ref(n.id) })
+        break
+      }
       case 'encounter': {
         usesSagaLib = true
         const script = [`SF_Spawn ${n.encounter}`, ...cont(n)]
@@ -225,13 +297,22 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
         usesSagaLib = true
         const next = outOf(n.id, 'next')?.to
         if (n.mode === 'arrive') {
-          // the player arrives: an interaction rule at the place, only while the quest is at this point
           const stepCond = currentStepCondition(q, n.id)
-          push({
-            id: nodeRuleId(q, n.id), trigger: 'OpenInteractionDialog',
-            conditions: [`$id == ${n.entity ?? ''}`, ...(stepCond ? [stepCond] : []), `!$global.${q.id}_${n.id}_done`].join('\n'),
-            script: [`$global.${q.id}_${n.id}_done = true`, ...jumpTo(next)].join('\n'), text: n.arriveText ?? '', options: ''
-          }, n.id)
+          // Phase 7c: at a random target, SagaLib checks the place against the pick (SagaLib 1.2)
+          const tv = targetVarOf(n.entity)
+          if (tv) usesSagaLib = true
+          const tp = targetPartOf(n.entity)
+          const at = [tv ? `SF_IsTarget ${q.id} ${tv}${tp ? ` ${tp}` : ''}` :`$id == ${n.entity ?? ''}`, ...(stepCond ? [stepCond] : []), `!$global.${q.id}_${n.id}_done`]
+          const done = `$global.${q.id}_${n.id}_done = true`
+          if (arriveTakesOver(q, n) || (n.entity && opts.lockedEntities?.has(n.entity))) {
+            // opt-in: the scene replaces the arrival (an interaction rule at the place, while the quest is at this point)
+            push({ id: nodeRuleId(q, n.id), trigger: 'OpenInteractionDialog', conditions: at.join('\n'), script: [done, ...jumpTo(next)].join('\n'), text: n.arriveText ?? '', options: '' }, n.id)
+          } else {
+            // RC-F2 default: an option in the place's own menu; vanilla's menu (trade, salvage, …) stays
+            const oid = `${q.id}_${n.id}_go`
+            push({ id: `${nodeRuleId(q, n.id)}_offer`, trigger: 'PopulateOptions', conditions: at.join('\n'), script: '', text: '', options: `${ARRIVE_OPTION_ORDER}:${oid}:${n.optionText || 'Look around'}` }, n.id)
+            push({ id: nodeRuleId(q, n.id), trigger: 'DialogOptionSelected', conditions: `$option == ${oid}`, script: [done, ...jumpTo(next)].join('\n'), text: n.arriveText ?? '', options: '' }, n.id)
+          }
         } else {
           // time: SagaLib fires "<quest>_<node>" after the delay (quest JSON timer)
           push({ id: nodeRuleId(q, n.id), trigger: nodeTrigger(q, n.id), conditions: '', script: jumpTo(next).join('\n'), text: '', options: '' }, n.id)
@@ -359,6 +440,7 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
   }
 
   function compileBranch(n: BranchNode, en: Entry) {
+    if (n.random) { compileRandomBranch(n, en); return }
     for (const c of n.cases) {
       const e = outOf(n.id, c.id)
       if (!e) problems.push({ level: 'error', area: 'Quest', message: `Branch case "${c.label}" leads nowhere.`, ref: ref(n.id, c.id) })
@@ -372,6 +454,29 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     if (new Set(counts).size < counts.length) problems.push({ level: 'warning', area: 'Quest', message: `Branch "${n.title ?? n.id}": cases with the same number of conditions; when several match, the game picks one of them (FireBest), not the first.`, ref: ref(n.id) })
   }
 
+  /**
+   * Phase 7a: a Random branch. One rule rolls the pool (SF_RollPool, SagaLib 1.2) and fires the
+   * node's "_pick" trigger; one rule per case answers $sagaforge_pick == <case>, and "otherwise"
+   * answers "nothing" (the nothing share, or every case used up / not eligible).
+   */
+  function compileRandomBranch(n: BranchNode, en: Entry) {
+    usesSagaLib = true
+    const r = n.random!
+    const poolId = r.pool || `${q.id}_${n.id}`
+    if (r.pool && opts.pools && !opts.pools.some((p) => p.id === r.pool)) problems.push({ level: 'error', area: 'Quest', message: `Random branch "${n.title ?? n.id}": there is no pool "${r.pool}" (Saga › Pools).`, ref: ref(n.id) })
+    if (!n.cases.length) problems.push({ level: 'error', area: 'Quest', message: `Random branch "${n.title ?? n.id}" has no cases.`, ref: ref(n.id) })
+    const pickTrigger = `${nodeTrigger(q, n.id)}_pick`
+    push({ id: `${nodeRuleId(q, n.id)}_roll`, trigger: en.trigger, conditions: en.conds.join('\n'), script: [`SF_RollPool ${poolId}${r.scope === 'global' ? ' global' : ''}`, `FireBest ${pickTrigger}`].join('\n'), text: '', options: '' }, n.id)
+    for (const c of n.cases) {
+      const e = outOf(n.id, c.id)
+      if (!e) problems.push({ level: 'error', area: 'Quest', message: `Random case "${c.label}" leads nowhere.`, ref: ref(n.id, c.id) })
+      push({ id: `${nodeRuleId(q, n.id)}_${c.id}`, trigger: pickTrigger, conditions: `$sagaforge_pick == ${c.id}`, script: jumpTo(e?.to).join('\n'), text: '', options: '' }, n.id)
+    }
+    const els = outOf(n.id, 'else')
+    if (els) push({ id: `${nodeRuleId(q, n.id)}_else`, trigger: pickTrigger, conditions: '$sagaforge_pick == nothing', script: jumpTo(els.to).join('\n'), text: '', options: '' }, n.id)
+    else problems.push({ level: 'warning', area: 'Quest', key: `randomelse:${q.id}:${n.id}`, message: `Random branch "${n.title ?? n.id}": "otherwise" leads nowhere. It is taken for the nothing share, and when no case can be picked (limits used up, conditions false); then the conversation stops here.`, ref: ref(n.id) })
+  }
+
   function actionLines(op: Extract<QNode, { type: 'action' }>['ops'][number]): string[] {
     switch (op.op) {
       case 'credits': return [op.amount >= 0 ? `AddCredits ${op.amount}` : `SubCredits ${-op.amount}`]
@@ -382,10 +487,15 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
       case 'reward': usesSagaLib = true; return [`SF_Reward ${q.id} ${op.reward}`]
       case 'spawn': usesSagaLib = true; return [`SF_Spawn ${op.encounter}`]
       case 'despawn': usesSagaLib = true; return [`SF_Despawn ${op.encounter}`]
+      case 'placeEntity': usesSagaLib = true; return op.entity ? [`SF_PlaceEntity ${op.entity}`] : []
+      case 'removePerson': usesSagaLib = true; return op.person ? [`SF_RemovePerson ${op.person}`] : []
+      case 'removeEntity': usesSagaLib = true; return op.entity ? [`SF_RemoveEntity ${op.entity}${op.decivilize ? ' decivilize' : ''}`] : []
       case 'startQuest': usesSagaLib = true; return [`SF_Start ${op.quest}`]
       case 'storyPoints': return [`AddStoryPoints ${op.amount}`]
       case 'xp': return [`AddXP ${op.amount}`]
+      case 'spawnAtTarget': usesSagaLib = true; return op.target && op.type ? [`SF_SpawnAtTarget ${q.id} ${op.target} ${op.kind} ${op.type}${op.where ? ` ${op.where}` : ''}`] : []
       case 'line': if (/^\s*SF_/.test(op.line)) usesSagaLib = true; return [op.line]
+      case 'progress': usesSagaLib = true; return op.event ? [`SF_Progress ${op.event} ${Math.round(op.points)}${op.text?.trim() ? ` "${op.text.trim().replace(/"/g, "'")}"` : ''}`] : []
     }
   }
 
@@ -482,6 +592,43 @@ export function prereqConditions(q: QuestPlan): string[] {
 }
 
 /** "$global.<quest>_step == <stage>" of the stage a node is in (the nearest Stage node before it). */
+/** Where an Arrive option goes in the place's menu (low numbers come first; vanilla's start around 10). */
+export const ARRIVE_OPTION_ORDER = 5
+
+/**
+ * RC-F2: an interjection's conditions and script. It answers `$option == <option>` with more
+ * conditions than the option's own rule, so FireBest picks it; once it has run, a local flag lets
+ * the hand-back reach the original rule in the same dialog. Its limits: a chance (RollProbability,
+ * vanilla's seeded roll) and once per object or per playthrough.
+ */
+export function interjection(q: QuestPlan, s: Extract<QuestPlan['start'], { kind: 'interject' }>): { conds: string[]; script: string[] } {
+  const conds = [`$option == ${s.option}`, ...s.conditions, `!$${q.id}_interjected`]
+  const script = [`$${q.id}_interjected = true 0`]
+  if (s.once === 'entity') { conds.push(`!$entity.${q.id}_seen`); script.push(`$entity.${q.id}_seen = true`) }
+  if (s.once === 'playthrough') { conds.push(`!$global.${q.id}_seen`); script.push(`$global.${q.id}_seen = true`) }
+  if (s.probability !== undefined && s.probability < 1) conds.push(`RollProbability ${Math.max(0, s.probability)}`)
+  return { conds, script }
+}
+
+/**
+ * Phase 7b (RC-R6): a bar scene's limits. The chance is rolled each time the bar opens
+ * (RollProbability on AddBarEvents); "once" is counted when the player picks the option.
+ */
+export function barScene(q: QuestPlan, s: Extract<QuestPlan['start'], { kind: 'barScene' }>): { conds: string[]; script: string[] } {
+  const conds = [...s.conditions]
+  const script: string[] = []
+  if (s.once === 'market') { conds.push(`!$market.${q.id}_seen`); script.push(`$market.${q.id}_seen = true`) }
+  if (s.once === 'playthrough') { conds.push(`!$global.${q.id}_seen`); script.push(`$global.${q.id}_seen = true`) }
+  if (s.probability !== undefined && s.probability < 1) conds.push(`RollProbability ${Math.max(0, s.probability)}`)
+  return { conds, script }
+}
+
+/** The stage the quest is at when it reaches this node (the closest Stage node before it), if any. */
+export function currentStage(q: QuestPlan, nodeId: string): string | null {
+  const c = currentStepCondition(q, nodeId)
+  return c ? c.replace(/^.* == /, '') : null
+}
+
 function currentStepCondition(q: QuestPlan, nodeId: string): string | null {
   const seen = new Set<string>()
   let frontier = [nodeId]

@@ -23,7 +23,27 @@ export interface TestContext {
   memory: Record<string, string>
   /** Outcomes for conditions the engine can't evaluate. */
   assume: Record<string, boolean>
+  /** Phase 7b (RC-F3): what kind of place the dialog is at; sets the keys vanilla's rules test there. */
+  place?: PlacePreset
+  /** The place's id ($id / $entity.id when no one is spoken to), e.g. one of the mod's planets. */
+  entity?: string
 }
+
+export type PlacePreset = 'none' | 'market' | 'bar' | 'planet' | 'ruins' | 'ruinsExplored' | 'deciv' | 'derelict'
+
+const PLANET = { '$market.isPlanetConditionMarketOnly': 'true', '$market.isSurveyed': 'true' }
+
+/** The presets and the memory each sets, as vanilla's dialogs see that place (FORMATS.md, "Place presets"). */
+export const PLACE_PRESETS: { id: PlacePreset; label: string; help: string; memory: Record<string, string> }[] = [
+  { id: 'none', label: '(only the fields below)', help: 'Nothing beyond the fields below.', memory: {} },
+  { id: 'market', label: 'Colony, main menu', help: "A colony's menu: trade, the bar, the comm directory.", memory: { '$hasMarket': 'true', '$menuState': 'main' } },
+  { id: 'bar', label: 'Colony bar', help: 'Inside a bar, where bar scenes and bar missions are offered (AddBarEvents).', memory: { '$hasMarket': 'true', '$menuState': 'bar' } },
+  { id: 'planet', label: 'Uncolonised planet, surveyed', help: "Vanilla's planet dialog (surveyOpen): no colony, survey done.", memory: { ...PLANET } },
+  { id: 'ruins', label: 'Planet with vast ruins, unexplored', help: 'Vanilla adds "Explore the ruins" (salRuins_vast, order 5).', memory: { ...PLANET, '$market.hasRuins': 'true', '$market.hasUnexploredRuins': 'true', '$market.mc:ruins_vast': 'true' } },
+  { id: 'ruinsExplored', label: 'Planet with vast ruins, explored', help: 'The ruins were explored already (salRuins_alreadyExplored).', memory: { ...PLANET, '$market.hasRuins': 'true', '$market.ruinsExplored': 'true', '$market.mc:ruins_vast': 'true' } },
+  { id: 'deciv', label: 'Decivilised world', help: 'A colony that collapsed (surveyOpenDeciv): decivilized, widespread ruins, wasCivilized.', memory: { ...PLANET, '$market.wasCivilized': 'true', '$market.mc:decivilized': 'true', '$market.hasRuins': 'true', '$market.hasUnexploredRuins': 'true', '$market.mc:ruins_widespread': 'true' } },
+  { id: 'derelict', label: 'Derelict ship or wreck', help: "A salvageable wreck: vanilla's salvage rules answer it, and it never fires PopulateOptions.", memory: { '$customType': 'wreck', '$tag:salvageable': 'true' } }
+]
 
 export const defaultTestContext = (): TestContext => ({
   playerFirst: 'Ana', playerLast: 'Varga', playerGender: 'FEMALE', person: '', faction: '', market: '',
@@ -91,6 +111,8 @@ export function contextFrom(t: TestContext, defs: GameDefinitions, look: Lookup)
   const fid = t.faction || p?.faction || ''
   if (fid) { mem.set('$faction.id', fid); mem.set('$entity.faction.id', fid) }
   if (t.market) { mem.set('$market.id', t.market); mem.set('$hasMarket', true); mem.set('$menuState', 'main') }
+  if (t.entity && !t.person) { mem.set('$id', t.entity); mem.set('$entity.id', t.entity) }
+  for (const [k, v] of Object.entries(PLACE_PRESETS.find((p) => p.id === t.place)?.memory ?? {})) mem.set(k, parseValue(v))
   mem.set('$player.credits', t.credits)
   if (t.commission) { mem.set('$player.commissionFactionId', t.commission); mem.set('$global.commissionFaction', t.commission) }
   for (const [k, v] of Object.entries(t.memory)) mem.set(k.startsWith('$') ? k : `$${k}`, parseValue(v))

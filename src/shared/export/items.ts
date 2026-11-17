@@ -17,6 +17,14 @@ export function itemKindLookup(items: ItemDef[], indexItems: { id: string; kind:
   return (id) => items.find((i) => i.id === id)?.kind ?? indexItems.find((i) => i.id === id)?.kind
 }
 
+/**
+ * Placeholder icons for new items until the user picks their own: 80×80 RGBA, in vanilla 0.98a and
+ * 0.98.5a. chip1.png is used by no vanilla item, so it reads as "unpicked". (The old special-item
+ * default, special_tech.png, doesn't exist in the game.)
+ */
+export const DEFAULT_SPECIAL_ICON = 'graphics/icons/cargo/chip1.png'
+export const DEFAULT_COMMODITY_ICON = 'graphics/icons/cargo/survey_data.png'
+
 /** A new item from a preset (PLAN.md §4.7). */
 export function newItem(id: string, name: string, presetId: string, defs: GameDefinitions): ItemDef {
   const preset = defs.itemPresets.find((p) => p.id === presetId) ?? defs.itemPresets[0]
@@ -26,7 +34,7 @@ export function newItem(id: string, name: string, presetId: string, defs: GameDe
   const tags = (cols.tags ?? '').split(',').map((t) => t.trim()).filter(Boolean)
   delete cols.tags
   const item: ItemDef = {
-    kind, id, name, icon: kind === 'special' ? 'graphics/icons/cargo/special_tech.png' : 'graphics/icons/cargo/survey_data.png',
+    kind, id, name, icon: kind === 'special' ? DEFAULT_SPECIAL_ICON : DEFAULT_COMMODITY_ICON,
     basePrice: num('base price', 0), stackSize: num('stack size', 1000), cargoSpace: num('cargo space', 1), tags, description: '',
     otherColumns: cols, preset: preset?.id
   }

@@ -1,0 +1,110 @@
+{
+  "_sagaforge": {
+    "generated": "by Saga Forge; edits are overwritten on export",
+    "hash": "2d5f4aea"
+  },
+  "format": 1,
+  "rules": {
+    "vgc_lost_convoy_blurb": {
+      "t": "Commodore Reyes is looking for someone to find a missing convoy."
+    },
+    "vgc_lost_convoy_option": {
+      "o_vgc_lost_convoy_start": "Ask about the missing convoy"
+    },
+    "vgc_lost_convoy_offer_o1": {
+      "o_vgc_lost_convoy_accept": "Accept the job"
+    },
+    "vgc_lost_convoy_offer_o2": {
+      "o_vgc_lost_convoy_catch": "What's the catch?"
+    },
+    "vgc_lost_convoy_offer_o3": {
+      "o_vgc_lost_convoy_double": "Forty crew is worth more than that.",
+      "tip_vgc_lost_convoy_double": "Use a story point to double the pay.",
+      "g_story_vgc_lost_convoy_double": "'Forty crew is worth more than that.'"
+    },
+    "vgc_lost_convoy_offer_o4": {
+      "o_vgc_lost_convoy_decline": "Not interested."
+    },
+    "vgc_lost_convoy_offer": {
+      "t": "\"$vgc_reyes_title.\" Reyes doesn't look up from her slate. \"One of our convoys went dark near the Kestrel belt eleven days ago. Three freighters, forty crew.\"\n\n\"Find them, and the Compact pays 60,000 credits.\"",
+      "h1": "Kestrel belt",
+      "h2": "60,000"
+    },
+    "vgc_lost_convoy_catch": {
+      "t": "\"Pirates, probably. The belt is where they hide.\"",
+      "o_vgc_lost_convoy_back": "Back"
+    },
+    "vgc_lost_convoy_arrive": {
+      "t": "The convoy's hulks drift among the rocks, cold and silent."
+    },
+    "vgc_lost_convoy_wreck": {
+      "t": "Your salvage crews board the lead freighter. In the bridge wreckage they find what you came for.",
+      "o_vgc_lost_convoy_leave_wreck": "Leave",
+      "a1": "The black box is scorched, but intact."
+    },
+    "vgc_lost_convoy_report": {
+      "t": "Reyes turns the black box over in her hands. \"So they didn't make it. But now their families will know why.\"",
+      "o_vgc_lost_convoy_hand_over": "Hand over the black box"
+    },
+    "vgc_lost_convoy_accepted": {
+      "t": "Reyes nods once. \"The convoy's last position is in your nav computer. Start with the Kestrel belt, and watch for raiders.\"",
+      "o_vgc_lost_convoy_leave_accepted": "I'll find them.",
+      "h1": "Kestrel belt"
+    },
+    "vgc_lost_convoy_dock": {
+      "t": "As you dock, a message from Commodore Reyes is waiting: she wants to see you at once."
+    },
+    "vgc_salvage_rights_blurb": {
+      "t": "Reyes wants the convoy's cargo recovered before the scavengers get it."
+    },
+    "vgc_salvage_rights_option": {
+      "o_vgc_salvage_rights_start": "Ask about salvage rights"
+    },
+    "vgc_salvage_rights_offer": {
+      "t": "\"The convoy's cargo is still out there, $vgc_reyes_title. I'd rather we had it than the scavengers.\"",
+      "o_vgc_salvage_rights_accept": "Accept the job",
+      "o_vgc_salvage_rights_decline": "Not interested"
+    },
+    "vgc_salvage_rights_arrive": {
+      "t": "You transmit the salvage rights Reyes granted you. The Compact warning beacons on the hulks fall silent."
+    },
+    "vgc_salvage_rights_rights": {
+      "t": "The convoy's holds are yours to work now, and whatever your crews can recover.",
+      "o_vgc_salvage_rights_salvage": "Begin salvage"
+    },
+    "vgc_belt_ambush_comm_offer": {
+      "t": "\"You picked the wrong belt to fly through, $playerSirOrMadam. Cut your engines.\"",
+      "o_vgc_belt_ambush_comm_bluff": "A Compact battle group is two jumps behind me.",
+      "o_cutCommLink": "Cut the comm link",
+      "g_story_vgc_belt_ambush_comm_bluff": "'A Compact battle group is two jumps behind me.'"
+    },
+    "vgc_belt_ambush_comm_left": {
+      "t": "A long pause. \"...Not worth it.\" The pirate fleet turns away."
+    },
+    "vgc_wreck_lock_offer": {
+      "t": "Three freighters drift in loose formation among the rocks. Each hull broadcasts a Vanguard Compact warning beacon: registered property, salvage prohibited.\n\nTouching them without the Compact's leave would be piracy.",
+      "o_defaultLeave": "Leave",
+      "h1": "salvage prohibited"
+    }
+  },
+  "items": {
+    "vgc_black_box": {
+      "name": "Convoy black box",
+      "desc": "A scorched flight recorder from a Vanguard Compact convoy. The data core is intact."
+    }
+  },
+  "descriptions": {
+    "vgc_haven|CUSTOM": {
+      "text1": "A ring of habitat modules around a captured fuel depot, Haven Station is the Compact's capital in all but name."
+    },
+    "vgc_vanguard|FACTION": {
+      "text1": "A compact of free stations on the edge of the Persean Sector, bound by a shared navy and a stubborn refusal to be anyone's province."
+    }
+  },
+  "factions": {
+    "vgc_vanguard": {
+      "displayName": "Vanguard Compact",
+      "displayNameWithArticle": "the Vanguard Compact"
+    }
+  }
+}

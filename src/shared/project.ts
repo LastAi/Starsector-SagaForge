@@ -4,7 +4,7 @@
  * writes (write guard, changed-on-disk check, backups).
  */
 import type {
-  Descriptions, EncounterDef, FactionFile, FactionsRuntime, ItemDef, PersonDef, Phrase, ProjectFile, QuestPlan,
+  Descriptions, EncounterDef, FactionFile, FactionsRuntime, FleetPlans, ItemDef, PoolPlan, EventSchedulerPlan, ProgressEventPlan, ScatterPlan, ModTypes, NameLists, PersonDef, Phrase, ProjectFile, QuestPlan,
   ReleaseSnapshot, StarSystemDef, TestProfile
 } from './model'
 
@@ -40,6 +40,20 @@ export interface ProjectState {
   testProfiles: TestProfile[]
   factionsRuntime: FactionsRuntime
   descriptions: Descriptions
+  /** Person name pools and ship name lists (sagaforge/names.json); missing = none. */
+  names?: NameLists
+  /** The mod's own entity, planet and star types (sagaforge/types.json); missing = none. */
+  types?: ModTypes
+  /** Fleet templates and fleet type names (sagaforge/fleets.json); missing = none. */
+  fleets?: FleetPlans
+  /** Named random pools (sagaforge/pools.json, Phase 7a); missing = none. */
+  pools?: PoolPlan[]
+  /** World event schedulers (sagaforge/events.json, Phase 8d); missing = none. */
+  events?: EventSchedulerPlan[]
+  /** Progress events (sagaforge/progress.json, Phase 8d-3); missing = none. */
+  progress?: ProgressEventPlan[]
+  /** Scatter at new game (sagaforge/scatter.json, Phase 7e); missing = none. */
+  scatter?: ScatterPlan[]
   /** The mod's own .faction files (additions and overrides). */
   factions: FactionFile[]
   releases: ReleaseSnapshot[]
@@ -63,8 +77,12 @@ export interface WriteRequest {
   writes: FileWrite[]
   /** Copy the previous version of changed files to sagaforge/backups/<timestamp>/ first. */
   backup: boolean
-  /** Images or other binary files copied into the mod (never overwrites). */
-  copies?: { from: string; to: string }[]
+  /**
+   * Images or other binary files written into the mod: copied from a file (`from`), or given as
+   * bytes (an image cropped and resized on import, R5). An existing file is kept unless `replace`
+   * is set; a replaced file is backed up first.
+   */
+  copies?: { from?: string; to: string; bytes?: Uint8Array; replace?: boolean }[]
 }
 
 export interface WriteResult {

@@ -2,11 +2,17 @@
   /** Export (PLAN.md §6 rule 9, mock-up export.html): every file and its state before anything is written. */
   import { onMount } from 'svelte'
   import Modal from '../ui/Modal.svelte'
+  import Field from '../ui/Field.svelte'
   import { planExport, type ExportPlan, type ExportOptions } from '../../../shared/export'
   import { app, cleanError } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
   import { problems } from '../state/problems.svelte'
   import { makeSnapshot, lastRelease, releaseFile } from '../../../shared/release'
+  import { releaseBlockers, inactivePeople, inactiveQuests } from '../../../shared/inactive'
+  import { todoLabel } from '../../../shared/todo'
+  import { releaseDetailProblems, releaseName, versionFileName } from '../../../shared/releasepack'
+  import type { ReleaseDetails } from '../../../shared/model'
+  import type { PackResult } from '../../../shared/api'
 
   interface Props { onClose: () => void }
   let { onClose }: Props = $props()
@@ -19,13 +25,21 @@
   let detach = $state<string[]>([])
   let diffFor = $state<string | null>(null)
   let done = $state<string[] | null>(null)
+  /** The version written to mod_info.json (Export changes it when edited here). */
+  let modVersion = $state(project.loaded?.modInfo.version ?? '')
+  // R9, R10: to-dos that hold back a release, and what Export leaves out
+  const blockers = $derived(project.m ? releaseBlockers(project.m) : [])
+  const offPeople = $derived(project.m ? inactivePeople(project.m) : new Set<string>())
+  const offQuests = $derived(project.m ? inactiveQuests(project.m) : new Map<string, 'flag' | 'contact'>())
+  const versionReleased = $derived(!!project.loaded?.releases.some((r) => r.version === modVersion.trim()))
 
   async function compute(dialogOnly = false) {
     error = null
     try {
       const rules = await app.loadRules()
       const m = project.m!
-      const opts: ExportOptions = { dialogOnly, addDependency, overwrite, detach }
+      // #47 §6: mod_info.json's gameVersion follows the target install
+      const opts: ExportOptions = { dialogOnly, addDependency, overwrite, detach, version: modVersion, gameVersion: app.index?.install.gameVersion ?? undefined }
       plan = planExport($state.snapshot(m) as typeof m, project.loaded!, app.index!, rules, opts)
     } catch (e) { error = cleanError(e) }
   }
@@ -46,12 +60,15 @@
     busy = true
     error = null
     try {
+      // Release details edited here are saved first (Export writes the .version file from them)
+      if (project.dirty && !(await project.save())) { error = 'Save failed, so nothing was exported.'; return }
       await compute(dialogOnly)
       if (!plan) return
       if (plan.handEdited.some((h) => !overwrite.includes(`${h.path}|${h.key}`) && !detach.includes(`${h.path}|${h.key}`))) { error = 'Some owned blocks were edited by hand: choose Overwrite or Detach for each first.'; return }
       const r = await window.api.writeFiles({ writes: $state.snapshot(plan.writes), backup: true })
       if (r.conflicts.length) { error = `Changed outside Saga Forge since they were read (nothing was written): ${r.conflicts.join(', ')}. Reload the mod and export again.`; return }
       done = r.written
+      if (modVersion.trim()) releaseVersion = modVersion.trim()
       await project.load()
       app.index = await window.api.getIndex()
       app.resetGameData()
@@ -60,14 +77,20 @@
   const STATE: Record<string, string> = { new: 'new', changed: 'changed', same: 'same', removed: 'removed' }
 
   // ---- releases (PLAN.md §6)
-  let releaseVersion = $state(project.loaded?.modInfo.version ?? '1.0.0')
+  let releaseVersion = $state(project.loaded?.modInfo.version || '1.0.0')
   let released = $state<string | null>(null)
   const lastRel = $derived(project.loaded ? lastRelease(project.loaded.releases) : null)
   async function markReleased() {
     const m = project.m
     const v = releaseVersion.trim()
     if (!m || !v) return
-    if (project.loaded?.releases.some((r) => r.version === v) && !confirm(`Version ${v} is already marked as released. Replace its snapshot?`)) return
+    error = null
+    packed = null
+    // R9: fields marked "Set later" in active content must be filled first
+    if (blockers.length) { error = `Not marked as released: ${blockers.length} field${blockers.length === 1 ? '' : 's'} marked "Set later" still to do (${blockers.slice(0, 4).map((t) => `${t.owner} › ${todoLabel(t.path)}`).join('; ')}${blockers.length > 4 ? '; …' : ''}). Fill them in, or remove the mark, or make that content inactive.`; return }
+    // R32: the zip holds what was exported, so the exported version must be the one released
+    if (pack && project.loaded?.modInfo.version !== v) { error = `The mod was exported as version ${project.loaded?.modInfo.version || '(none)'}, not ${v}. Export again with version ${v} (Mod version, before Export), then mark it as released.`; return }
+    if (project.loaded?.releases.some((r) => r.version === v) && !confirm(`Version ${v} is already marked as released. Replace its snapshot${pack ? ' and its zip' : ''}?`)) return
     const snap = makeSnapshot($state.snapshot(m) as typeof m, v)
     const path = releaseFile(v)
     try {
@@ -75,27 +98,118 @@
       if (r.conflicts.length) { error = `${path} changed on disk; reload first.`; return }
       released = v
       await project.load()
+      if (pack) await packZip(v, false)
     } catch (e) { error = cleanError(e) }
+  }
+
+  // ---- R32: release zip, Version Checker and forum post draft
+  let pack = $state(true)
+  let packed = $state.raw<PackResult | null>(null)
+  const details = $derived(project.m?.project.release ?? {})
+  const detailProblems = $derived(releaseDetailProblems(project.m?.project.release))
+  function setDetail<K extends keyof ReleaseDetails>(k: K, v: ReleaseDetails[K]) {
+    project.change((mm) => { mm.project.release = { ...(mm.project.release ?? {}), [k]: v } })
+  }
+  function contents(): string[] {
+    const m = project.m
+    if (!m) return []
+    const n = (x: number, one: string, many: string) => (x ? [`${x} ${x === 1 ? one : many}`] : [])
+    return [
+      ...n(m.factions.filter((f) => f.kind === 'addition').length, 'faction', 'factions'),
+      ...n(m.factions.filter((f) => f.kind === 'override').length, 'change to an existing faction', 'changes to existing factions'),
+      ...n(m.quests.filter((q) => q.kind === 'quest' && !offQuests.has(q.id)).length, 'quest', 'quests'),
+      ...n(m.people.filter((p) => !offPeople.has(p.id)).length, 'character', 'characters'),
+      ...n(m.systems.length, 'star system', 'star systems'),
+      ...n(m.items.length, 'item', 'items'),
+      ...n(m.encounters.length, 'encounter', 'encounters')
+    ]
+  }
+  async function packZip(v: string, overwrite: boolean) {
+    if (!project.loaded) return
+    // forum post drafts are off until post templates exist (user, 2026-11-17): shared/releasepack.ts forumPost() stays for then
+    const r = await window.api.packRelease({ version: v, forumPost: '', overwrite })
+    if ('exists' in r) {
+      if (confirm(`${r.exists} already exists. Replace it?`)) return packZip(v, true)
+      error = 'The release is marked; the existing zip was kept.'
+      return
+    }
+    packed = r
   }
 </script>
 
 <Modal title="Export" {onClose} width={760}>
   {#if done}
     <p class="good">Exported: {done.length} file{done.length === 1 ? '' : 's'} written{done.length ? '' : ' (everything was up to date)'}. The previous versions are in <span class="mono">sagaforge/backups/</span>.</p>
-    <div class="files">{#each done as f (f)}<div>{f}</div>{/each}</div>
-    <p class="muted small">Start the game with the mod linked into <span class="mono">Starsector\mods</span> (your own step) to try it.</p>
+    {#if done.length}<div class="files">{#each done as f (f)}<div>{f}</div>{/each}</div>{/if}
+    <p class="muted small">Start the game with the mod linked into <span class="mono">{app.index?.install.modsDir ?? 'Starsector\\mods'}</span> (your own step) to try it.</p>
     <div class="release">
       <b>Mark as released</b> <span class="muted small">— stores every id saves can depend on, so later changes that would break players' saves show as save warnings.</span>
-      <div class="row">
-        Version <input type="text" class="mono" bind:value={releaseVersion} style="width:110px" />
-        <button onclick={markReleased} disabled={!releaseVersion.trim() || released === releaseVersion}>{released === releaseVersion ? 'Marked' : 'Mark as released'}</button>
-        {#if lastRel}<span class="muted small">last release: {lastRel.version} ({lastRel.date})</span>{/if}
+      <div class="ver">
+        <Field label="Version" for="ex-rel" help="The version you are publishing, as in mod_info.json. Mark each version you hand out to players.">
+          <span class="row"><input id="ex-rel" type="text" class="mono" bind:value={releaseVersion} style="width:110px" />
+            <button onclick={markReleased} disabled={!releaseVersion.trim() || released === releaseVersion}>{released === releaseVersion ? 'Marked' : 'Mark as released'}</button>
+            {#if lastRel}<span class="muted small">last release: {lastRel.version} ({lastRel.date})</span>{/if}</span>
+        </Field>
       </div>
+      <label class="dep"><input type="checkbox" bind:checked={pack} /> Also pack <b class="mono">{releaseName(project.loaded!.modInfo, releaseVersion.trim() || '?')}.zip</b> into the releases folder</label>
+      <div class="muted small">The zip holds one folder, ready to unzip into <span class="mono">Starsector/mods</span>, without <span class="mono">sagaforge/</span> (your plans) and the test profiles. Releases folder: <span class="mono">{app.settings.releasesDir}</span> (Settings).</div>
+      {#if packed && !('exists' in packed)}
+        <div class="good small packed">Packed {packed.files} file{packed.files === 1 ? '' : 's'} into <span class="mono">{packed.zip}</span>{packed.leftOut.length ? ` (left out: ${packed.leftOut.length}, ${[...new Set(packed.leftOut.map((x) => x.why))].join(', ')})` : ''}.
+          <button class="mini" onclick={() => window.api.showInFolder(packed && !('exists' in packed) ? packed.zip : '')}>Show in folder</button></div>
+      {/if}
+      <!-- 8b-3 (user): a refused Mark as released must say why here, not only in the export view -->
+      {#if error}<div class="bad" role="alert">{error}</div>{/if}
     </div>
   {:else if !plan}
     <p class="muted">{error ?? 'Working out what Export would write…'}</p>
   {:else}
     <p class="muted small">Only the active mod is written. Hand-written rows outside the owned blocks are never touched. Nothing is written until you press Export.</p>
+    {#if blockers.length || offPeople.size || offQuests.size}
+      <div class="notes small">
+        {#if blockers.length}<div class="todo">✎ {blockers.length} field{blockers.length === 1 ? '' : 's'} marked "Set later" (Problems › To do). Export works for testing; Mark as released waits for them.</div>{/if}
+        {#if offPeople.size || offQuests.size}<div class="muted">Not exported, inactive: {[offPeople.size ? `${offPeople.size} ${offPeople.size === 1 ? 'person' : 'people'}` : '', offQuests.size ? `${offQuests.size} quest${offQuests.size === 1 ? '' : 's'} or conversation${offQuests.size === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')}. Their files from an earlier export are removed.</div>{/if}
+      </div>
+    {/if}
+    <div class="ver">
+      <Field label="Mod version" for="ex-ver" help="The version in mod_info.json, shown in the game's launcher. Raise it for each update you publish (1.0.0 → 1.1.0).">
+        <span class="row"><input id="ex-ver" type="text" class="mono" bind:value={modVersion} onchange={() => compute()} style="width:120px" />
+          {#if versionReleased && lastRel}<span class="warn small">{modVersion} is already marked as released: raise it if this export is an update.</span>{/if}</span>
+      </Field>
+    </div>
+    <details class="reldet" open={app.smokeArg === 'reldet'}>
+      <summary>Release details <span class="muted small">— Version Checker (optional; saved with the mod)</span></summary>
+      <div class="ver">
+        <Field label="Version file" for="rd-master" help={`Version Checker tells players about updates. Put ${versionFileName(project.loaded!.modInfo.id)} (Export writes it into the mod) online and enter its raw address, e.g. https://raw.githubusercontent.com/you/repo/main/${versionFileName(project.loaded!.modInfo.id)}. Upload it again after each release. Empty: no Version Checker file.`}>
+          <input id="rd-master" type="text" class="mono" value={details.masterVersionUrl ?? ''} onchange={(e) => { setDetail('masterVersionUrl', e.currentTarget.value.trim()); compute() }} />
+        </Field>
+        <Field label="Download" for="rd-dl" help="Direct link to the release zip (e.g. the GitHub release). Version Checker's update button uses it. Host the zip outside the forum: it deletes attachments.">
+          <input id="rd-dl" type="text" class="mono" value={details.downloadUrl ?? ''} onchange={(e) => { setDetail('downloadUrl', e.currentTarget.value.trim()); compute() }} />
+        </Field>
+        <Field label="Forum thread" for="rd-thread" help="The number after topic= in your mod's forum thread (or the thread's address). Version Checker links to it.">
+          <input id="rd-thread" type="text" class="mono" value={details.threadId ?? ''} onchange={(e) => { setDetail('threadId', e.currentTarget.value.trim()); compute() }} style="width:260px" />
+        </Field>
+        <div class="later small">Forum post: coming later. Saga Forge will fill in a post template you make (your own layout and sections). The fields below are kept for it and do nothing yet.</div>
+        <Field label="Project page" for="rd-proj" help="Where the mod's source is (e.g. its GitHub page); the forum post links it.">
+          <input id="rd-proj" disabled type="text" class="mono" value={details.projectUrl ?? ''} onchange={(e) => setDetail('projectUrl', e.currentTarget.value.trim())} />
+        </Field>
+        <Field label="Status" for="rd-status" help="Shown after the title in the forum post while the mod isn't final, e.g. [0.98a] My Mod 0.3.0 [Beta].">
+          <select id="rd-status" disabled value={details.status ?? ''} onchange={(e) => setDetail('status', e.currentTarget.value as ReleaseDetails['status'])}><option value="">Final</option><option value="Alpha">Alpha</option><option value="Beta">Beta</option></select>
+        </Field>
+        <Field label="Catch line" for="rd-catch" help="One short sentence under the forum post's title: what the mod is.">
+          <input id="rd-catch" disabled type="text" value={details.catchLine ?? ''} onchange={(e) => setDetail('catchLine', e.currentTarget.value)} />
+        </Field>
+        <Field label="Author note" for="rd-note" help="Your own words for the forum post.">
+          <textarea id="rd-note" disabled rows="3" value={details.authorNote ?? ''} onchange={(e) => setDetail('authorNote', e.currentTarget.value)}></textarea>
+        </Field>
+        <Field label="AI use" for="rd-ai" help="The forum requires it: how and where AI tools were used (one line per kind: Code, Text, Art…, or none). Empty: the draft has the forum's template to fill in.">
+          <textarea id="rd-ai" disabled rows="3" value={details.aiUse ?? ''} onchange={(e) => setDetail('aiUse', e.currentTarget.value)}></textarea>
+        </Field>
+        <Field label="License" for="rd-lic" help="The mod's license, for the forum post (e.g. MIT, or All rights reserved).">
+          <input id="rd-lic" disabled type="text" value={details.license ?? ''} onchange={(e) => setDetail('license', e.currentTarget.value)} style="width:260px" />
+        </Field>
+      </div>
+      {#each detailProblems as p (p)}<div class="warn small">{p}</div>{/each}
+    </details>
     <div class="files">
       {#each plan.files as f (f.path)}
         <div class="f">
@@ -117,6 +231,14 @@
         {#if diffFor === k}<div class="diff"><pre class="old">{h.current}</pre><pre class="new">{h.wanted}</pre></div>{/if}
       </div>
     {/each}
+    {#if plan.usesSagaLib}
+      <!-- R31: dialog as tokens SagaLib fills, so anyone can make a translation mod -->
+      <label class="dep" title="With this on, rules.csv holds tokens ($sft-…) and the texts are in data/sagaforge/text.json, where SagaLib reads them (from a translation mod when one is enabled). Off: plain text in rules.csv, and nobody can translate the dialog without copying the mod.">
+        <input type="checkbox" checked={project.m?.project.options.translatable !== false}
+          onchange={(e) => { const on = e.currentTarget.checked; project.change((mm) => { mm.project.options = { ...mm.project.options, translatable: on ? undefined : false } }); compute() }} />
+        Translatable texts: others can translate the mod with a translation mod (SagaLib 1.2)
+      </label>
+    {/if}
     {#if plan.dependencyMissing}
       <label class="dep"><input type="checkbox" bind:checked={addDependency} onchange={() => compute()} /> Add <b>SagaLib</b> to <span class="mono">mod_info.json</span> dependencies (the export uses its JSON and rule commands)</label>
     {/if}
@@ -156,4 +278,15 @@
   .mini { padding: 0 8px; font-size: 11px; }
   .small { font-size: 12px; }
   .release { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-top: 12px; background: #161a20; }
+  .ver { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 2px 10px; margin: 6px 0 8px; }
+  .ver .row { margin-top: 0; }
+  .warn { color: var(--warn); }
+  .notes { display: flex; flex-direction: column; gap: 3px; margin: 0 0 8px; }
+  .todo { color: #e8a83c; }
+  .reldet { margin: 0 0 8px; font-size: 12px; }
+  .reldet summary { cursor: pointer; }
+  .reldet input[type='text'], .reldet textarea { width: 100%; box-sizing: border-box; }
+  .packed { margin-top: 6px; }
+  .later { grid-column: 1 / -1; color: var(--muted); margin: 8px 0 2px; font-style: italic; }
+  .reldet :disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

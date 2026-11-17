@@ -1,7 +1,7 @@
 {
   "_sagaforge": {
     "generated": "by Saga Forge; edits are overwritten on export",
-    "hash": "558f48ca"
+    "hash": "33b8c0c6"
   },
   "format": 1,
   "id": "vgc_salvage_rights",
@@ -39,6 +39,16 @@
   "encounters": [],
   "arrivals": [
     "vgc_convoy_wreck"
+  ],
+  "entityFlags": [
+    {
+      "entity": "vgc_convoy_wreck",
+      "flag": "$sagaforge_vgc_salvage_rights_arrive",
+      "steps": [
+        "survey"
+      ],
+      "important": true
+    }
   ],
   "phrases": [],
   "flags": []

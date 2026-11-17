@@ -27,9 +27,19 @@ export const SHARED_FILES = [
   'data/campaign/commodities.csv',
   'data/campaign/special_items.csv',
   'data/strings/descriptions.csv',
+  'data/characters/person_names.csv',
+  'data/strings/ship_names.json',
+  'data/config/custom_entities.json',
+  'data/world/factions/default_fleet_type_names.json',
+  // read only: the mod's own salvage tables, for Check mod's header check (RC-F6)
+  'data/campaign/procgen/drop_groups.csv',
+  'data/campaign/procgen/salvage_entity_gen_data.csv',
+  'data/config/planets.json',
   'data/config/settings.json',
   'data/config/sagaforge/content.csv',
-  'data/world/factions/factions.csv'
+  'data/world/factions/factions.csv',
+  // R32: Version Checker's list (the .version file itself is read by its name below)
+  'data/config/version/version_files.csv'
 ]
 
 const readIf = async (f: string): Promise<string | null> => (isFile(f) ? fsp.readFile(f, 'utf8') : null)
@@ -87,6 +97,13 @@ export async function loadProject(cache: IndexCache, src: SourceInfo): Promise<P
   const releases = (await readDirJson<ReleaseSnapshot>('sagaforge/releases', '.json')).sort((a, b) => cmpVersion(a.version, b.version))
   const factionsRuntimeRaw = await readJson<Record<string, unknown>>('sagaforge/factions.json')
   const descriptionsRaw = await readJson<Record<string, unknown>>('sagaforge/descriptions.json')
+  const namesRaw = await readJson<Record<string, unknown>>('sagaforge/names.json')
+  const typesRaw = await readJson<Record<string, unknown>>('sagaforge/types.json')
+  const fleetsRaw = await readJson<Record<string, unknown>>('sagaforge/fleets.json')
+  const poolsRaw = await readJson<Record<string, unknown>>('sagaforge/pools.json')
+  const scatterRaw = await readJson<Record<string, unknown>>('sagaforge/scatter.json')
+  const eventsRaw = await readJson<Record<string, unknown>>('sagaforge/events.json')
+  const progressRaw = await readJson<Record<string, unknown>>('sagaforge/progress.json')
 
   // The mod's own faction files: a path that an earlier source defines is an override.
   const factions: FactionFile[] = []
@@ -115,6 +132,7 @@ export async function loadProject(cache: IndexCache, src: SourceInfo): Promise<P
     const t = await readIf(path.join(dir, rel))
     if (t != null) remember(rel, t)
   }
+  { const vf = `${modInfo.id}.version`; const t = await readIf(path.join(dir, vf)); if (t != null) remember(vf, t) }
   for (const f of await walk(path.join(dir, 'data', 'sagaforge'), ['.json', '.csv'])) {
     const rel = slash(path.relative(dir, f))
     remember(rel, await fsp.readFile(f, 'utf8'))
@@ -131,6 +149,13 @@ export async function loadProject(cache: IndexCache, src: SourceInfo): Promise<P
     testProfiles: await listOf('sagaforge/test-profiles.json', 'profiles'),
     factionsRuntime: { relations: (fr.relations ?? {}) as never, scripted: (fr.scripted ?? {}) as never },
     descriptions: ((descriptionsRaw?.descriptions ?? {}) as never),
+    names: { people: (Array.isArray(namesRaw?.people) ? namesRaw.people : []) as never, ships: (Array.isArray(namesRaw?.ships) ? namesRaw.ships : []) as never },
+    types: { entities: (Array.isArray(typesRaw?.entities) ? typesRaw.entities : []) as never, planets: (Array.isArray(typesRaw?.planets) ? typesRaw.planets : []) as never },
+    fleets: { templates: (Array.isArray(fleetsRaw?.templates) ? fleetsRaw.templates : []) as never, typeNames: (fleetsRaw?.typeNames && typeof fleetsRaw.typeNames === 'object' ? fleetsRaw.typeNames : {}) as never },
+    pools: (Array.isArray(poolsRaw?.pools) ? poolsRaw.pools : []) as never,
+    scatter: (Array.isArray(scatterRaw?.scatter) ? scatterRaw.scatter : []) as never,
+    events: (Array.isArray(eventsRaw?.events) ? eventsRaw.events : []) as never,
+    progress: (Array.isArray(progressRaw?.progress) ? progressRaw.progress : []) as never,
     factions, releases, files, errors
   }
 }
@@ -158,6 +183,19 @@ export function modPath(modDir: string, rel: string): string {
 }
 
 /**
+ * Files the writer may delete (always inside the active mod, and still through the write guard):
+ * the editor's plan files (`sagaforge/`), the mod's own faction files, and the files Export
+ * generates for SagaLib (`data/sagaforge/`, `data/config/sagaforge/`), so that content deleted or
+ * made inactive after an export disappears from the game too (INGAME-CHECKS R11).
+ */
+export function removable(rel: string): boolean {
+  const p = slash(rel)
+  if (p.split('/').some((s) => s === '..' || s === '')) return false
+  return p.startsWith('sagaforge/') || /^data\/world\/factions\/[^/]+\.faction$/.test(p) ||
+    /^data\/sagaforge\/.+\.(json|csv)$/.test(p) || /^data\/config\/sagaforge\/[^/]+\.csv$/.test(p)
+}
+
+/**
  * Write files into the active mod. All-or-nothing for the changed-on-disk check: if any file
  * changed since it was read, nothing is written and the conflicts are returned.
  */
@@ -167,7 +205,7 @@ export async function writeFiles(modDir: string, req: WriteRequest, rules: Write
   for (const w of req.writes) {
     const abs = modPath(modDir, w.path)
     checkWritable(abs, rules)
-    if (w.remove && !slash(w.path).startsWith('sagaforge/') && !/^data\/world\/factions\/[^/]+\.faction$/.test(slash(w.path))) throw new Error(`Only plan files and the mod's own faction files can be removed: ${w.path}`)
+    if (w.remove && !removable(w.path)) throw new Error(`Only plan files, the mod's own faction files and its generated SagaLib files can be removed: ${w.path}`)
     const old = isFile(abs) ? await fsp.readFile(abs, 'utf8') : null
     if (w.expectedHash !== undefined) {
       const cur = old == null ? null : hashText(old)
@@ -204,16 +242,30 @@ export async function writeFiles(modDir: string, req: WriteRequest, rules: Write
   }
   for (const c of req.copies ?? []) {
     const abs = modPath(modDir, c.to)
-    if (isFile(abs)) continue
-    writeNewBytes(abs, await fsp.readFile(c.from), rules)
+    if (isFile(abs)) {
+      if (!c.replace) continue
+      // an explicit replace (re-import): back the old file up, then write the new one
+      checkWritable(abs, rules)
+      const bdir = backupDir ?? path.join(modDir, 'sagaforge', 'backups', now.toISOString().replace(/[:.]/g, '-'))
+      backupDir = bdir
+      const rel = slash(path.relative(modDir, abs))
+      writeNewBytes(path.join(bdir, ...rel.split('/')), await fsp.readFile(abs), rules)
+      fs.rmSync(abs)
+    }
+    const bytes = c.bytes ? new Uint8Array(c.bytes) : c.from ? await fsp.readFile(c.from) : null
+    if (!bytes) continue
+    writeNewBytes(abs, bytes, rules)
     written.push(c.to)
   }
   return { written, hashes, conflicts: [], backupDir }
 }
 
+/** Plain backups are named by their timestamp only; named snapshots ("<stamp> 0.98a") are never pruned. */
+const PLAIN_BACKUP = /^\d{4}-\d\d-\d\dT[\d-]+Z$/
+
 function pruneBackups(root: string, rules: WriteRules): void {
   if (!isDir(root)) return
-  const dirs = fs.readdirSync(root).filter((d) => isDir(path.join(root, d))).sort()
+  const dirs = fs.readdirSync(root).filter((d) => isDir(path.join(root, d)) && PLAIN_BACKUP.test(d)).sort()
   for (const d of dirs.slice(0, Math.max(0, dirs.length - KEEP_BACKUPS))) {
     const abs = path.join(root, d)
     // only ever delete inside <mod>/sagaforge/backups, checked through the write guard rules
@@ -221,6 +273,22 @@ function pruneBackups(root: string, rules: WriteRules): void {
     checkWritable(path.join(abs, 'x.json'), rules)
     fs.rmSync(abs, { recursive: true, force: true })
   }
+}
+
+/**
+ * #47 §7.2: a named snapshot of the whole mod (its data, graphics, plans and mod_info.json) in
+ * sagaforge/backups/<stamp> <label>/, never pruned. Earlier backups are left out. Returns the folder.
+ */
+export async function snapshotMod(modDir: string, label: string, rules: WriteRules, now = new Date()): Promise<string> {
+  const clean = label.replace(/[^\w.\- ]+/g, '').trim().slice(0, 40) || 'snapshot'
+  const dir = path.join(modDir, 'sagaforge', 'backups', `${now.toISOString().replace(/[:.]/g, '-')} ${clean}`)
+  const exts = ['.json', '.csv', '.faction', '.png', '.jpg', '.jpeg', '.ogg']
+  for (const f of await walk(modDir, exts)) {
+    const rel = slash(path.relative(modDir, f))
+    if (rel.startsWith('sagaforge/backups/')) continue
+    writeNewBytes(path.join(dir, ...rel.split('/')), await fsp.readFile(f), rules)
+  }
+  return dir
 }
 
 export { PLAN_FORMAT }

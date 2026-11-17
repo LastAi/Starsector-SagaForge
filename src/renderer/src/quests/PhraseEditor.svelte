@@ -19,6 +19,9 @@
     </select>
     {#if onRemove}<button class="mini" onclick={onRemove} title="Remove">✕</button>{/if}
   </div>
+  <div class="f-help">{phrase.mode === 'random'
+    ? 'Wherever the token is in a text, the game shows one of these texts at random.'
+    : 'Wherever the token is in a text, the game shows the text of the first case whose "if" lines are all true, else the otherwise text.'}{tokenEditable ? ' The token is the name you type in texts.' : ''}</div>
   {#each phrase.cases as c, i (i)}
     <div class="case">
       {#if phrase.mode === 'first-match'}

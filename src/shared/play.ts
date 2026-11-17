@@ -11,7 +11,10 @@
 import type { Engine, EngineHooks, RuleSet } from './rules/engine'
 import { Engine as RulesEngine } from './rules/engine'
 import { parseCondition } from './rules/parse'
-import type { Phrase, QuestPlan, Reward, TestProfile } from './model'
+import type { Phrase, PoolPlan, QuestPlan, Reward, TestProfile } from './model'
+import { branchPool, forceKey, rollPool, seedOf, SEED_KEY } from './pools'
+import { javaHash } from './javarandom'
+import { TARGET_DETAILS, targetFactKey, targetKey, targetVars } from './targets'
 import type { PlayContext } from './rules/engine'
 
 export interface QuestState { state: 'not-started' | 'active' | 'success' | 'fail'; step?: string }
@@ -22,6 +25,16 @@ export interface SimWorld {
   phrases: Map<string, Phrase>
   itemName?(id: string): string
   factionName?(id: string): string
+  /** The mod's named pools (Phase 7a); Random branches' own pools come from the quests. */
+  pools?: PoolPlan[]
+}
+
+/** A pool by its runtime id: a named one, or a Random branch's own (<quest>_<node>). */
+export function findPool(w: SimWorld, id: string): PoolPlan | null {
+  const named = w.pools?.find((p) => p.id === id)
+  if (named) return named
+  for (const q of w.quests) for (const n of q.nodes) if (n.type === 'branch' && n.random && !n.random.pool && `${q.id}_${n.id}` === id) return branchPool(q, n, [])
+  return null
 }
 
 export interface SimState {
@@ -51,6 +64,7 @@ export function startQuest(e: Engine, w: SimWorld, qid: string, sim: SimState): 
   if (questState(e, qid).state === 'active') return
   e.set(stateKey(qid), 'active')
   for (const v of q?.variables ?? []) if (e.get(varKey(qid, v.name)) === undefined && v.type !== 'target') e.set(varKey(qid, v.name), parseInitial(v.type, v.initial))
+  if (q) applyMockTargets(e, q)
   sim.quests[qid] = questState(e, qid)
   e.log.push({ kind: 'info', text: `Quest ${q?.title ?? qid} accepted` })
 }
@@ -73,6 +87,8 @@ export function applyReward(e: Engine, q: QuestPlan | undefined, r: Reward): voi
     e.para({ kind: 'rep', text: `Relationship with ${x.person} ${x.amount >= 0 ? 'improved' : 'reduced'} by ${Math.abs(x.amount)}`, color: x.amount >= 0 ? 'good' : 'bad', highlights: [String(Math.abs(x.amount))] })
   }
   for (const x of r.items ?? []) { p.cargo[x.item] = (p.cargo[x.item] ?? 0) + x.qty; e.para({ kind: x.qty >= 0 ? 'gained' : 'lost', text: `${x.qty >= 0 ? 'Gained' : 'Lost'} ${Math.abs(x.qty)}× ${e.itemName(x.item)}`, color: x.qty >= 0 ? 'good' : 'bad', highlights: [], ref: x.item }) }
+  // Phase 8a (F7-b): rolled by vanilla's salvage roller in game; Play can't know what comes out
+  for (const l of r.loot ?? []) e.para({ kind: 'note', text: `(random items from drop group ${l.group}${l.value ? `, about ${l.value.toLocaleString('en-US')}¢ worth` : `, ${l.chances ?? 1} roll${(l.chances ?? 1) === 1 ? '' : 's'}`}: rolled in game)`, color: 'gray' })
   for (const s of r.ships ?? []) { p.ships.push(s); e.para({ kind: 'gained', text: `Gained ${s}`, highlights: [s] }) }
   if (r.xp) { p.xp += r.xp; e.para({ kind: 'gained', text: `Gained ${r.xp} experience`, highlights: [String(r.xp)] }) }
   if (r.storyPoints) { p.storyPoints += r.storyPoints; e.para({ kind: 'gained', text: `Gained ${r.storyPoints} story point${r.storyPoints === 1 ? '' : 's'}`, color: 'story', highlights: [String(r.storyPoints)] }) }
@@ -91,6 +107,55 @@ export function phraseText(e: Engine, p: Phrase): { text: string; chose: string 
     if (c.when.every((l) => e.evalCondition(parseCondition(l)))) return { text: c.text, chose: `case ${i + 1}${c.when.length ? ` (${c.when.join(', ')})` : ''}` }
   }
   return { text: p.otherwise ?? '', chose: 'otherwise' }
+}
+
+/**
+ * Phase 7c (RC-R1b): Play mode can't run vanilla's search (the sector exists only in a running
+ * game), so each random target stands in with its mock: the same keys SagaLib writes when the
+ * quest is offered ($global.<quest>_<var> and its facts).
+ */
+export const mockTargetId = (q: string, v: string) => `mock_${q}_${v}`
+export function applyMockTargets(e: { get(k: string): unknown; set(k: string, v: never): void; log?: { kind: string; text: string }[] }, q: QuestPlan): void {
+  for (const v of targetVars(q)) {
+    if (e.get(targetKey(q.id, v.name)) !== undefined) continue
+    const mk = v.target.mock ?? {}
+    const set = (k: string, val: string | number) => e.set(k, val as never)
+    set(targetKey(q.id, v.name), mockTargetId(q.id, v.name))
+    set(targetFactKey(q.id, v.name, 'name'), mk.name || `Mock ${v.name}`)
+    set(targetFactKey(q.id, v.name, 'system'), mk.system ?? '')
+    set(targetFactKey(q.id, v.name, 'dist'), String(mk.dist ?? ''))
+    set(targetFactKey(q.id, v.name, 'faction'), mk.faction ?? '')
+    set(targetFactKey(q.id, v.name, 'factionId'), mk.factionId ?? '')
+    // Phase 7d: its details (RC-R3) and person (RC-R4)
+    for (const d of TARGET_DETAILS) { const x = mk.details?.[d.id]; e.set(targetFactKey(q.id, v.name, d.id), (d.kind === 'bool' ? x === true : x ?? '') as never) }
+    if (v.target.person?.posts.length) { set(targetFactKey(q.id, v.name, 'person'), mockTargetId(q.id, v.name) + '_person'); set(targetFactKey(q.id, v.name, 'personName'), mk.personName || 'Mock Person') }
+    e.log?.push({ kind: 'info', text: `Target ${v.name}: the mock "${mk.name || `Mock ${v.name}`}" (in game, vanilla's search picks a ${v.target.pick} when the quest is offered)` })
+  }
+}
+
+/** Play-only options offered where vanilla's raid menu would open (RC-F4). */
+export const RAID_DONE = '__sf_raid_done'
+export const RAID_BACK = '__sf_raid_back'
+
+/**
+ * How a raid went, as vanilla's MarketCMD: done = the objective's trigger ($raidRestrictToTrigger),
+ * then vanilla's result screens, then $raidContinueTrigger (default OpenInteractionDialog); back =
+ * $raidGoBackTrigger (default PopulateOptions). All three are FireAll in vanilla.
+ */
+export function raidOutcome(e: Engine, which: 'done' | 'back'): void {
+  e.view.options = []
+  for (const p of e.view.paragraphs) p.previous = true
+  const str = (k: string) => { const v = e.get(k); return v === undefined || v === '' ? null : String(v) }
+  if (which === 'back') {
+    e.log.push({ kind: 'choice', text: 'Raid: went back' })
+    e.fireAll(str('$raidGoBackTrigger') ?? 'PopulateOptions')
+    return
+  }
+  e.log.push({ kind: 'choice', text: 'Raid: it goes through' })
+  const obj = str('$raidRestrictToTrigger')
+  if (obj) e.fireAll(obj)
+  e.para({ kind: 'note', text: '(vanilla\'s raid result screens: losses, experience)', color: 'gray' })
+  e.fireAll(str('$raidContinueTrigger') ?? 'OpenInteractionDialog')
 }
 
 /** Engine hooks implementing SagaLib's commands, conditions and phrase tokens. */
@@ -112,11 +177,63 @@ export function sagaHooks(w: SimWorld, sim: SimState): EngineHooks {
         case 'SF_AtStep': return questState(e, args[0]).state === 'active' && questState(e, args[0]).step === args[1]
         case 'SF_QuestDone': { const s = questState(e, args[0]).state; return args[1] && args[1] !== 'any' ? s === args[1] : s === 'success' || s === 'fail' }
         case 'SF_QuestState': { const s = questState(e, args[0]).state; return s === (args[1] === 'notStarted' ? 'not-started' : args[1]) }
+        case 'SF_IsTarget': {
+          // as SagaLib: the place ($id), its market or its system is the picked target; or its person / spawn (Phase 7d)
+          const part = args[2] === 'person' || args[2] === 'spawned' ? args[2] : ''
+          const picked = e.get(part ? targetFactKey(args[0], args[1], part) : targetKey(args[0], args[1]))
+          if (part) return picked !== undefined && String(e.get('$id')) === String(picked)
+          if (picked === undefined) return false
+          return [e.get('$id'), e.get('$market.id'), e.get('$entity.starSystem.id')].some((x) => x !== undefined && String(x) === String(picked))
+        }
       }
       return undefined
     },
     command(e, name, args) {
       switch (name) {
+        case 'SF_RollPool': {
+          // as SagaLib (golden case pools.json): the object's seed unless "global", else the stored world seed
+          const pool = findPool(w, args[0])
+          if (!pool) { e.log.push({ kind: 'warn', text: `SF_RollPool: no pool "${args[0]}"` }); return false }
+          const object = args[1] !== 'global'
+          let base: bigint
+          if (object) base = seedOf(e.get('$entity.sagaforge_salvage_seed')) ?? BigInt(javaHash(String(e.get('$entity.id') ?? 'test-object')))
+          else {
+            let s = seedOf(e.get(SEED_KEY))
+            if (s === null) { s = BigInt(Math.floor(Math.random() * 2 ** 31)); e.set(SEED_KEY, s.toString()) }
+            base = s
+          }
+          const fk = forceKey(pool.id)
+          const f = e.get(fk)
+          if (f !== undefined) e.set(fk, undefined)
+          const pick = rollPool(pool, { get: (k) => e.get(k), set: (k, v) => e.set(k, v as never) }, (line) => e.evalCondition(parseCondition(line)), base, object, f === undefined ? null : String(f))
+          e.log.push({ kind: 'script', text: `Pool ${pool.name || pool.id} picked ${pick}${f !== undefined ? ' (forced)' : ''}` })
+          return pick !== 'nothing'
+        }
+        case 'BarCMD': {
+          // RC-R6: back to the bar's own menu (other patrons, Leave): outside this conversation
+          if (args[0] !== 'returnFromEvent') return false
+          e.view.options = []
+          e.para({ kind: 'note', text: '(back to the bar)', color: 'gray' })
+          e.view.ended = true
+          return true
+        }
+        case 'SF_SpawnAtTarget': {
+          // Phase 7d (RC-R2): the spawn stands in as a mock id (vanilla places it in game)
+          const k = targetFactKey(args[0], args[1], 'spawned')
+          if (e.get(k) === undefined) e.set(k, `${mockTargetId(args[0], args[1])}_spawned`)
+          e.log.push({ kind: 'script', text: `Spawned near target ${args[1]}: ${args[2]} ${args[3]}${args[4] ? ` (${args[4]})` : ''}` })
+          return true
+        }
+        case 'MarketCMD': {
+          // RC-F4: vanilla's raid menu can't be simulated: Play asks how it went (raidOutcome)
+          if (args[0] !== 'raidNonMarket') return false
+          e.view.options = [
+            { id: RAID_DONE, text: '(Play) The raid goes through', order: 0, enabled: true },
+            { id: RAID_BACK, text: '(Play) Go back', order: 1, enabled: true }
+          ]
+          e.log.push({ kind: 'info', text: 'Vanilla\'s raid menu opens here (marines, objectives); Play asks how it went.' })
+          return true
+        }
         case 'SF_Start': startQuest(e, w, args[0], sim); return true
         case 'SF_Step': {
           const [qid, step] = args

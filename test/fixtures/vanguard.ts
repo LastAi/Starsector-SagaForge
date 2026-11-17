@@ -72,7 +72,7 @@ export function lostConvoyFull(): QuestPlan {
         text: 'Reyes nods once. "The convoy\'s last position is in your nav computer. Start with the Kestrel belt, and watch for raiders."',
         options: [{ id: 'leave_accepted', text: '"I\'ll find them."' }]
       },
-      { id: 'dock', type: 'wait', x: 1940, y: 160, mode: 'arrive', entity: 'vgc_haven', arriveText: 'As you dock, a message from Commodore Reyes is waiting: she wants to see you at once.' },
+      { id: 'dock', type: 'wait', x: 1940, y: 160, mode: 'arrive', entity: 'vgc_haven', takeover: true, arriveText: 'As you dock, a message from Commodore Reyes is waiting: she wants to see you at once.' },
       { id: 'back', type: 'link', x: 2660, y: 0, mode: 'trigger', target: 'OpenInteractionDialog', fire: 'FireBest' },
       { id: 'bluffed', type: 'action', x: 1220, y: 160, title: 'They left', ops: [{ op: 'set', key: '$global.vgc_signal_heard', value: 'true' }] },
       { id: 'note', type: 'note', x: 220, y: 320, text: 'Bad ending idea: sell the survivors to the pirates (soldCrew).' }

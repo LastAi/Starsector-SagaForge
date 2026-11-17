@@ -1,0 +1,2056 @@
+{
+ "gameVersion": "0.98.5a-RC5",
+ "extends": "0.98a-RC8",
+ "_about": "Changes from 0.98a to 0.98.5a, merged onto 0.98a.json. Built by scripts/build-defs-0985a.cjs from the 0.98.5a API sources and game data; see docs/GAME-0.98.5a-ASSESSMENT.md (R3).",
+ "ruleCommands": [
+  {
+   "name": "DwellerCMD",
+   "forms": [
+    [
+     {
+      "name": "action",
+      "type": "enum",
+      "values": [
+       "smallFleet",
+       "mediumFleet",
+       "largeFleet",
+       "hugeFleet",
+       "showWeaponPicker",
+       "unlockHullmod",
+       "juvenileFleet"
+      ]
+     },
+     {
+      "name": "args",
+      "type": "any",
+      "rest": true
+     }
+    ]
+   ]
+  },
+  {
+   "name": "HA_CMD",
+   "forms": [
+    [
+     {
+      "name": "action",
+      "type": "enum",
+      "values": [
+       "baseInvolved",
+       "addStationKingScript",
+       "endStationKingDeal",
+       "playerColoniesHavePatherActvity",
+       "payMegaTithe",
+       "gavePKToPather",
+       "computeMegaTithe",
+       "kazeronInstallNanoforge",
+       "kazeronNanoforgeMissing",
+       "stopPayingHouseHannan",
+       "leaveLeague",
+       "printTriTachDealRepReq",
+       "isTTCRInProgress",
+       "isTTRaidingPlayerCommerce",
+       "makeTriTachDeal",
+       "breakTriTachDeal",
+       "printLCDealRepReq",
+       "breakLCDeal",
+       "KOLTakeoverInProgress",
+       "makeLuddicChurchDeal",
+       "joinLeague",
+       "canJoinLeague",
+       "isPLExpeditionInProgress",
+       "isPLProtectingPlayerSpace",
+       "canSendPLPunitiveExpedition",
+       "updateLeagueData",
+       "canRemakeDealWithHouseHannan",
+       "endGHMachinations",
+       "doKOLTTakeover",
+       "updateKOLTArmadaData",
+       "updateTTMAData",
+       "retargetTTMA",
+       "computeSacredProtectorsData",
+       "sacredProtectorsCheckCargoPods",
+       "knightsHasslingPlayerColonies",
+       "printSDDealRepReq",
+       "breakSDDeal",
+       "makeDiktatDeal",
+       "diktatConcernedByFuelProd",
+       "printLeagueRequirements",
+       "stopHannanPayments"
+      ]
+     },
+     {
+      "name": "args",
+      "type": "any",
+      "rest": true
+     }
+    ]
+   ]
+  },
+  {
+   "name": "PK_CMD",
+   "forms": [
+    [
+     {
+      "name": "action",
+      "type": "enum",
+      "values": [
+       "removePKDefenses",
+       "convertSentinelToColony",
+       "rightPostToAcceptPK",
+       "rightPostToTellAboutSentinel",
+       "giveExecutor",
+       "blowUpSindria"
+      ]
+     },
+     {
+      "name": "args",
+      "type": "any",
+      "rest": true
+     }
+    ]
+   ]
+  },
+  {
+   "name": "TT_CMD",
+   "forms": [
+    [
+     {
+      "name": "action",
+      "type": "enum",
+      "values": [
+       "isArroyoContact",
+       "giveColossus",
+       "givePhaeton",
+       "loseArroyoContact"
+      ]
+     },
+     {
+      "name": "args",
+      "type": "any",
+      "rest": true
+     }
+    ]
+   ]
+  },
+  {
+   "name": "MarketCMD",
+   "forms": [
+    [
+     {
+      "name": "action",
+      "type": "enum",
+      "values": [
+       "showDefenses",
+       "goBackToDefenses",
+       "engage",
+       "raidMenu",
+       "raidRare",
+       "raidNonMarket",
+       "raidValuable",
+       "raidDisrupt",
+       "raidConfirm",
+       "raidConfirmContinue",
+       "raidNeverMind",
+       "addContinueToRaidResultOption",
+       "raidResult",
+       "bombardMenu",
+       "bombardTactical",
+       "bombardSaturation",
+       "bombardConfirm",
+       "bombardNeverMind",
+       "bombardResult",
+       "checkDebtEffect",
+       "applyDebtEffect",
+       "checkMercsLeaving",
+       "convinceMercToStay",
+       "mercLeaves",
+       "checkOfficerComplaints",
+       "officerLeaves",
+       "makeUnimportant",
+       "makeImportant",
+       "giveStorage",
+       "addCommodityToStorage",
+       "isOwnedBy",
+       "isNotOwnedBy",
+       "isNotDecivilized",
+       "addUnrest",
+       "countColonyPopulation",
+       "notifyCapitalVolturn"
+      ]
+     },
+     {
+      "name": "args",
+      "type": "any",
+      "rest": true
+     }
+    ]
+   ]
+  },
+  {
+   "name": "MiscCMD",
+   "forms": [
+    [
+     {
+      "name": "action",
+      "type": "enum",
+      "values": [
+       "addCryosleeperIntel",
+       "addHypershuntIntel",
+       "addWormholeIntel",
+       "addMarineXP",
+       "mk1_spawnThreatFleet",
+       "retirementGameEnd",
+       "cryosanctumGameEnd",
+       "givePostSDRachillesReward",
+       "fleetClearOrdersAndReturn",
+       "printResupplyFleetData",
+       "printTaskForceData",
+       "playerHasMilitaryBases",
+       "playerHasMilitaryBasesOrHQ",
+       "playerOnlyHasPatrolHQ",
+       "taskForceCheckNum",
+       "unsetMarketHostileTimeout",
+       "taskForceExtend",
+       "taskForceFollow",
+       "taskForceStay",
+       "setDaysSinceStart1000",
+       "macarioToPreacher",
+       "giveResupply",
+       "fleetConfirmedNormal",
+       "fleetConfirmedInstant",
+       "playerHasHighCommand",
+       "loseContact",
+       "pickFleetDestination",
+       "sd7sCreateQarasAgentAndFleet"
+      ]
+     },
+     {
+      "name": "args",
+      "type": "any",
+      "rest": true
+     }
+    ]
+   ]
+  },
+  {
+   "name": "SalvageEntity",
+   "forms": [
+    [
+     {
+      "name": "action",
+      "type": "enum",
+      "values": [
+       "showCost",
+       "performSalvage",
+       "descDebris",
+       "checkAccidents",
+       "demolish",
+       "canBeMadeRecoverable",
+       "showRecoverable",
+       "blockRecoveryIfExtendedMode"
+      ]
+     },
+     {
+      "name": "args",
+      "type": "any",
+      "rest": true
+     }
+    ]
+   ]
+  },
+  {
+   "name": "RepIsAtWorst",
+   "forms": [
+    [
+     {
+      "name": "faction",
+      "type": "faction"
+     },
+     {
+      "name": "level",
+      "type": "repLevel"
+     }
+    ],
+    [
+     {
+      "name": "person",
+      "type": "person"
+     },
+     {
+      "name": "level",
+      "type": "repLevel"
+     }
+    ],
+    [
+     {
+      "name": "level",
+      "type": "repLevel"
+     }
+    ]
+   ],
+   "summary": "True if the player's standing is at least the level: with a faction, or (0.98.5a) with a person id, or with one argument the active person (else the entity's faction)."
+  },
+  {
+   "name": "RepIsAtBest",
+   "forms": [
+    [
+     {
+      "name": "faction",
+      "type": "faction"
+     },
+     {
+      "name": "level",
+      "type": "repLevel"
+     }
+    ],
+    [
+     {
+      "name": "person",
+      "type": "person"
+     },
+     {
+      "name": "level",
+      "type": "repLevel"
+     }
+    ],
+    [
+     {
+      "name": "level",
+      "type": "repLevel"
+     }
+    ]
+   ],
+   "summary": "True if the player's standing is at most the level: with a faction, or (0.98.5a) with a person id, or with one argument the active person (else the entity's faction)."
+  },
+  {
+   "name": "RepGTE",
+   "forms": [
+    [
+     {
+      "name": "faction",
+      "type": "faction"
+     },
+     {
+      "name": "level",
+      "type": "repLevel"
+     }
+    ],
+    [
+     {
+      "name": "person",
+      "type": "person"
+     },
+     {
+      "name": "level",
+      "type": "repLevel"
+     }
+    ],
+    [
+     {
+      "name": "level",
+      "type": "repLevel"
+     }
+    ]
+   ],
+   "summary": "Same as RepIsAtWorst (a subclass): standing at least the level."
+  },
+  {
+   "name": "RepLTE",
+   "forms": [
+    [
+     {
+      "name": "faction",
+      "type": "faction"
+     },
+     {
+      "name": "level",
+      "type": "repLevel"
+     }
+    ],
+    [
+     {
+      "name": "person",
+      "type": "person"
+     },
+     {
+      "name": "level",
+      "type": "repLevel"
+     }
+    ],
+    [
+     {
+      "name": "level",
+      "type": "repLevel"
+     }
+    ]
+   ],
+   "summary": "Same as RepIsAtBest (a subclass): standing at most the level."
+  },
+  {
+   "name": "SetPersonHidden",
+   "forms": [
+    [
+     {
+      "name": "person",
+      "type": "person"
+     },
+     {
+      "name": "hidden",
+      "type": "bool"
+     }
+    ],
+    [
+     {
+      "name": "hidden",
+      "type": "bool"
+     }
+    ]
+   ],
+   "summary": "Hides or shows a person in their market's comm directory; with only the true/false argument (0.98.5a), the active person."
+  },
+  {
+   "name": "MovePersonToMarket",
+   "forms": [
+    [
+     {
+      "name": "person",
+      "type": "person"
+     },
+     {
+      "name": "market",
+      "type": "market",
+      "optional": true
+     },
+     {
+      "name": "forceAddToComms",
+      "type": "bool",
+      "optional": true
+     }
+    ]
+   ],
+   "summary": "Moves a person to a market (default: current); 0.98.5a: a third argument true also lists them in the comm directory."
+  },
+  {
+   "name": "PersonCMD",
+   "use": "both",
+   "className": "com.fs.starfarer.api.impl.campaign.rulecmd.PersonCMD",
+   "provider": "vanilla",
+   "forms": [
+    [
+     {
+      "name": "action",
+      "type": "enum",
+      "values": [
+       "makeImportant",
+       "makeUnimportant"
+      ]
+     },
+     {
+      "name": "person",
+      "type": "person",
+      "optional": true
+     },
+     {
+      "name": "reason",
+      "type": "string",
+      "optional": true
+     }
+    ],
+    [
+     {
+      "name": "action",
+      "type": "enum",
+      "values": [
+       "isContact"
+      ]
+     },
+     {
+      "name": "person",
+      "type": "person",
+      "optional": true
+     }
+    ]
+   ],
+   "display": "none",
+   "summary": "Marks a person important or unimportant (the quest-giver marker; the reason defaults to \"generic\"), or (isContact) true if the person is a contact. Without a person id: the active person. With two or more arguments the second one is always read as a person id."
+  },
+  {
+   "name": "HasContactFromFaction",
+   "use": "condition",
+   "className": "com.fs.starfarer.api.impl.campaign.rulecmd.HasContactFromFaction",
+   "provider": "vanilla",
+   "forms": [
+    [
+     {
+      "name": "faction",
+      "type": "faction"
+     },
+     {
+      "name": "vipBlacklist",
+      "type": "bool",
+      "optional": true
+     }
+    ]
+   ],
+   "display": "none",
+   "summary": "True if the player has an active contact from the faction. vipBlacklist true ignores major story characters (Reynard Hannan, Horus Yaribay, Arroyo, Faro Inesis, Rao, Glamor Rotanev)."
+  },
+  {
+   "name": "MarketHasIndustry",
+   "use": "condition",
+   "className": "com.fs.starfarer.api.impl.campaign.rulecmd.MarketHasIndustry",
+   "provider": "vanilla",
+   "forms": [
+    [
+     {
+      "name": "industry",
+      "type": "string",
+      "rest": true
+     }
+    ]
+   ],
+   "display": "none",
+   "summary": "True if the interaction target's market has any of the listed industries (ids from industries.csv)."
+  },
+  {
+   "name": "PersonIsDefaultMarketPost",
+   "use": "condition",
+   "className": "com.fs.starfarer.api.impl.campaign.rulecmd.PersonIsDefaultMarketPost",
+   "provider": "vanilla",
+   "forms": [
+    [
+     {
+      "name": "person",
+      "type": "person",
+      "optional": true
+     }
+    ]
+   ],
+   "display": "none",
+   "summary": "True if the person (default: active person) holds a standard market post: administrator, supply officer, base or station commander, portmaster."
+  },
+  {
+   "name": "ShowPlayerPerson",
+   "use": "script",
+   "className": "com.fs.starfarer.api.impl.campaign.rulecmd.ShowPlayerPerson",
+   "provider": "vanilla",
+   "forms": [
+    []
+   ],
+   "display": "visual",
+   "summary": "Shows the player character in the visual panel."
+  },
+  {
+   "name": "FinishVisualFadeFast",
+   "use": "script",
+   "className": "com.fs.starfarer.api.impl.campaign.rulecmd.FinishVisualFadeFast",
+   "provider": "vanilla",
+   "forms": [
+    []
+   ],
+   "display": "visual",
+   "summary": "Ends a running fade of the visual panel at once."
+  },
+  {
+   "name": "SellToFleet",
+   "use": "both",
+   "className": "com.fs.starfarer.api.impl.campaign.rulecmd.salvage.SellToFleet",
+   "provider": "vanilla",
+   "forms": [
+    [
+     {
+      "name": "action",
+      "type": "enum",
+      "values": [
+       "willBuyStuff",
+       "selectStuff"
+      ]
+     }
+    ]
+   ],
+   "display": "options",
+   "summary": "Selling salvage to a fleet that buys it (scavengers): willBuyStuff = true if the fleet will buy, selectStuff = open the selection."
+  },
+  {
+   "name": "SDR_CMD",
+   "use": "both",
+   "className": "com.fs.starfarer.api.impl.campaign.rulecmd.SDR_CMD",
+   "provider": "vanilla",
+   "forms": [
+    [
+     {
+      "name": "action",
+      "type": "enum",
+      "values": [
+       "updateRaoSupportRebels",
+       "updateArroyoAssistHeir",
+       "updateArroyoAssistRebels",
+       "removeAllArroyoEffects",
+       "updateVSDCeffects",
+       "addVSDCunrest",
+       "updateGensKatoEffects",
+       "updateARCeffects",
+       "addARCunrest",
+       "updateACAeffects",
+       "addTriTachyonEffects",
+       "addInesisEffects",
+       "doStartUpdate",
+       "addSDInsurgentActivity",
+       "hectorCheckRagnar",
+       "updateCaden",
+       "doHyderDecision",
+       "testHector100",
+       "testAchilles100",
+       "testHector75",
+       "testAchilles75",
+       "testDevastation100",
+       "testDevastationSub100",
+       "updatePlayerFactionEffect"
+      ]
+     },
+     {
+      "name": "args",
+      "type": "any",
+      "rest": true
+     }
+    ]
+   ],
+   "display": "text",
+   "summary": "Sindrian Diktat storyline helper (multi-purpose; vanilla story only)."
+  }
+ ],
+ "triggers": [
+  {
+   "name": "ACAaddUnrestCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "AchillesGreeting",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "AchillesSDROptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (21 vanilla rules)."
+  },
+  {
+   "name": "ANHcheckSDRupdate",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "ARCduringStandoffUnrest",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "ARCsupportedFirstChecks",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "ArroyoAskForAdviceSDopts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "ArroyoAskForHelpSDbonus",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "ArroyoAskForHelpSDopts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (11 vanilla rules)."
+  },
+  {
+   "name": "ArroyoSDSEswitchHelpOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (13 vanilla rules)."
+  },
+  {
+   "name": "ArroyoSDSEswitchInfo",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "ArroyoSDSEworkOutOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (17 vanilla rules)."
+  },
+  {
+   "name": "BeginNewGameCreationExt",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "BeginRetirement",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "BeginRetirementCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "BeginRetirementOptional",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "BlancCryoAccounts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "BlancCryosanctumHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "BlancCryoStoreLeoHub",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "CallFleetTargetSelected",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "CallSupportFleetBegin",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "CallSupportFleetPickSize",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "CallSupportFleetPickTarget",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "CheckNoColonization",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "CydoniaRecognizeCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "DEVkantasDenOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "devKantasVIPrepTestDo",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "DevKazeronOptsHub",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (10 vanilla rules)."
+  },
+  {
+   "name": "DevKazeronOptsHubB",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "DEVnomiosOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "DEVnortiaOptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "DEVplayerColonyOptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "DEVPopulateGateOptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "DEVsdseOptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (18 vanilla rules)."
+  },
+  {
+   "name": "DEVttOptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (10 vanilla rules)."
+  },
+  {
+   "name": "devVolturnOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (11 vanilla rules)."
+  },
+  {
+   "name": "DEVYaribayOptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "DEVyesodOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "DiktatSuppliedMercHail",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "FortunaKatoGreeting",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (10 vanilla rules)."
+  },
+  {
+   "name": "FortunaPostSDRcheckMerc",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "FortunaPostSDRmercPay",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "FortunaPostSDRwrap",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (10 vanilla rules)."
+  },
+  {
+   "name": "FortunaPostSDRwrapEnd",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "gaGCKABairdHub",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "HectorGreeting",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "HectorPostSDROfficeReplies",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "HectorSDROptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "HorusAskFortunaHub",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "HyderGreeting",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (12 vanilla rules)."
+  },
+  {
+   "name": "HyderGreetingSDSEcheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "ImoinuGreeting",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (10 vanilla rules)."
+  },
+  {
+   "name": "ImoinuOfferAcknowledge",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "imoinuUmbraOfferHelpBopts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "inesisLeoOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "inesisLeoSelHelpOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "InesisSDSEalignJustMacOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "InesisSDSEalignOptAchillesCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "InesisSDSEhectorAcceptCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "InesisSDSEhelpStatusAskOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (9 vanilla rules)."
+  },
+  {
+   "name": "InesisZGRhubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "iscare_barEventMetStartOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "IscareBarEventDiscussOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (13 vanilla rules)."
+  },
+  {
+   "name": "IscareNotHereOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "IscareOfferAcknowledge",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "IscareOfferCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (11 vanilla rules)."
+  },
+  {
+   "name": "KDaudienceIntro",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "kdKantaAudienceHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "KOjoveOwe100kOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "KOjoveSD7SpAgent3HubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "LeavePLcheckSDR",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "LeavePLcheckSDSE",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "LeavePLduringSDSEblurb",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "LeoToOwnColonyOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "LGKillFleet2Hail",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "LGKillFleet2HailOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "LGKillFleetHail",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "LGKillFleetHailOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "NGCSelectDifficulty",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "OrthrusVIPpostMorozRepHit",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "PersonnelOfficerPersonalityPicked",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "PersonnelOfficerPicksMade",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "PostSDRachillesTalk2Opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "PostSDRarroyoCommentOutOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "PostSDRfortunaReducePayment",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "PostSDRhectorCountPlanets",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "PostSDRhectorTantrumDoneCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "PostSDRhorusReactOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "PostSDRInesisDoneOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "PostSDRInesisSellLeoOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "PostSDRraoWhatAboutMac",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "PostSDRreynardFavorCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "PostSDRreynardFavorCheck2",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "PostSDRreynardRewards",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "PostSDRreynardRewards2",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "PostSDRreynardTalkOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "PostSDRreynardTalkOpts2",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "PostSDRreyReducePayment",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "PostSDRsiyavongCheckIfHelped",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "PostSDRsiyavongReplyOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (12 vanilla rules)."
+  },
+  {
+   "name": "PostSDRsiyavongSayHelped",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "RaoAskDiktatDolosOpts1",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "RaoAskDiktatDolosOpts2",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "RetireOptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (21 vanilla rules)."
+  },
+  {
+   "name": "SD7inesisFindHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "SD7SachillesOutOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (9 vanilla rules)."
+  },
+  {
+   "name": "SD7SachillesStartHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SD7SachillesWarnYouOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SD7SachillesWhoOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SD7SaskNomiosBarOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "SD7SaskOrthrusBarOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SD7ScaTalkInfoDump2opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SD7ScaTalkOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (10 vanilla rules)."
+  },
+  {
+   "name": "SD7ScaTalkWhoPlayerServeOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SD7ScydoniaHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (11 vanilla rules)."
+  },
+  {
+   "name": "SD7SelyApproachResults",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SD7SelyHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (17 vanilla rules)."
+  },
+  {
+   "name": "SD7SelyMercHail",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SelyMercOptBribeOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SD7SelyRaidAFinished",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SelyRaidAFinished2",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SelyRaidBFinished",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SelyRaidBFinished2",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SelyTacticalRecs",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SD7SelyTacticalReport1",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SD7SelyTacticalReport2",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SD7SendingCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SD7SendingDoneCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SfortunaAndradaDesOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "SD7SfortunaAskYaribayOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SD7SfortunaDrink3opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SD7SfortunaHegMeddle3opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SD7SfortunaHowHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (15 vanilla rules)."
+  },
+  {
+   "name": "SD7SfortunaHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (21 vanilla rules)."
+  },
+  {
+   "name": "SD7SfortunaImoinuHelpCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SfortunaWhoOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (9 vanilla rules)."
+  },
+  {
+   "name": "SD7SgaBairdOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SD7SgaEndTalkHercHideOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (13 vanilla rules)."
+  },
+  {
+   "name": "SD7SgaEndTalkHercHubHeirCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SgaEndTalkHercHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SD7SgaTalkHercHub1opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (10 vanilla rules)."
+  },
+  {
+   "name": "SD7SgaTalkHercTellAndHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (12 vanilla rules)."
+  },
+  {
+   "name": "SD7ShercPostBairdHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SD7ShercPostBairdOutCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SD7ShercPostChiefHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (11 vanilla rules)."
+  },
+  {
+   "name": "SD7ShubOptsLeo",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "SD7SinesisDecryptHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SD7SinesisHub",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SD7SintelRaoHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SD7SirkallaDevHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (9 vanilla rules)."
+  },
+  {
+   "name": "SD7SirkallaExplore1check",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SirkallaNetiHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (18 vanilla rules)."
+  },
+  {
+   "name": "SD7SirkallaVisitOptHub",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SD7SirkMercHail",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SkantasVIPaskCydHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (9 vanilla rules)."
+  },
+  {
+   "name": "SD7SmacarioFoundSonsOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "SD7SmacarioTellFoundSons3check",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SmacarioTryOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SD7SmorozAskAventineCheckSD",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SmorozHail",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SmorozSpaceHubOps",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "SD7SmorozYouKnewOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SD7SnetiAskCommissionAcheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SD7SnomiosSOaskCydoniaOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SD7SnomiosSOaskIceOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SD7SnomiosSOaskMeat1opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SD7SnomiosSOaskPerOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "SD7SorthrusDevOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SD7SQarasAgentDefeated",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SqarasAskJovePermOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "SD7SqarasAskPermOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (9 vanilla rules)."
+  },
+  {
+   "name": "SD7SqarasDevOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (9 vanilla rules)."
+  },
+  {
+   "name": "SD7SqarasKOappealResult",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (11 vanilla rules)."
+  },
+  {
+   "name": "SD7SqarasKOaskLokeCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SqarasKOhub1opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (10 vanilla rules)."
+  },
+  {
+   "name": "SD7SqarasKOinfoDumpOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SD7SqarasPBarJoveDidYBopts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SD7SqarasPBarJoveDidYouC2b",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SqarasPBarJoveOffCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SD7SqarasPostBarJoveOffers",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (10 vanilla rules)."
+  },
+  {
+   "name": "SD7SqarasRaidCheckHostiles",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SqarasRaidFinishedA",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SqarasRaidFinishedB",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SqarasVisitGangCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SD7SraoDiscussJason3",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SD7SraoFindHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (9 vanilla rules)."
+  },
+  {
+   "name": "SD7SraoFindHubOptsCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "SD7SraoTakeLeonidasDeclineRep",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SreadFilesCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SreadFilesHub",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (10 vanilla rules)."
+  },
+  {
+   "name": "SD7SreturnFromBarInterruptCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SreynardAndradaFilesHubA",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (10 vanilla rules)."
+  },
+  {
+   "name": "SD7SsawLeoFreeShuttleSupplies",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SD7SsawLeoHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (11 vanilla rules)."
+  },
+  {
+   "name": "SD7SsawLeoJustLeavingSelCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SD7SsiyavongDecryptHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SD7SsiyavongFindHercOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "SD7SsiyavongFindHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (14 vanilla rules)."
+  },
+  {
+   "name": "SD7SsiyavongHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (14 vanilla rules)."
+  },
+  {
+   "name": "SD7SsiyavongKillingsHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "SD7SsiyavongQuips",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SD7SsiyavongTakeLeoOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SD7SstartHackHub",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (13 vanilla rules)."
+  },
+  {
+   "name": "SD7SstartHackHubHeg",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (10 vanilla rules)."
+  },
+  {
+   "name": "SD7SstartHackHubPL",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (10 vanilla rules)."
+  },
+  {
+   "name": "SD7SstartHackHubTT",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SD7SstartHub",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (9 vanilla rules)."
+  },
+  {
+   "name": "SD7StestOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (12 vanilla rules)."
+  },
+  {
+   "name": "SD7StriDecryptFeeHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "SD7SyaribayDiscussSiyOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SD7SyaribayWhatDoOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (14 vanilla rules)."
+  },
+  {
+   "name": "SD7SyesodAskSOhub",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SD7SyesodFortunaChecks",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SDdevOptionHubHyder",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDRAchillesAckSupport",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SDRachillesFleetOptCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDRcadenUpdate",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDRfortunaAskoniaPreTalk",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SDRfortunaHorusAgreeRewardCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDRfortunaImoinuHelpCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDRfortunaTalkAskoniaHubOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SDRHectorFirstOptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SDRHectorProveOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (18 vanilla rules)."
+  },
+  {
+   "name": "SDRHectorRagnarCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDRhectorSupportCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SDRhorusACAreaction",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SDRhorusACAreactionLate",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SDRhyderToAchillesAskOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SDRinesisLateHelpStartOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (11 vanilla rules)."
+  },
+  {
+   "name": "SDRMorozHuntGreeting",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "SDRorcusAskoniaOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SDRplayerColonyEffectUpdate",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDRrao2BriefPostHecOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "SDRraoRewardRebelSupply",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "SDRreynardAskoniaTalk2Opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "SDRreynardFavorCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDRreynardOutroOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SDRreynardVSDCcommsCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SDRsendTTrevengeFleet",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDRstandfastIntroOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SDSEachillesDeclares2opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SDSEachillesDeclaresCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SDSEachillesDeclaresCheck2",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDSEachillesDeclareSet",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDSEachillesEndMoreCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SDSEachillesSupport2opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (18 vanilla rules)."
+  },
+  {
+   "name": "SDSEachillesToWaitCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SDSEbarIntroRepHit",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (9 vanilla rules)."
+  },
+  {
+   "name": "SDSEcadenPostRelay1opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SDSECadenPostRelay1Opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SDSEcadenPostRelay2Opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (11 vanilla rules)."
+  },
+  {
+   "name": "SDSEcontactOptionsInesis",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "SDSEcountSons",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SDSEhectorDeclaredSet",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDSEhorusSelectSideComment",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SDSEhorusTalkOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (11 vanilla rules)."
+  },
+  {
+   "name": "SDSEhyderDecisionCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDSEHyderGreeting",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SDSEHyderGreetingTrust0opt",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SDSEhyderHowMuchOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SDSEhyderPostHectorEndCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDSEhyderSchemerOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SDSEhyderSuggestBackHeirOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SDSEhyderSuggestOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (26 vanilla rules)."
+  },
+  {
+   "name": "SDSEhyderSuggestSE2opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "SDSEhyderSuggestSEopts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SDSEhyderTalkFilesAgainOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SDSEinesisMacWarOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (13 vanilla rules)."
+  },
+  {
+   "name": "SDSEintroMacarioOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (9 vanilla rules)."
+  },
+  {
+   "name": "SDSEintroMacCheckCaden",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SDSEintroMacEndHyderFacts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SDSEintroOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (28 vanilla rules)."
+  },
+  {
+   "name": "SDSEintroSequenceEndCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SDSEpropRepRepairCall",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDSErelayDolosOpenCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDSErelayOptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (15 vanilla rules)."
+  },
+  {
+   "name": "SDSEreyDenialMissionCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SDSEreynardDenyChangeOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "SDSEreynardOpeningGreetOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SDSEstartGensConflictCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "SDSEtalkArroyoContCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SDSEtalkArroyoOptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (9 vanilla rules)."
+  },
+  {
+   "name": "SDSEtalkArroyoOptRep3DenyCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDSEtalkArroyoRepChecks",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SDSEtalkArroyoSolutionOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SDSEtalkFortunaTTcases",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (9 vanilla rules)."
+  },
+  {
+   "name": "SDSEtalkSiyavongWantOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (17 vanilla rules)."
+  },
+  {
+   "name": "SDSEtalkToFortuna1opts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SDSEtalkToHorusCheckA",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDSEtalkToRaoAcceptSupplies",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SDSEtalkToRaoHyperOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (7 vanilla rules)."
+  },
+  {
+   "name": "SDSEtalkToRaoOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (9 vanilla rules)."
+  },
+  {
+   "name": "SDSEtalkToRaoOtherCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "SDSEtalkToRaoStartOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SDSEtalkToSiyavong3hegOutOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SDSEtalkToSiyavong3ttOutOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (3 vanilla rules)."
+  },
+  {
+   "name": "SDSEtestOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SDSEvisitRelayUploadHecCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SDSWbarJoveOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "SDSWilmFinale2checkNone",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SDSWilmOutroOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "SDSWilmStartOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (5 vanilla rules)."
+  },
+  {
+   "name": "sdswJoveAntiMacarioWhyOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (6 vanilla rules)."
+  },
+  {
+   "name": "SDSWjoveAskEventideOpts",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SDSWjoveEventideVisitOptCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SDSWjoveEventideVisitWep",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SEFinishedMusic",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "SEFwrapDolosProHectorCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SEFwrapWinnerLine",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (8 vanilla rules)."
+  },
+  {
+   "name": "SellToFleetFinished",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SetHegTitle",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SetPLtitle",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SevenSonsAndradaDecryptBegin",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SevenSonsAndradaFileBegin",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "StandfastOfferAcknowledge",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "StandfastOfferCheck",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (10 vanilla rules)."
+  },
+  {
+   "name": "StellarMirrorOptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "StellarShadeOptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "SupportFleetCheckAvailable",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (2 vanilla rules)."
+  },
+  {
+   "name": "SupremeExecutorFinished",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "TaskForcePopulateOptions",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (4 vanilla rules)."
+  },
+  {
+   "name": "TTCompetingExecutiveHail",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  },
+  {
+   "name": "VSDCduringStandoffUnrest",
+   "summary": "Content trigger fired from other rules with FireBest/FireAll (1 vanilla rule)."
+  }
+ ],
+ "tokens": [
+  {
+   "token": "$PersonFirstName",
+   "summary": "Active person's first name (case variant of $personFirstName, new in 0.98.5a; hub missions also store it in memory).",
+   "sample": "Baikal",
+   "group": "person"
+  },
+  {
+   "token": "$PersonLastName",
+   "summary": "Active person's last name (case variant of $personLastName, new in 0.98.5a; hub missions also store it in memory).",
+   "sample": "Daud",
+   "group": "person"
+  }
+ ],
+ "ranks": [
+  {
+   "id": "artificialIntelligence",
+   "name": "Artificial Intelligence"
+  },
+  {
+   "id": "criminal",
+   "name": "Criminal"
+  },
+  {
+   "id": "fugitive",
+   "name": "Fugitive"
+  }
+ ],
+ "posts": [
+  {
+   "id": "associate_academician",
+   "name": "Associate Academician"
+  },
+  {
+   "id": "assistant_academician",
+   "name": "Assistant Academician"
+  },
+  {
+   "id": "personnelOfficer",
+   "name": "Personnel Officer"
+  },
+  {
+   "id": "underworldBoss",
+   "name": "Underworld Boss"
+  },
+  {
+   "id": "exile",
+   "name": "Exile"
+  },
+  {
+   "id": "gammaCore",
+   "name": "Gamma Core"
+  },
+  {
+   "id": "betaCore",
+   "name": "Beta Core"
+  },
+  {
+   "id": "alphaCore",
+   "name": "Alpha Core"
+  }
+ ],
+ "codePeople": [
+  {
+   "id": "bellamy_kanta",
+   "name": "Bellamy Kanta",
+   "faction": "persean",
+   "market": "salamanca"
+  },
+  {
+   "id": "ko_jove",
+   "name": "K-O Jove",
+   "faction": "pirates",
+   "market": "qaras"
+  },
+  {
+   "id": "faro_inesis",
+   "name": "Faro Inesis",
+   "faction": "tritachyon",
+   "market": "tibicena"
+  },
+  {
+   "id": "gallu_blanc",
+   "name": "Gallu Blanc",
+   "faction": "independent",
+   "market": "nomios"
+  },
+  {
+   "id": "achilles_andrada",
+   "name": "Achilles Kalian",
+   "faction": "persean",
+   "market": "yesod"
+  },
+  {
+   "id": "hector_andrada",
+   "name": "Hector Palatin",
+   "faction": "independent",
+   "market": "sindria"
+  },
+  {
+   "id": "hercules_andrada",
+   "name": "Hercules Cyrino",
+   "faction": "independent"
+  },
+  {
+   "id": "benoit",
+   "name": "Erdene Benoit",
+   "faction": "independent"
+  },
+  {
+   "id": "lott",
+   "name": "Marcellus Lott",
+   "faction": "independent"
+  },
+  {
+   "id": "maeus_moroz",
+   "name": "Maeus Moroz",
+   "faction": "independent",
+   "market": "orthrus"
+  },
+  {
+   "id": "crasis",
+   "name": "Crasis",
+   "faction": "independent"
+  },
+  {
+   "id": "aureolin",
+   "name": "Aureolin",
+   "faction": "independent"
+  }
+ ],
+ "factionKeys": [
+  {
+   "key": "portraits",
+   "type": "object",
+   "summary": "Portrait lists (standard_male, standard_female). On the player faction, 0.98.5a adds player_male / player_female: the new-game portrait picker.",
+   "group": "Names & ranks"
+  }
+ ]
+}

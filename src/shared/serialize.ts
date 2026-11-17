@@ -8,11 +8,12 @@ import { parseLooseObject } from './loosejson'
 import { parseCsvRecords, csvCell } from './csvedit'
 import { jsonToPatch, patchToJson, clone, type FactionPatch } from './faction'
 import {
-  PLAN_FORMAT, newProjectFile,
-  type Descriptions, type EncounterDef, type FactionsRuntime, type ItemDef, type PersonDef, type Phrase, type ProjectFile,
-  type QuestPlan, type StarSystemDef, type TestProfile
+  PLAN_FORMAT, newProjectFile, emptyNameLists, emptyModTypes, emptyFleetPlans,
+  type Descriptions, type EncounterDef, type FactionsRuntime, type FleetPlans, type ItemDef, type ModTypes, type NameLists, type PoolPlan, type EventSchedulerPlan, type ProgressEventPlan, type ScatterPlan, type PersonDef, type Phrase, type ProjectFile,
+  type QuestPlan, type StarSystemDef, type TestProfile, type TodoMap
 } from './model'
 import type { FileWrite, ProjectState } from './project'
+import { pruneTodos } from './todo'
 
 export interface FactionAdditionEdit {
   kind: 'addition'
@@ -42,6 +43,20 @@ export interface ModModel {
   testProfiles: TestProfile[]
   factionsRuntime: FactionsRuntime
   descriptions: Descriptions
+  /** Person name pools and ship name lists (R3). */
+  names: NameLists
+  /** The mod's own entity, planet and star types (R21). Optional: older models have none. */
+  types?: ModTypes
+  /** Named fleet templates and fleet type names (Phase 5). Optional: older models have none. */
+  fleets?: FleetPlans
+  /** Named random pools (Phase 7a). Optional: older models have none. */
+  pools?: PoolPlan[]
+  /** World event schedulers (Phase 8d). Optional: older models have none. */
+  events?: EventSchedulerPlan[]
+  /** Progress events (Phase 8d-3). Optional: older models have none. */
+  progress?: ProgressEventPlan[]
+  /** Scatter at new game (Phase 7e). Optional: older models have none. */
+  scatter?: ScatterPlan[]
   factions: FactionEdit[]
 }
 
@@ -57,6 +72,13 @@ export function modelFromProject(p: ProjectState): ModModel {
     testProfiles: p.testProfiles,
     factionsRuntime: p.factionsRuntime,
     descriptions: p.descriptions,
+    names: { people: p.names?.people ?? [], ships: p.names?.ships ?? [] },
+    types: { entities: p.types?.entities ?? [], planets: p.types?.planets ?? [] },
+    fleets: { templates: p.fleets?.templates ?? [], typeNames: p.fleets?.typeNames ?? {} },
+    pools: p.pools ?? [],
+    events: p.events ?? [],
+    progress: p.progress ?? [],
+    scatter: p.scatter ?? [],
     factions: p.factions.map((f): FactionEdit => f.kind === 'addition'
       ? { kind: 'addition', id: f.id, file: f.file, raw: f.raw, listed: f.listed }
       : { kind: 'override', id: f.id, file: f.file, patch: jsonToPatch(f.raw) })
@@ -65,7 +87,7 @@ export function modelFromProject(p: ProjectState): ModModel {
 
 export const emptyModel = (prefix = ''): ModModel => ({
   project: newProjectFile(prefix), quests: [], people: [], items: [], systems: [], encounters: [], phrases: [], testProfiles: [],
-  factionsRuntime: { relations: {}, scripted: {} }, descriptions: {}, factions: []
+  factionsRuntime: { relations: {}, scripted: {} }, descriptions: {}, names: emptyNameLists(), types: emptyModTypes(), fleets: emptyFleetPlans(), pools: [], events: [], progress: [], scatter: [], factions: []
 })
 
 export const json = (v: unknown) => JSON.stringify(v, null, 2) + '\n'
@@ -75,8 +97,18 @@ export const systemFile = (id: string) => `sagaforge/locations/${id}.system.json
 export const encounterFile = (id: string) => `sagaforge/encounters/${id}.encounter.json`
 export const releaseFile = (v: string) => `sagaforge/releases/${v}.json`
 
+/** A copy of the model without the to-dos that are done (only copies what has some). */
+function withoutDoneTodos(m: ModModel): ModModel {
+  const has = (l: { todo?: unknown }[]) => l.some((x) => x.todo)
+  if (![m.people, m.quests, m.items, m.encounters, m.systems].some(has)) return m
+  const prune = <T extends { todo?: TodoMap }>(l: T[]): T[] => l.map((x) => { if (!x.todo) return x; const c = { ...x, todo: { ...x.todo } }; pruneTodos(c); return c })
+  return { ...m, people: prune(m.people), quests: prune(m.quests), items: prune(m.items), encounters: prune(m.encounters), systems: prune(m.systems) }
+}
+
 /** Plan files (path → text) for a model. */
-export function planTexts(m: ModModel): Record<string, string> {
+export function planTexts(model: ModModel): Record<string, string> {
+  // to-dos whose field has changed since they were marked are done: not written (R9)
+  const m = withoutDoneTodos(model)
   const out: Record<string, string> = {}
   out['sagaforge/project.json'] = json({ ...m.project, format: PLAN_FORMAT })
   for (const q of m.quests) out[questFile(q.id)] = json({ ...q, format: PLAN_FORMAT })
@@ -91,14 +123,21 @@ export function planTexts(m: ModModel): Record<string, string> {
     out['sagaforge/factions.json'] = json({ format: PLAN_FORMAT, ...m.factionsRuntime })
   }
   if (Object.keys(m.descriptions).length) out['sagaforge/descriptions.json'] = json({ format: PLAN_FORMAT, descriptions: m.descriptions })
+  if (m.names.people.length || m.names.ships.length) out['sagaforge/names.json'] = json({ format: PLAN_FORMAT, ...m.names })
+  if (m.types?.entities.length || m.types?.planets.length) out['sagaforge/types.json'] = json({ format: PLAN_FORMAT, ...m.types })
+  if (m.fleets?.templates.length || Object.keys(m.fleets?.typeNames ?? {}).length) out['sagaforge/fleets.json'] = json({ format: PLAN_FORMAT, ...m.fleets })
+  if (m.pools?.length) out['sagaforge/pools.json'] = list('pools', m.pools)
+  if (m.events?.length) out['sagaforge/events.json'] = list('events', m.events)
+  if (m.progress?.length) out['sagaforge/progress.json'] = list('progress', m.progress)
+  if (m.scatter?.length) out['sagaforge/scatter.json'] = list('scatter', m.scatter)
   return out
 }
 
 /** Plan files Saga Forge manages (others under sagaforge/, like backups and releases, are left alone). */
-const MANAGED = /^sagaforge\/(project\.json|people\.json|items\.json|phrases\.json|test-profiles\.json|factions\.json|descriptions\.json|quests\/.+\.quest\.json|locations\/.+\.system\.json|encounters\/.+\.encounter\.json)$/
+const MANAGED = /^sagaforge\/(project\.json|people\.json|items\.json|phrases\.json|test-profiles\.json|factions\.json|descriptions\.json|names\.json|types\.json|fleets\.json|pools\.json|events\.json|progress\.json|scatter\.json|quests\/.+\.quest\.json|locations\/.+\.system\.json|encounters\/.+\.encounter\.json)$/
 
 /** Text of a faction file for this edit, keeping the existing file's formatting where there is one. */
-export function factionText(f: FactionEdit, oldText: string | undefined, sourceName = 'another mod'): string {
+export function factionText(f: FactionEdit, oldText: string | undefined): string {
   const value = f.kind === 'addition' ? f.raw : patchToJson(f.patch)
   if (oldText != null) {
     try {
@@ -109,7 +148,7 @@ export function factionText(f: FactionEdit, oldText: string | undefined, sourceN
   }
   const fmt = { unit: '\t', eol: '\n' }
   const head = f.kind === 'override'
-    ? `# Saga Forge override of ${f.id} (${sourceName}): only this mod's changes. The game merges this file\n# into the original: objects key by key, lists appended. Edit it in Saga Forge to keep it a patch.\n`
+    ? `# Saga Forge override of ${f.id}: only this mod's changes. The game merges this file\n# into the original: objects key by key, lists appended. Edit it in Saga Forge to keep it a patch.\n`
     : ''
   return head + serialize(value, '', fmt) + '\n'
 }
@@ -167,7 +206,7 @@ export function modelToWrites(m: ModModel, loaded: ProjectState, deletedFactionF
   const src = (id: string) => loaded.factions.find((f) => f.id === id)
   for (const f of m.factions) {
     const old = files[f.file]?.text
-    const text = factionText(f, old, src(f.id)?.kind === 'override' ? 'vanilla or another mod' : undefined)
+    const text = factionText(f, old)
     if (old === text) continue
     writes.push({ path: f.file, text, expectedHash: hashOf(f.file) })
   }

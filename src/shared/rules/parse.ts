@@ -104,11 +104,13 @@ export function parseOptions(cell: string): OptionLine[] {
   for (const raw of cell.split(/\r?\n/)) {
     const line = raw.trim()
     if (!line) continue
+    // the game splits at every ":" and shows only the piece after the id: "95:opt:A: b" shows "A"
+    // (seen in game on 0.98.5a, task #48), so the preview shows the same
     const parts = line.split(':')
     if (parts.length >= 3 && /^-?\d+(\.\d+)?$/.test(parts[0].trim())) {
-      out.push({ order: Number(parts[0]), id: parts[1].trim(), text: parts.slice(2).join(':').replace(/^"|"$/g, ''), raw: line })
+      out.push({ order: Number(parts[0]), id: parts[1].trim(), text: parts[2].replace(/^"|"$/g, ''), raw: line })
     } else if (parts.length >= 2) {
-      out.push({ id: parts[0].trim(), text: parts.slice(1).join(':').replace(/^"|"$/g, ''), raw: line })
+      out.push({ id: parts[0].trim(), text: parts[1].replace(/^"|"$/g, ''), raw: line })
     }
   }
   return out

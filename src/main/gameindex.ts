@@ -10,9 +10,11 @@ import { defsFor } from '../shared/defs'
 import { mergeFactionJson } from '../shared/faction'
 import { detectInstall as _detect, errText, isFile, modsRootFor, readLoose, scanSources, walk, type ModsOptions } from './install'
 import type {
-  FactionInfo, GameIndex, HullInfo, IllustrationInfo, ItemInfo, MarketInfo, NamedEntry, PersonInfo, PortraitInfo, Problem,
-  SourceInfo, SystemInfo, UiSettings, ValidInstall
-} from '../shared/api'
+  FactionInfo, GameIndex, HullInfo, IllustrationInfo, ItemInfo, MarketInfo, NameCategoryInfo, NamedEntry, PersonInfo, PortraitInfo, Problem,
+  ShipNameListInfo, SourceInfo, SystemInfo, UiSettings, ValidInstall, DropGroupRow } from '../shared/api'
+import { factionKeySurvey } from '../shared/factionkeys'
+import { procgenData, typeInfos } from '../shared/celestial'
+import { parseSystemsJava } from '../shared/javasystems'
 import type { RuleRow } from '../shared/rules/types'
 
 export const detectInstall = _detect
@@ -74,6 +76,7 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
   const markets = new Map<string, MarketInfo>()
   const systems = new Map<string, SystemInfo>()
   const items = new Map<string, ItemInfo>()
+  const dropGroups: DropGroupRow[] = []
   const industries = new Map<string, NamedEntry>()
   const conditions = new Map<string, NamedEntry>()
   const submarkets = new Map<string, NamedEntry>()
@@ -86,10 +89,20 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
   const variants = new Map<string, NamedEntry>()
   const customEntityTypes = new Map<string, NamedEntry>()
   const planetTypes = new Map<string, NamedEntry>()
+  const entityRaw = new Map<string, Record<string, unknown>>()
+  const planetRaw = new Map<string, Record<string, unknown>>()
+  const procStars: Record<string, { habZoneStart: number }> = {}
+  const procRows = new Map<string, Record<string, string>>()
+  const codeFiles: { text: string; file: string; sourceId: string }[] = []
   const sounds = new Set<string>()
   const music = new Set<string>()
+  const nameCats = new Map<string, NameCategoryInfo>()
+  const shipLists = new Map<string, ShipNameListInfo>()
+  const fleetTypeNames: Record<string, string> = {}
   const rules: RuleRow[] = []
   const ruleCounts: Record<string, number> = {}
+  const ruleFiles: string[] = []
+  const ownRuleFiles = new Map<string, string[]>()
   let settings: Record<string, unknown> = {}
 
   const readText = async (f: string): Promise<string | null> => {
@@ -175,6 +188,13 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
       if (!id || id.startsWith('#')) continue
       put(items, { id, name: r.name ?? id, kind: 'commodity', icon: r.icon ?? '', tags: csvTags(r.tags), basePrice: num(r['base price']), desc: r.desc ?? '', ...own }, 'csv')
     }
+    // Phase 8a: drop groups (every source's rows add to the group; checked in game 2026-11-16)
+    for (const r of await csvRows(src, 'data/campaign/procgen/drop_groups.csv')) {
+      const item = (r.commodity ?? '').trim()
+      const group = (r.group ?? '').trim()
+      if (!item || !group || item.startsWith('#')) continue
+      dropGroups.push({ group, item, freq: num(r.freq), definedBy: S })
+    }
     for (const r of await csvRows(src, 'data/campaign/special_items.csv')) {
       const id = (r.id ?? '').trim()
       if (!id || id.startsWith('#')) continue
@@ -239,16 +259,63 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
         }
       }
     }
+    // types: merged JSON, so later sources change entries key by key (R15, R19)
     const ce = await json(src, 'data/config/custom_entities.json')
-    for (const [id, v] of Object.entries(ce ?? {})) put(customEntityTypes, { id, name: String((v as Record<string, unknown>)?.defaultName ?? titleCase(id)), ...own }, true)
+    for (const [id, v] of Object.entries(ce ?? {})) {
+      if (!v || typeof v !== 'object') continue
+      entityRaw.set(id, mergeFactionJson(entityRaw.get(id) ?? {}, v) as Record<string, unknown>)
+      put(customEntityTypes, { id, name: id, ...own }, true)
+    }
     const pl = await json(src, 'data/config/planets.json')
-    for (const [id, v] of Object.entries(pl ?? {})) put(planetTypes, { id, name: String((v as Record<string, unknown>)?.name ?? titleCase(id)), ...own }, true)
+    for (const [id, v] of Object.entries(pl ?? {})) {
+      if (!v || typeof v !== 'object') continue
+      planetRaw.set(id, mergeFactionJson(planetRaw.get(id) ?? {}, v) as Record<string, unknown>)
+      put(planetTypes, { id, name: id, ...own }, true)
+    }
+    // vanilla's random generation tables (R18); a mod's rows are merged by id
+    for (const r of await csvRows(src, 'data/campaign/procgen/star_gen_data.csv')) {
+      const id = (r.id ?? '').trim()
+      if (id && !id.startsWith('#')) procStars[id] = { habZoneStart: num(r.habZoneStart, 0) }
+    }
+    for (const r of await csvRows(src, 'data/campaign/procgen/planet_gen_data.csv')) procRows.set((r.id ?? '').trim() || `CATEGORY:${(r.category ?? '').trim()}`, r)
+    // star systems in Java source (R14): vanilla's data/scripts/world, and mods that ship theirs
+    for (const file of await walk(path.join(src.dir, 'data', 'scripts', 'world'), ['.java'])) {
+      let t = ''
+      try { t = await fsp.readFile(file, 'utf8') } catch { continue }
+      filesRead++
+      if (!t.includes('createStarSystem')) continue
+      codeFiles.push({ text: t, file: slash(path.relative(src.dir, file)), sourceId: S })
+    }
     const snd = await json(src, 'data/config/sounds.json')
     if (snd) {
       for (const [k, v] of Object.entries(snd)) {
         if (k === 'music' && v && typeof v === 'object') for (const m of Object.keys(v)) music.add(m)
         else sounds.add(k)
       }
+    }
+
+    // ---- name lists (R3): person_names.csv is a merged spreadsheet, ship_names.json merged JSON
+    for (const r of await csvRows(src, 'data/characters/person_names.csv')) {
+      const name = (r.name ?? '').trim()
+      if (!name || name.startsWith('#')) continue
+      const g = (r.gender ?? '').trim(), u = (r.usage ?? '').trim()
+      const male = !g || g.includes('m'), female = !g || g.includes('f')
+      for (const c of csvTags(r.category)) {
+        const e = nameCats.get(c) ?? { id: c, counts: {} }
+        const n = (e.counts[S] ??= { male: 0, female: 0, last: 0 })
+        if (u.includes('f')) { if (male) n.male++; if (female) n.female++ }
+        if (u.includes('l')) n.last++
+        nameCats.set(c, e)
+      }
+    }
+    const ftn = await json(src, 'data/world/factions/default_fleet_type_names.json')
+    for (const [k, v] of Object.entries(ftn ?? {})) if (typeof v === 'string') fleetTypeNames[k] = v
+    const sn = await json(src, 'data/strings/ship_names.json')
+    for (const [id, v] of Object.entries(sn ?? {})) {
+      if (!Array.isArray(v)) continue
+      const e = shipLists.get(id) ?? { id, counts: {} }
+      e.counts[S] = (e.counts[S] ?? 0) + v.filter((x) => typeof x === 'string' && x !== 'core_clearArray').length
+      shipLists.set(id, e)
     }
 
     // ---- variant ids (file names; the game uses variantId, which matches the file name in practice)
@@ -279,13 +346,24 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
       } catch (e) { problems.push({ level: 'warning', area: 'Index', sourceId: S, file: slash(path.relative(src.dir, file)), message: errText(e) }) }
     }
 
-    // ---- rules.csv
-    const rulesText = await readText(path.join(src.dir, 'data', 'campaign', 'rules.csv'))
-    if (rulesText != null) {
-      const n = parseRulesCsv(rulesText, S, 'data/campaign/rules.csv', rules, problems)
-      ruleCounts[S] = n
+    if (st) ownRuleFiles.set(S, ruleFileList(st))
+  }
+
+  // ---- rules: every file in the merged settings.json "rules" list (0.98.5a), in every source.
+  // Each listed path is a merged CSV like rules.csv (docs/FORMATS.md, "Rule file list").
+  const listed = ruleFileList(settings)
+  const gameRuleFiles = listed.length ? listed : [DEFAULT_RULES_FILE]
+  for (const src of sources) {
+    const files = [...gameRuleFiles]
+    // a mod that isn't enabled isn't in the merged settings; still read the files it lists itself
+    for (const f of ownRuleFiles.get(src.id) ?? []) if (!files.some((x) => x.toLowerCase() === f.toLowerCase())) files.push(f)
+    for (const rel of files) {
+      const text = await readText(path.join(src.dir, ...rel.split('/')))
+      if (text == null) continue
+      ruleCounts[src.id] = (ruleCounts[src.id] ?? 0) + parseRulesCsv(text, src.id, rel, rules, problems)
     }
   }
+  ruleFiles.push(...gameRuleFiles)
 
   // Factions: the first layer defines, later layers are patches. Only listed files are loaded by the game.
   for (const [key, layers] of factionLayers) {
@@ -308,6 +386,9 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
     else if (typeof v === 'string' && /\.fnt$/i.test(v)) ui.fonts[k] = v
   }
 
+  const types = typeInfos(planetTypes, planetRaw, customEntityTypes, entityRaw)
+  const codeSystems = codeFiles.flatMap((f) => parseSystemsJava(f.text, f.file, f.sourceId, (id) => systems.has(id)))
+
   const modsRoot = modsRootFor(install, opts)
   const active = opts.activeModDir ? sources.find((s) => s.writable && s.writeDir === opts.activeModDir) : undefined
   const sortByName = <T extends { name: string }>(m: Map<string, T>) => [...m.values()].sort((a, b) => a.name.localeCompare(b.name))
@@ -317,17 +398,40 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
     factions: sortByName(factions), people: sortByName(people), markets: sortByName(markets), systems: sortByName(systems),
     items: sortByName(items), industries: sortByName(industries), conditions: sortByName(conditions), submarkets: sortByName(submarkets),
     hulls: sortByName(hulls), variants: sortByName(variants), wings: sortByName(wings), weapons: sortByName(weapons), hullmods: sortByName(hullmods),
-    illustrations: [...illustrations.values()], portraits, customEntityTypes: sortByName(customEntityTypes), planetTypes: sortByName(planetTypes),
-    sounds: [...sounds].sort(), music: [...music].sort(), ruleCounts, ui, problems,
+    illustrations: [...illustrations.values()], portraits, customEntityTypes: types.entities, planetTypes: types.planets,
+    procgen: procgenData(procStars, [...procRows.values()]), codeSystems,
+    sectorSize: [Number(settings.sectorWidth) || 164000, Number(settings.sectorHeight) || 104000],
+    dropGroups,
+    sounds: [...sounds].sort(), music: [...music].sort(), ruleCounts, ruleFiles, ui, problems,
+    nameCategories: [...nameCats.values()].sort((a, b) => a.id.localeCompare(b.id)),
+    shipNameLists: [...shipLists.values()].sort((a, b) => a.id.localeCompare(b.id)),
+    fleetTypeNames,
+    factionKeyUsage: factionKeySurvey([...factionLayers.values()].map((l) => l[0]).filter((l) => l.sourceId === 'starsector-core').map((l) => ({ faction: String(l.raw.id ?? path.basename(l.file, '.faction')), raw: l.raw }))),
     stats: { filesRead, ms: Date.now() - t0 }, extensions: [], ext: {}
   }
   return { index, sources, rules, factionLayers, factionFiles, settings }
 }
 
+/** The rules file before 0.98.5a, and the fallback when settings.json has no "rules" list. */
+export const DEFAULT_RULES_FILE = 'data/campaign/rules.csv'
+
+/**
+ * The "rules" list of a (merged) settings.json: paths relative to a source's folder, forward
+ * slashes, duplicates removed (case-insensitive, as on Windows). Empty if the key is missing.
+ */
+export function ruleFileList(settings: Record<string, unknown> | null | undefined): string[] {
+  const out: string[] = []
+  for (const v of strList(settings?.rules)) {
+    const p = slash(v.trim()).replace(/^\.?\/+/, '')
+    if (p && !out.some((x) => x.toLowerCase() === p.toLowerCase())) out.push(p)
+  }
+  return out
+}
+
 /** Parse a rules.csv into rows (comment rows are skipped). Returns the number of rules. */
 export function parseRulesCsv(text: string, sourceId: string, file: string, into: RuleRow[], problems?: Problem[]): number {
   const rows = parseRulesCsvRows(text, sourceId, file)
-  if (!rows.length && /\S/.test(text) && !/^\s*﻿?id\s*,/i.test(text)) problems?.push({ level: 'warning', area: 'Rules', sourceId, file, message: 'rules.csv has no id/trigger columns' })
+  if (!rows.length && /\S/.test(text) && !/^\s*﻿?id\s*,/i.test(text)) problems?.push({ level: 'warning', area: 'Rules', sourceId, file, message: `${file} has no id/trigger columns` })
   for (const r of rows) into.push(r)
   return rows.length
 }
