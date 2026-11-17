@@ -33,6 +33,10 @@ checked in game ([docs/INGAME-CHECKS.md](docs/INGAME-CHECKS.md)). Changes:
 
 ![Quest planner in Play mode](docs/img/quests.png)
 
+**User guide:** [User Guide](User%20Guide/README.md) explains every tab: how it works, and short
+recipes for the basics, with screenshots. For offline reading, open `User Guide/guide.html`, or
+download `SagaForge-UserGuide-<version>.zip` from Releases.
+
 ## Running it
 
 - Windows, ready-made: download `saga-forge-<version>-win-x64.zip` from Releases, unzip it
