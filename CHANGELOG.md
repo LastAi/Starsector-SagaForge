@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.1.1 (2026-11-17)
 
-Fixes for what turned up while writing the user guide (`Mod Guides/Saga Forge/QUESTIONS.md` Q8).
+For Starsector **0.98a and 0.98.5a**, with SagaLib 1.2 (unchanged). Fixes for what turned up while
+writing the user guide.
 
 - **Play mode** no longer shows raw `[$sft]-…` keys for options exported through a node's
   `_options` rules (show-once, story point, show-if): the mod's own exported rules are left out,
@@ -21,7 +22,7 @@ Fixes for what turned up while writing the user guide (`Mod Guides/Saga Forge/QU
 - Internal labels ("Phase 7a", "M5", "R29") removed from tooltips and help.
 - Screenshot mode: `stages` opens the stage form, `rules` shows the Rules view, `node=` zooms to
   the node, `saga:<item>:<tab>` selects an item in a Saga panel.
-- **Vanguard Compact** example: Kestrel moved to (-5800, -7600), at least 3,400 units from every
+- **Vanguard Compact** example 1.0.1: Kestrel moved to (-5800, -7600), at least 3,400 units from every
   vanilla system (it was 2,921 from Duzahk).
 
 ## 1.1.0 (2026-11-17)

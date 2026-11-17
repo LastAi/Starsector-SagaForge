@@ -16,7 +16,7 @@ export function exampleState(files: Record<string, string> = {}): ProjectState {
   }
 }
 
-const MOD_INFO = '{\n\t"id": "vgc",\n\t"name": "Vanguard Compact",\n\t"author": "LastAi",\n\t"version": "1.0.0",\n\t"description": "Example mod made with Saga Forge.",\n\t"gameVersion": "0.98a-RC8",\n}\n'
+const MOD_INFO = '{\n\t"id": "vgc",\n\t"name": "Vanguard Compact",\n\t"author": "LastAi",\n\t"version": "1.0.1",\n\t"description": "Example mod made with Saga Forge.",\n\t"gameVersion": "0.98a-RC8",\n}\n'
 
 /** Every file of the example mod: plan files, faction files, and the export. */
 export function exampleFiles(): Record<string, string> {

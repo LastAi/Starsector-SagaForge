@@ -13,7 +13,7 @@ import { defsFor } from '../../src/shared/defs'
 import type { QuestPlan, DialogNode } from '../../src/shared/model'
 import { reyes } from './vgc'
 
-export const VGC = { modId: 'vgc', name: 'Vanguard Compact', version: '1.0.0', prefix: 'vgc_' }
+export const VGC = { modId: 'vgc', name: 'Vanguard Compact', version: '1.0.1', prefix: 'vgc_' }
 
 export function lostConvoyFull(): QuestPlan {
   const q: QuestPlan = {

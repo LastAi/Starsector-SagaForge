@@ -54,7 +54,7 @@ open full size is `guide.html` (open it in your browser). It is also a download 
 
 ## The example mod in the pictures
 
-The screenshots show **Vanguard Compact**, Saga Forge's example mod (`VanguardCompact-1.0.0.zip`
+The screenshots show **Vanguard Compact**, Saga Forge's example mod (`VanguardCompact-1.0.1.zip`
 on the same Releases page, or the `example` folder of the source): a small faction of free stations, its star
 system Kestrel with Haven Station, Commodore Reyes, and the quest *The Lost Convoy*. You can open
 it in Saga Forge and look at the same things as the pictures.
