@@ -185,7 +185,7 @@ export function vanguardModel(): ModModel {
   m.project.illustrations = { vgc_wreck: 'graphics/illustrations/vgc_wreck.png' }
 
   // ---- a location: Kestrel, with Haven Station and its market
-  const sys = newSystem('vgc_kestrel', 'Kestrel', -5200, -7600)
+  const sys = newSystem('vgc_kestrel', 'Kestrel', -5800, -7600)
   sys.addToExistingSaves = true
   const planet = newEntity('planet', 'vgc_kestrel_i', 'Kestrel I', 'star', 2600, 40)
   planet.type = 'barren'

@@ -19,6 +19,9 @@
     <div class="mono id">{q.id}</div>
   </div>
   <Handle type="source" position={Position.Right} />
+  <!-- flag arrows (dashed) have their own handles lower down, so they never lie on a prerequisite arrow -->
+  <Handle type="target" id="flag-in" position={Position.Left} class="flag" style="top:78%" />
+  <Handle type="source" id="flag-out" position={Position.Right} class="flag" style="top:78%" />
 </div>
 
 <style>
@@ -32,4 +35,5 @@
   .muted { color: var(--muted); }
   .id { font-size: 10px; color: var(--muted); }
   .mono { font-family: var(--mono); }
+  .card :global(.svelte-flow__handle.flag) { background: #c9a0ff; width: 5px; height: 5px; min-width: 5px; min-height: 5px; }
 </style>

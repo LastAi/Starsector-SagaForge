@@ -225,6 +225,8 @@ export interface GameIndex {
   shipNameLists?: ShipNameListInfo[]
   /** Default fleet names by fleet type (merged default_fleet_type_names.json of every source). */
   fleetTypeNames?: Record<string, string>
+  /** The same without the active mod's file: what the game calls each type without the mod. */
+  fleetTypeNamesBase?: Record<string, string>
   /** Faction keys vanilla's factions use that the form has no field for (R7), most used first. */
   factionKeyUsage?: FactionKeyUsage[]
   /** Rule counts per source; the rules themselves come from getRules(). */

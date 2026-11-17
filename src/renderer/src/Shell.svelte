@@ -168,11 +168,12 @@
     </span>
     {#if vinfo && app.versions}
       <!-- #47: which game version the active mod targets -->
+      <span class="am-label">Target</span>
       <select class="target" class:older={!vinfo.targetIsNewer} value={app.versions.target} disabled={loadingIndex || !project.loaded}
-        title="The game version this mod targets: its game data, other mods and Export follow it. Remembered per mod."
+        title="The game version this mod targets ({vinfo.targetIsNewer ? 'the newer install' : 'the older install'}): its game data, other mods and Export follow it. Remembered per mod."
         onchange={(e) => { const s = e.currentTarget.value as Slot; e.currentTarget.value = app.versions!.target; chooseTarget(s) }}>
-        <option value={vinfo.newerSlot}>Target {app.versions[vinfo.newerSlot]?.version} (newer)</option>
-        <option value={vinfo.olderSlot}>Target {app.versions[vinfo.olderSlot]?.version} (older)</option>
+        <option value={vinfo.newerSlot}>{app.versions[vinfo.newerSlot]?.version}</option>
+        <option value={vinfo.olderSlot}>{app.versions[vinfo.olderSlot]?.version}</option>
       </select>
     {/if}
     <span class="sep"></span>
@@ -277,7 +278,7 @@
   .title { font-weight: 600; white-space: nowrap; margin-right: 6px; }
   .logo { color: var(--accent); }
   .pages { display: flex; }
-  .pages button { border-radius: 0; margin-left: -1px; padding: 4px 11px; display: inline-flex; align-items: center; }
+  .pages button { border-radius: 0; margin-left: -1px; padding: 4px 9px; display: inline-flex; align-items: center; }
   .pages button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
   .pages button:last-child { border-radius: 0 4px 4px 0; }
   .pages button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
@@ -285,11 +286,14 @@
   .count.w { background: var(--warn); color: #000; }
   .count.t { background: #e8a83c; color: #000; }
   .spacer { flex: 1; }
-  .activemod { display: flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; min-width: 0; flex-shrink: 1; }
-  .activemod select { max-width: 220px; min-width: 70px; flex: 1 1 auto; text-overflow: ellipsis; padding: 3px 6px; }
+  /* only the mod list and the target pill shrink (ellipsis); the span never gets narrower than its
+     buttons plus a short mod list, so nothing overlaps what follows (seen at 1486 px with two installs) */
+  .activemod { display: flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; min-width: 250px; flex-shrink: 1; }
+  .activemod select { max-width: 220px; min-width: 60px; flex: 1 1 auto; text-overflow: ellipsis; padding: 3px 6px; }
+  .am-label { font-size: 12px; white-space: nowrap; }
   @media (max-width: 1600px) { .am-label { display: none; } }
-  .activemod button { flex-shrink: 0; } /* the mod list shrinks first, the buttons never overlap what follows (seen at 1486 px) */
-  .target { padding: 3px 8px; border-radius: 12px; border-color: var(--accent-2); color: var(--accent); font-size: 12px; max-width: 200px; }
+  .activemod button { flex-shrink: 0; }
+  .target { padding: 3px 8px; border-radius: 12px; border-color: var(--accent-2); color: var(--accent); font-size: 12px; max-width: 200px; flex: 0 0 auto; }
   .target.older { border-color: #6b4a1f; color: var(--warn); }
   .sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
   main { min-height: 0; min-width: 0; overflow: hidden; }

@@ -151,7 +151,7 @@
     </Field>
   </div>
   <div class="grid2">
-    <Field label="Picks" for="br-m" help="By conditions: the first case whose condition lines are all true (FireBest). At random: one case by weight, like a dice roll; conditions then only say which cases may be picked. Random needs SagaLib 1.2.">
+    <Field label="Picks" for="br-m" help="By conditions: a case whose condition lines are all true; when several are, the one with the most condition lines (FireBest). At random: one case by weight, like a dice roll; conditions then only say which cases may be picked. Random needs SagaLib 1.2.">
       <select id="br-m" value={b.random ? 'random' : 'conditions'} onchange={(e) => { const r = e.currentTarget.value === 'random'; ed<BranchNode>((n) => { if (r) { n.random = { nothing: 0 }; for (const c of n.cases) c.weight ??= 1 } else delete n.random }) }}>
         <option value="conditions">by conditions</option><option value="random">at random (by weight)</option>
       </select>

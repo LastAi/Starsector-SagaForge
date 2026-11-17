@@ -16,7 +16,7 @@
 
   const m = $derived(project.m!)
   const list = $derived(m.scatter ?? [])
-  let selId = $state<string | null>(null)
+  let selId = $state<string | null>(app.selected.scatterItem ?? null)
   const sel = $derived(list.find((x) => x.id === (selId ?? list[0]?.id)) ?? null)
   const lootPools = $derived((m.pools ?? []).filter((p) => p.use === 'loot' && !p.addsTo))
   const types = $derived([...(m.types?.entities ?? []).map((t) => ({ id: t.id, name: t.name })), ...(app.index?.customEntityTypes ?? []).map((t) => ({ id: t.id, name: t.name ?? t.id }))])

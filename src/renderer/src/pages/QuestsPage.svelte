@@ -2,7 +2,6 @@
   /** Quest planner (PLAN.md §5, mock-up quest.html): flow chart, inspector, dialog preview, Play mode, Rules view. */
   import { SvelteFlow, Background, Controls, MiniMap, type Node, type Edge, type Connection } from '@xyflow/svelte'
   import '@xyflow/svelte/dist/style.css'
-  import { untrack } from 'svelte'
   import type { NodeType, QNode, QuestPlan, DialogNode } from '../../../shared/model'
   import { newNode, newQuest, uniqueId, handlesOf, reachable, slug, stageGroups } from '../../../shared/quest'
   import { QUEST_TEMPLATES, fromSavedTemplate, markTemplateBlanks } from '../../../shared/templates'
@@ -43,7 +42,7 @@
   const quest = $derived(m?.quests.find((q) => q.id === qid) ?? null)
   const selNode = $derived(app.selected.questNode ?? null)
   const node = $derived(quest?.nodes.find((n) => n.id === selNode) ?? null)
-  let center = $state<'chart' | 'script' | 'rules'>(app.smokeModal === 'script' ? 'script' : 'chart')
+  let center = $state<'chart' | 'script' | 'rules'>(app.smokeModal === 'script' || app.smokeModal === 'rules' ? app.smokeModal : 'chart')
   let dockTab = $state<'preview' | 'problems' | 'log'>('preview')
   let flow: FlowHandle | null = null
   // walk F30: the inspector starts at the top for each node (it kept the last panel's scroll)
@@ -330,7 +329,13 @@
     if (!arg || !quest || smokeDone) return
     smokeDone = true
     app.smokeArg = null
-    if (arg.startsWith('node=')) { app.selected.questNode = arg.slice(5); return }
+    if (arg.startsWith('node=')) {
+      // and zoomed to it (after the chart's own first fit), so big quests' nodes are readable
+      const id = arg.slice(5)
+      app.selected.questNode = id
+      setTimeout(() => flow?.fit([id]), 1500)
+      return
+    }
     if (arg.startsWith('play')) {
       const picks = arg.split('=')[1]?.split(',').filter(Boolean).map(Number) ?? []
       play.start(quest).then(() => { for (const n of picks) { const o = play.view.options[n - 1]; if (o) play.choose(o.id) } })
@@ -340,7 +345,7 @@
   /** The stage whose form is open in the outline (walk W4: edits used to fold it shut). */
   /** Phase 7c: the target variable whose search is being edited. */
   let targetOpen = $state<string | null>(app.smokeModal?.startsWith('target=') ? app.smokeModal.slice('target='.length) : null)
-  let openStage = $state<string | null>(app.smokeModal === 'stages' ? (untrack(() => quest?.stages[0]?.id) ?? null) : null)
+  let openStage = $state<string | null>(null)
   // a Stage node's "+ New stage…" asks for its form to open here
   $effect(() => { const want = app.selected.questStage; if (want) { openStage = want; app.selected.questStage = null } })
   let smokeModalDone = false
@@ -348,6 +353,9 @@
     const mo = app.smokeModal
     if (!mo || !quest || smokeModalDone) return
     smokeModalDone = true
+    // "stages[=<id>]": that stage's form open (the first stage's by default); the quest is only
+    // loaded after the page starts, so this can't be done where openStage is declared
+    if (mo === 'stages' || mo.startsWith('stages=')) openStage = (mo.slice(7) || quest.stages[0]?.id) ?? null
     if (mo === 'stagerename' && quest.stages[0]) { stageRename = { quest: quest.id, from: quest.stages[0].id }; stageTo = quest.stages[0].id; stageHow = 'alias' }
     if (mo === 'changeid') { changeIdTo = quest.id; showChangeId = true }
     if (mo === 'savetemplate') { templateName = quest.title; showSaveTemplate = true }
@@ -439,7 +447,7 @@
         {#if showFind}<input type="search" placeholder="text, option or id…" bind:value={find} />{#each found.slice(0, 8) as f (f)}<button class="mini" onclick={() => { app.selected.questNode = f; flow?.fit([f]) }}>{f}</button>{/each}{/if}
       {/if}
       <span class="spacer"></span>
-      <div class="seg"><button class:on={center === 'chart'} onclick={() => (center = 'chart')}>Chart</button><button class:on={center === 'script'} onclick={() => (center = 'script')} title="The whole quest as a screenplay (R29)">Script</button><button class:on={center === 'rules'} onclick={() => (center = 'rules')}>Rules ({compiled?.rows.length ?? 0})</button></div>
+      <div class="seg"><button class:on={center === 'chart'} onclick={() => (center = 'chart')}>Chart</button><button class:on={center === 'script'} onclick={() => (center = 'script')} title="The whole quest as a screenplay">Script</button><button class:on={center === 'rules'} onclick={() => (center = 'rules')}>Rules ({compiled?.rows.length ?? 0})</button></div>
       {#if quest}<button class="mini danger" onclick={deleteQuest}>Delete quest</button>{/if}
     </div>
     <div class="qcanvas">
@@ -654,7 +662,7 @@
   .vhead { margin-bottom: 1px; }
   .vhead span:nth-child(1) { flex: 1; } .vhead span:nth-child(2) { width: 72px; } .vhead span:nth-child(3) { width: 52px; } .vhead span:nth-child(4) { width: 22px; }
   .var select { font-size: 11px; padding: 1px 2px; width: 72px; }
-  .main { display: grid; min-width: 0; min-height: 0; }
+  .main { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; }
   .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--border); font-size: 12px; }
   .toolbar button, .toolbar select { padding: 3px 10px; font-size: 12px; }
   .toolbar input { padding: 2px 6px; width: 160px; }
@@ -664,7 +672,7 @@
   .seg button:last-child { border-radius: 0 4px 4px 0; }
   .seg button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
   .spacer { flex: 1; }
-  .qcanvas { position: relative; min-height: 0; background: #0f1216; display: flex; flex-direction: column; }
+  .qcanvas { position: relative; min-height: 0; min-width: 0; overflow: hidden; background: #0f1216; display: flex; flex-direction: column; }
   .flowwrap { flex: 1; min-height: 0; }
   .help { font-size: 11px; color: var(--muted); padding: 2px 10px; background: var(--panel); border-top: 1px solid var(--border); }
   .center { display: grid; place-items: center; height: 100%; padding: 20px; text-align: center; }

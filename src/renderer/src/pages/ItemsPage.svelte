@@ -88,7 +88,8 @@
       </ul>
       <div class="sect">Existing items (read-only)</div>
       <ul class="list ro">
-        {#each index.items.filter((i) => match(`${i.id} ${i.name}`)).slice(0, 300) as i (i.id)}
+        <!-- the mod's own exported items are listed above, not again here -->
+        {#each index.items.filter((i) => match(`${i.id} ${i.name}`) && !m?.items.some((x) => x.id === i.id)).slice(0, 300) as i (i.id)}
           <li class:on={sel === i.id}><button class="li" onclick={() => (app.selected.items = i.id)}><ImageView path={i.icon} w={20} h={20} sourceId={i.definedBy} /> {i.name}<span class="sub">{srcName(i.definedBy)}</span></button></li>
         {/each}
       </ul>

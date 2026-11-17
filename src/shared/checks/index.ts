@@ -28,6 +28,7 @@ import { poolProblems } from './pools'
 import { eventProblems } from './events'
 import { progressProblems } from './progress'
 import type { VersionDiff } from '../versiondiff'
+import { modTakeoverProblems } from '../export'
 
 export interface CheckContext {
   model: ModModel
@@ -50,7 +51,9 @@ export interface CheckContext {
 
 type Checker = (ctx: CheckContext) => Problem[]
 const CHECKERS: Checker[] = [basicProblems, factionProblems, allQuestProblems, flagsChecker, locationProblems, encounterProblems, saveChecker, styleChecks, itemProblems, missingImageProblems, (ctx) => todoProblems(ctx.model), (ctx) => inactiveProblems(ctx.model), imageSizeProblems, nameProblems, worldProblems, fleetProblems, poolProblems, eventProblems, progressProblems,
-  (ctx) => (ctx.version ? versionProblems(ctx.model, ctx.version.diff, ctx.version.targetIsNewer, ctx.defs) : [])]
+  (ctx) => (ctx.version ? versionProblems(ctx.model, ctx.version.diff, ctx.version.targetIsNewer, ctx.defs) : []),
+  // Check mod only: rules that would take over the game's or other mods' dialog (Export runs it too)
+  (ctx) => (ctx.rules ? modTakeoverProblems(ctx.model, ctx.loaded, ctx.index, ctx.rules) : [])]
 
 function flagsChecker(ctx: CheckContext): Problem[] {
   const own = handRules(ctx.loaded.files['data/campaign/rules.csv']?.text, ctx.loaded.sourceId)

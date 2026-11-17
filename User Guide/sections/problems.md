@@ -10,7 +10,7 @@ condition that reads a flag nothing sets, an id without the mod's prefix, a pers
 market that doesn't exist. The **Problems** tab in the header shows how many errors there are, a
 ✎ count of to-dos, and, when there are no errors, how many warnings.
 
-![The Problems tab: one warning](../img/problems.png)
+![The Problems tab of the finished example: nothing to fix; its 39 notes are under Info, hidden by default](../img/problems.png)
 
 ### The levels
 
@@ -49,6 +49,9 @@ also compares it with the game and **every installed mod**:
 
 - rule ids your quests export that another mod also uses (a shared rule id replaces the other
   mod's row);
+- rules that would take over the game's or another mod's dialog everywhere (a rule on a trigger
+  where the game picks one rule, `FireBest`, with nothing about your own content in its
+  conditions); the **Export…** dialog warns about these too;
 - image files that don't exist in the mod, the game or an installed mod (an item or quest icon
   that would show as a missing texture);
 - images that aren't at vanilla's size for their kind.
@@ -57,7 +60,7 @@ The Problems tab then shows the Check mod results, with a note at the top; they 
 until you run it again. **Show live only** goes back to the live checks. Run Check mod before
 each release, and after installing or updating other mods you play with.
 
-![After Check mod: the note at the top and Show live only; Vanguard Compact has one warning left](../img/problems-checked.png)
+![After Check mod: the note at the top and Show live only; the finished example has nothing left to fix](../img/problems-checked.png)
 
 Problems the game index found in the mod's own files (a JSON file that doesn't parse, a CSV with a
 broken row) are listed here too.
@@ -80,10 +83,8 @@ Before a release, press **Check mod** as well and work through its results the s
 button there switches the tab back to the live checks, since the old results no longer match the
 mod: press **Check mod** again when you are done.
 
-![Check mod results: the Kestrel warning has Open (move the system on the hyperspace map) and Ignore…](../img/problems-checked.png)
-
-In the example, the one warning says Kestrel sits too close to vanilla's Duzahk on the hyperspace
-map. **Open** goes to Kestrel on the Locations tab, where you drag it a little further away (see
+For example, a new star system less than 3,000 units from a vanilla one on the hyperspace map gets
+a warning. **Open** goes to it on the Locations tab, where you drag it a little further away (see
 [Locations › Add a star system](locations.md#add-a-star-system)).
 
 ### Ignore a problem

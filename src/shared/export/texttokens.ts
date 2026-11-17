@@ -75,3 +75,18 @@ export function tokenizeRules(rows: RuleRow[]): { rows: RuleRow[]; strings: Rule
   })
   return { rows: out, strings }
 }
+
+/**
+ * The reverse, for reading an installed mod: its rows with each `$sft-<rule>-<part>-` token
+ * replaced by the text from its strings file (`rules` of data/sagaforge/text.json), as SagaLib
+ * fills them in game. Tokens without a text are left as they are.
+ */
+export function detokenizeRows<T extends RuleRow>(rows: T[], strings: RuleStrings): T[] {
+  const fill = (s: string, id: string) => {
+    const parts = strings[id]
+    if (!parts || !s.includes('$sft-')) return s
+    for (const [part, text] of Object.entries(parts)) s = s.split(textToken(id, part)).join(text)
+    return s
+  }
+  return rows.map((r) => (strings[r.id] ? { ...r, text: fill(r.text, r.id), options: fill(r.options, r.id), script: fill(r.script, r.id) } : r))
+}

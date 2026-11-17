@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fingerprint, textLeaves, textToken } from '../src/shared/textkeys'
-import { tokenizeRules } from '../src/shared/export/texttokens'
+import { detokenizeRows, tokenizeRules } from '../src/shared/export/texttokens'
 import { confirmLine, crossProblems, lineProblems, linesToSave, mergeTranslation, parseTranslationCsv, translationCsv, translationEntries, translationOf, TEXT_FILE } from '../src/shared/translate'
 import { planExport } from '../src/shared/export'
 import { testModFiles, testModState } from './fixtures/testmod'
@@ -45,6 +45,19 @@ describe('dialog as tokens', () => {
     // tokens are prefix-free: no token is the start of another
     const toks = Object.keys(strings.q_offer).map((p) => textToken('q_offer', p))
     for (const a of toks) for (const b of toks) if (a !== b) expect(b.startsWith(a)).toBe(false)
+  })
+
+  it('reads back: an installed mod\'s rules show their texts (Dialog browser, Play)', () => {
+    const src = row({
+      id: 'q_offer', text: 'Hello.', options: '1:q_yes:Yes',
+      script: 'AddText "More."\nSetTooltip q_yes "Do it."\nSetStoryOption q_yes 1 general ui "Spent it"'
+    })
+    const { rows, strings } = tokenizeRules([src, row({ id: 'q_o1', options: '1:q_go:"Go: now"' })])
+    const back = detokenizeRows(rows, strings)
+    expect(back[0]).toEqual(src)
+    expect(back[1].options).toBe('1:q_go:Go: now')
+    // a token without a text stays as it is
+    expect(detokenizeRows(rows, {})[0].text).toBe(textToken('q_offer', 't'))
   })
 
   it('exports rules.csv with tokens, the texts in text.json, listed in content.csv', () => {

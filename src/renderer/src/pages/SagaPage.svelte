@@ -24,6 +24,11 @@
   // screenshot mode: "saga::<tab>"
   let tab = $state<'board' | 'timeline' | 'flags' | 'profiles' | 'phrases' | 'pools' | 'scatter' | 'events' | 'progress'>(((app.smoke ? app.smokeArg : null) ?? app.selected.sagaTab ?? 'board') as 'board')
   $effect(() => { app.selected.sagaTab = tab })
+  // screenshot mode: "saga:<item id>:<tab>" selects that item in the tab (pool, profile, event scheduler, progress event, scatter)
+  if (app.smoke && app.selected.saga) {
+    const key = ({ pools: 'pool', profiles: 'profile', events: 'eventScheduler', progress: 'progressEvent', scatter: 'scatterItem' } as Record<string, string>)[app.smokeArg ?? '']
+    if (key) app.selected[key] = app.selected.saga
+  }
   const m = $derived(project.m)
   const reg = $derived(m && project.loaded ? buildRegistry(m, handRules(project.loaded.files['data/campaign/rules.csv']?.text, project.loaded.sourceId), app.rules?.filter((r) => r.sourceId !== project.loaded?.sourceId) ?? []) : new Map())
   const flagProbs = $derived(m ? flagProblems(reg, m.project.prefix) : [])
@@ -56,7 +61,8 @@
       const setters = new Set(e.setBy.map((u: { quest?: string }) => u.quest).filter(Boolean) as string[])
       const readers = new Set(e.readBy.map((u: { quest?: string }) => u.quest).filter(Boolean) as string[])
       for (const s of setters) for (const r of readers) if (s !== r && m.quests.some((q) => q.id === s) && m.quests.some((q) => q.id === r)) {
-        es.push({ id: `flag:${e.key}:${s}>${r}`, source: s, target: r, label: e.key.replace(/^\$global\./, ''), style: 'stroke:#c9a0ff;stroke-dasharray:5 4' })
+        // drawn above the cards: between two close cards the flag's name is wider than the gap
+        es.push({ id: `flag:${e.key}:${s}>${r}`, source: s, target: r, sourceHandle: 'flag-out', targetHandle: 'flag-in', label: e.key.replace(/^\$global\./, ''), style: 'stroke:#c9a0ff;stroke-dasharray:5 4', zIndex: 1000 })
       }
     }
     edges = es
@@ -118,10 +124,10 @@
       <button class:on={tab === 'flags'} onclick={() => (tab = 'flags')}>Flags registry ({reg.size}){#if flagProbs.some((p) => p.level === 'warning')}<span class="cnt">{flagProbs.filter((p) => p.level === 'warning').length}</span>{/if}</button>
       <button class:on={tab === 'profiles'} onclick={() => (tab = 'profiles')}>Test profiles ({m?.testProfiles.length ?? 0})</button>
       <button class:on={tab === 'phrases'} onclick={() => (tab = 'phrases')}>Mod-wide phrases ({m?.phrases.length ?? 0})</button>
-      <button class:on={tab === 'pools'} onclick={() => (tab = 'pools')} title="Named random pools (Phase 7a)">Pools ({m?.pools?.length ?? 0})</button>
-      <button class:on={tab === 'scatter'} onclick={() => (tab = 'scatter')} title="Objects placed at new game (Phase 7e)">Scatter ({m?.scatter?.length ?? 0})</button>
-      <button class:on={tab === 'events'} onclick={() => (tab = 'events')} title="World events: things that happen without the player (Phase 8d)">Events ({m?.events?.length ?? 0})</button>
-      <button class:on={tab === 'progress'} onclick={() => (tab = 'progress')} title="Progress events: the mod's own event bars (Phase 8d-3)">Progress ({m?.progress?.length ?? 0})</button>
+      <button class:on={tab === 'pools'} onclick={() => (tab = 'pools')} title="Named random pools">Pools ({m?.pools?.length ?? 0})</button>
+      <button class:on={tab === 'scatter'} onclick={() => (tab = 'scatter')} title="Objects placed at new game">Scatter ({m?.scatter?.length ?? 0})</button>
+      <button class:on={tab === 'events'} onclick={() => (tab = 'events')} title="World events: things that happen without the player">Events ({m?.events?.length ?? 0})</button>
+      <button class:on={tab === 'progress'} onclick={() => (tab = 'progress')} title="Progress events: the mod's own event bars">Progress ({m?.progress?.length ?? 0})</button>
     </div>
     <span class="muted small">{tab === 'board' ? 'Solid arrows: prerequisites. Dashed: a flag one quest sets and another reads. Drag cards; double-click opens the quest.' : ''}</span>
   </div>
@@ -174,7 +180,7 @@
       <div class="side">
         <div class="sect">Test profiles <button onclick={newProfile}>+ New</button></div>
         <ul class="list">{#each m.testProfiles as p (p.id)}<li class:on={p.id === profSel}><button class="li" onclick={() => (app.selected.profile = p.id)}>{p.name}</button></li>{/each}</ul>
-        <p class="muted small pad">A saved game situation. It sets up Play mode, and with the game's dev mode on, SagaLib can apply it at a new game or from its dev menu (needs SagaLib, M5).</p>
+        <p class="muted small pad">A saved game situation. It sets up Play mode, and with the game's dev mode on, SagaLib can apply it at a new game or from its dev menu (needs SagaLib).</p>
       </div>
       <div class="scroll pad">
         {#if prof}

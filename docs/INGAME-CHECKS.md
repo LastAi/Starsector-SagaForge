@@ -744,6 +744,21 @@ game) is the user's.
 | F33 | The header's target pill squeezes the active-mod name ("Vanguard by h…"); Export for a new game version doesn't suggest a new mod version. | **Open, minor**. |
 | F31 | Smaller: relations only by slider; a phrase's "Reputation at least…" preset needs the level typed; a Set step on a number variable defaults to "true"; Only-show-if wants the full `$global.<quest>_<var>` key; case and Place placeholders mention `vgc_`; same-name factions in the read-only list have no id; the flag picker lists crests too; importing from a field's Choose… takes four clicks; a captured test profile keeps the editor's internal `…_done` flags; after "back to the menu" Play shows the Test context's person, not the quest's contact; a new illustration shows as its key until saved. | **Partly fixed**: relations have a number box next to the slider; a Set step on a number variable starts at its start value + 1; the Branch case example uses the quest's own variable; same-name factions show their id; the flag picker leaves out crests and the crest picker shows only crests; Import… in a picker opens the file dialog at once. **By design**: a captured profile keeps the `…_done` flags (they record which arrivals already happened). **Open, minor**: the "Reputation at least…" preset wants the level typed; after "back to the menu" Play shows the Test context's person rather than the quest's contact; a just-imported illustration shows as its key until saved; the other "e.g. vgc_…" examples stay as examples. |
 
+## Guide fixes (task: app bugs found while writing the user guide, 2026-11-17)
+
+- **G-1 The Lost Convoy's offer options** (VanguardCompact as rebuilt, SagaLib 1.2, 0.98.5a, new
+  game or a save before the quest): Haven Station › Commodore Reyes › "Ask about the missing
+  convoy". The four options read *Accept the job*, *What's the catch?*, *Forty crew is worth more
+  than that.* (story point, tooltip "Use a story point to double the pay.") and *Not interested.*,
+  never `$sft-…`. Pick *What's the catch?*, then Back: it is gone (show-once). Pick the story option:
+  the echoed line and the story point log text are words, not tokens. Expected to pass: the app
+  showed the keys because Play also ran the mod's own exported copy of those rules; SagaLib fills
+  option, tooltip and story texts for every rule (8c-1 re-run).
+  **Passed (user, 2026-11-17, 0.98.5a-RC5):** all four options as words; *What's the catch?* gone
+  after Back; the story option echoed as words with "Used 1 story point", then hidden (pay is 2). Tooltip "Use a story point to double the pay." shows as words.
+- **G-2 Kestrel's new place**: on the sector map Kestrel sits west of Duzahk, clear of Askonia,
+  Magec and Algebbar (new game; an old save keeps the system where it was).
+
 ## Linux (when there is a Linux build)
 
 Status: **on hold** (2026-11-11): no dedicated Linux tester has been found yet. The checks below

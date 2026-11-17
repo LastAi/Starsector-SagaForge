@@ -40,6 +40,12 @@ is what you copy when your own dialog has to fit in next to it.
 
 ![A vanilla comm-link greeting: its conditions, its text with three random variants, and its script](../img/dialog-search.png)
 
+A mod made with Saga Forge that exports translatable dialog keeps tokens (`$sft-…`) in its
+`rules.csv` and its texts in `data/sagaforge/text.json`; the browser shows the texts, as the game
+does with SagaLib.
+
+![The Lost Convoy's offer in the Dialog browser: its text and options as the player reads them](../img/dialog-mod-rule.png)
+
 ### Dialog preview and Test context
 
 Under the chart, **Dialog preview** draws the rule the way the game shows it, with the game's own
@@ -92,7 +98,7 @@ the place you want to join, then build the hook on the Quests tab:
 3. To go back into vanilla's dialog at the end of your conversation (back to the menu, or into a
    vanilla option), use a Link node on your quest's chart (see
    [Quests › Write a conversation](quests.md#write-a-conversation)).
-4. When you export, the **Export…** dialog warns if one of your rules would take over vanilla's
+4. **Check mod** and the **Export…** dialog warn if one of your rules would take over vanilla's
    dialog everywhere: a rule on a trigger where the game picks one rule (`FireBest`), with
    vanilla's conditions plus more, but nothing about your own content. Add a condition with your
    prefix (your person, place or flag) and it only fires where you meant (see

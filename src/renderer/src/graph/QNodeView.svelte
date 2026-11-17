@@ -45,7 +45,7 @@
       <div>{s.kind === 'contact' ? (s.person ? `contact: ${data.personName(s.person)}` : s.tagsAll || s.tagsAny ? `any contact tagged ${[s.tagsAll, s.tagsAny].filter(Boolean).join(' / ')}` : 'contact: ?') : s.kind === 'bar' ? 'bar event' : s.kind === 'option' ? `option: ${s.optionText}` : s.kind === 'trigger' ? `trigger: ${s.trigger}` : s.kind === 'barScene' ? `bar scene: ${s.optionText}` : s.kind === 'interject' ? `cuts into ${s.option}` : 'started by another quest'}</div>
       {#if data.quest.requires.length}<div class="muted small">needs {data.quest.requires.length} prerequisite{data.quest.requires.length === 1 ? '' : 's'}</div>{/if}
     {:else if n.type === 'branch'}
-      <div class="muted small">{n.random ? (n.random.pool ? `at random from pool ${n.random.pool}` : `at random by weight${n.random.scope === 'global' ? ' (world)' : ''}`) : 'first matching case (FireBest)'}</div>
+      <div class="muted small">{n.random ? (n.random.pool ? `at random from pool ${n.random.pool}` : `at random by weight${n.random.scope === 'global' ? ' (world)' : ''}`) : 'matching case with the most conditions (FireBest)'}</div>
     {:else if n.type === 'action'}
       {#each n.ops.slice(0, 4) as op, i (i)}<div class="mono small">{op.op === 'set' ? `${op.key} = ${op.value}` : op.op === 'line' ? op.line : `${op.op} ${Object.values(op).slice(1).join(' ')}`}</div>{/each}
       {#if !n.ops.length}<div class="muted small">(nothing yet)</div>{/if}

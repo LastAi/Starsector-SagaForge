@@ -188,7 +188,8 @@ install the new one in a folder of its own. Then:
 
 1. **⚙** › **Migration install** › **Choose…** and pick the other install. Saga Forge reads both;
    neither is ever written to.
-2. A pill appears in the header: **Target 0.98.5a (newer)** or **Target 0.98a (older)**. Pick the
+2. A pill appears in the header with the targeted version, e.g. **0.98.5a-RC5** (orange when the
+   older version is targeted; wide windows also show the word *Target* in front). Pick the
    version the active mod should target. It is remembered per mod; the game data, the other mods
    and Export all follow it. Id fields mark what only one of the versions has, and
    [Problems](problems.md) blocks an export that uses something the target lacks.

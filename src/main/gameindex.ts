@@ -6,6 +6,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { parseCsv, csvObjects } from '../shared/csv'
 import { parseRulesCsvRows } from '../shared/export/csvrows'
+import { detokenizeRows, type RuleStrings } from '../shared/export/texttokens'
 import { defsFor } from '../shared/defs'
 import { mergeFactionJson } from '../shared/faction'
 import { detectInstall as _detect, errText, isFile, modsRootFor, readLoose, scanSources, walk, type ModsOptions } from './install'
@@ -99,6 +100,7 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
   const nameCats = new Map<string, NameCategoryInfo>()
   const shipLists = new Map<string, ShipNameListInfo>()
   const fleetTypeNames: Record<string, string> = {}
+  const fleetTypeNamesBase: Record<string, string> = {}
   const rules: RuleRow[] = []
   const ruleCounts: Record<string, number> = {}
   const ruleFiles: string[] = []
@@ -309,7 +311,8 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
       }
     }
     const ftn = await json(src, 'data/world/factions/default_fleet_type_names.json')
-    for (const [k, v] of Object.entries(ftn ?? {})) if (typeof v === 'string') fleetTypeNames[k] = v
+    const isActive = !!opts.activeModDir && src.writable && src.writeDir === opts.activeModDir
+    for (const [k, v] of Object.entries(ftn ?? {})) if (typeof v === 'string') { fleetTypeNames[k] = v; if (!isActive) fleetTypeNamesBase[k] = v }
     const sn = await json(src, 'data/strings/ship_names.json')
     for (const [id, v] of Object.entries(sn ?? {})) {
       if (!Array.isArray(v)) continue
@@ -357,10 +360,16 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
     const files = [...gameRuleFiles]
     // a mod that isn't enabled isn't in the merged settings; still read the files it lists itself
     for (const f of ownRuleFiles.get(src.id) ?? []) if (!files.some((x) => x.toLowerCase() === f.toLowerCase())) files.push(f)
+    const first = rules.length
     for (const rel of files) {
       const text = await readText(path.join(src.dir, ...rel.split('/')))
       if (text == null) continue
       ruleCounts[src.id] = (ruleCounts[src.id] ?? 0) + parseRulesCsv(text, src.id, rel, rules, problems)
+    }
+    // R31: a Saga Forge mod with translatable dialog has $sft-… tokens in its rules; show its texts
+    if (rules.length > first && !src.isCore) {
+      const strings = (await json(src, 'data/sagaforge/text.json'))?.rules
+      if (strings && typeof strings === 'object') rules.splice(first, rules.length - first, ...detokenizeRows(rules.slice(first), strings as RuleStrings))
     }
   }
   ruleFiles.push(...gameRuleFiles)
@@ -405,7 +414,7 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
     sounds: [...sounds].sort(), music: [...music].sort(), ruleCounts, ruleFiles, ui, problems,
     nameCategories: [...nameCats.values()].sort((a, b) => a.id.localeCompare(b.id)),
     shipNameLists: [...shipLists.values()].sort((a, b) => a.id.localeCompare(b.id)),
-    fleetTypeNames,
+    fleetTypeNames, fleetTypeNamesBase,
     factionKeyUsage: factionKeySurvey([...factionLayers.values()].map((l) => l[0]).filter((l) => l.sourceId === 'starsector-core').map((l) => ({ faction: String(l.raw.id ?? path.basename(l.file, '.faction')), raw: l.raw }))),
     stats: { filesRead, ms: Date.now() - t0 }, extensions: [], ext: {}
   }

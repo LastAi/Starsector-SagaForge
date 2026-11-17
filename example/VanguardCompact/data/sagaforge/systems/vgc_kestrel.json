@@ -1,14 +1,14 @@
 {
   "_sagaforge": {
     "generated": "by Saga Forge; edits are overwritten on export",
-    "hash": "1e9c2f46"
+    "hash": "5e272538"
   },
   "format": 1,
   "id": "vgc_kestrel",
   "name": "Kestrel",
   "kind": "new",
   "hyperspace": [
-    -5200,
+    -5800,
     -7600
   ],
   "star": {

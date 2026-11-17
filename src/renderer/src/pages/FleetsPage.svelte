@@ -20,6 +20,8 @@
   const tpl = $derived(m?.fleets?.templates.find((t) => t.id === sel) ?? null)
   const factionOptions = $derived([...(m?.factions.filter((f) => f.kind === 'addition').map((f) => ({ id: f.id, name: String(f.raw.displayName ?? f.id) })) ?? []), ...index.factions])
   const typeNames = (id: string) => index.fleetTypeNames?.[id] ?? ''
+  /** What the game calls a type without this mod (the mod's own exported names left out). */
+  const gameName = (id: string) => (index.fleetTypeNamesBase ?? index.fleetTypeNames)?.[id] ?? ''
   const fleetTypeOptions = $derived([...new Set([...app.defs.fleetTypes.map((t) => t.id), ...Object.keys(index.fleetTypeNames ?? {}), ...Object.keys(m?.fleets?.typeNames ?? {})])].map((id) => ({ id, name: m?.fleets?.typeNames[id] || typeNames(id) })))
   const edT = (fn: (t: FleetTemplateDef) => void) => { const id = sel; project.change((mm) => { const t = mm.fleets?.templates.find((x) => x.id === id); if (t) fn(t) }) }
 
@@ -121,10 +123,10 @@
         <thead><tr><th>Fleet type</th><th>Name</th><th>Game's name</th><th></th></tr></thead>
         <tbody>
           {#each Object.entries(m?.fleets?.typeNames ?? {}) as [k, v] (k)}
-            <tr><td class="mono">{k}</td><td><input type="text" value={v} onchange={(e) => { const val = e.currentTarget.value; project.change((mm) => { mm.fleets!.typeNames[k] = val }) }} /></td><td class="muted">{typeNames(k) || '—'}</td>
+            <tr><td class="mono">{k}</td><td><input type="text" value={v} onchange={(e) => { const val = e.currentTarget.value; project.change((mm) => { mm.fleets!.typeNames[k] = val }) }} /></td><td class="muted">{gameName(k) || '—'}</td>
               <td><button class="mini" onclick={() => project.change((mm) => { delete mm.fleets!.typeNames[k] })}>✕</button></td></tr>
           {/each}
-          <tr><td colspan="4"><IdInput value="" options={fleetTypeOptions} placeholder="+ fleet type (vanilla's or your own id)" width="260px" clearOnCommit onCommit={(id) => { if (id) project.change((mm) => { mm.fleets ??= { templates: [], typeNames: {} }; mm.fleets.typeNames[id] = typeNames(id) || id }) }} /></td></tr>
+          <tr><td colspan="4"><IdInput value="" options={fleetTypeOptions} placeholder="+ fleet type (vanilla's or your own id)" width="260px" clearOnCommit onCommit={(id) => { if (id) project.change((mm) => { mm.fleets ??= { templates: [], typeNames: {} }; mm.fleets.typeNames[id] = gameName(id) || id }) }} /></td></tr>
         </tbody>
       </table>
     {:else if tpl}

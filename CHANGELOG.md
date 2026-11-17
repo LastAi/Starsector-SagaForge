@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+Fixes for what turned up while writing the user guide (`Mod Guides/Saga Forge/QUESTIONS.md` Q8).
+
+- **Play mode** no longer shows raw `[$sft]-…` keys for options exported through a node's
+  `_options` rules (show-once, story point, show-if): the mod's own exported rules are left out,
+  since Play runs the freshly compiled ones.
+- **Dialog browser** (and everything else that reads installed mods' rules) shows the texts of
+  mods with translatable dialog, read from their `data/sagaforge/text.json`, as SagaLib does.
+- **Check mod** now also runs the FireBest takeover check (it was only in the Export dialog).
+- **Quests › Rules** no longer overflows into the right panel.
+- **Header**: with two installs the target pill no longer covers **+ New mod**; it shows just the
+  version (and *Target* in front on wide windows).
+- **Items / People**: the existing (read-only) lists leave out the active mod's own exported ones.
+- **Fleets › Fleet type names**: *Game's name* is what the game calls the type without this mod.
+- **Branch node** help: when several cases match, the one with the most conditions wins (FireBest).
+- **Saga board**: flag arrows have their own handles and labels drawn above the cards, so they no
+  longer lie on a prerequisite arrow between the same cards.
+- Internal labels ("Phase 7a", "M5", "R29") removed from tooltips and help.
+- Screenshot mode: `stages` opens the stage form, `rules` shows the Rules view, `node=` zooms to
+  the node, `saga:<item>:<tab>` selects an item in a Saga panel.
+- **Vanguard Compact** example: Kestrel moved to (-5800, -7600), at least 3,400 units from every
+  vanilla system (it was 2,921 from Duzahk).
+
 ## 1.1.0 (2026-11-17)
 
 For Starsector **0.98a and 0.98.5a**. Needs **SagaLib 1.2** in game. The workflow work of task #36

@@ -137,7 +137,7 @@
       </ul>
       <div class="sect">Existing characters (read-only)</div>
       <ul class="list ro">
-        {#each index.people.filter((p) => match(`${p.id} ${p.name}`)) as p (p.id)}
+        {#each index.people.filter((p) => match(`${p.id} ${p.name}`) && !m?.people.some((x) => x.id === p.id)) as p (p.id)}
           <li class:on={sel === p.id}><button class="li" onclick={() => (app.selected.people = p.id)}>{p.name}<span class="sub">{srcName(p.definedBy)}</span></button></li>
         {/each}
       </ul>

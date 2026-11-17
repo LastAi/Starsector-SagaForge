@@ -28,7 +28,7 @@ starts (and, if you want, in saves that already exist).
 
 **Hyperspace map** shows the whole sector: vanilla's systems as small dots, yours in teal. Drag
 your system to place it; the toolbar shows the nearest vanilla system and how far it is in
-light-years ("nearest: Duzahk 1.5 ly"). Near the core the player finds it easily, at the edge it
+light-years ("nearest: Askonia 1.7 ly"). Near the core the player finds it easily, at the edge it
 feels remote. The wheel zooms and dragging the background pans.
 
 Click a vanilla system to look inside it. Saga Forge reads how the game builds it and shows its

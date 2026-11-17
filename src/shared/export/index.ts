@@ -377,6 +377,20 @@ function countHandRows(text: string): number {
   return n
 }
 
+/**
+ * The FireBest takeover check on its own, for Check mod: the quests compiled as Export compiles
+ * them, against every rule of the game and the other mods.
+ */
+export function modTakeoverProblems(model: ModModel, loaded: ProjectState, index: GameIndex, gameRules: RuleRow[]): Problem[] {
+  const m = exportableModel(model)
+  const sagalib = usesSagaLib(m, loaded.modInfo)
+  const phrases = [...m.phrases, ...m.people.flatMap((p) => p.phrases)]
+  const lockedEntities = lockedEntityIds(m.quests)
+  const itemKind = itemKindLookup(m.items, index.items ?? [])
+  const rows = m.quests.flatMap((q) => compileQuest(q, { sagalib, phrases, sourceId: loaded.sourceId, itemKind, lockedEntities, pools: m.pools ?? [] }).rows)
+  return takeoverProblems(rows, gameRules, m.project.prefix, loaded.sourceId)
+}
+
 /** Triggers the game fires with FireBest where a too-general rule replaces vanilla's dialog. */
 const FIREBEST_TRIGGERS = new Set(['OpenCommLink', 'PickGreeting', 'OpenInteractionDialog', 'BeginFleetEncounter', 'DialogOptionSelected', 'TradePanelFlavorText', 'BarPrintDesc'])
 

@@ -9,6 +9,7 @@ import { compileRules, Engine, type DialogView, type PlayerState, type RuleSet }
 import { newSimState, sagaHooks, startQuest, applyProfile, raidOutcome, RAID_DONE, RAID_BACK, applyMockTargets, mockTargetId, type SimState, type SimWorld } from '../../../shared/play'
 import type { Phrase, QuestPlan, TestProfile } from '../../../shared/model'
 import type { Value } from '../../../shared/rules/parse'
+import type { RuleRow } from '../../../shared/rules/types'
 import { app } from '../state/app.svelte'
 import { itemKindLookup } from '../../../shared/export/items'
 import { project } from '../state/project.svelte'
@@ -67,7 +68,13 @@ class PlayState {
     const rows = (project.m?.quests ?? []).flatMap((x) => compileQuest(x, { sagalib: true, phrases, itemKind, lockedEntities: lockedEntityIds(project.m?.quests ?? []) }).rows)
     this.compiled = compileQuest(q, { sagalib: true, phrases, itemKind, lockedEntities: lockedEntityIds(project.m?.quests ?? []) })
     this.quest = q
-    this.rs = compileRules([...rows, ...game.all.map((r) => r.row)])
+    // the mod's own exported rules are an older copy of the rows above: leave them out, or a FireAll
+    // trigger (a node's "_options") would run both copies
+    const own = app.index?.activeSourceId
+    const qids = (project.m?.quests ?? []).map((x) => `${x.id}_`)
+    const fresh = new Set(rows.map((r) => r.id))
+    const stale = (r: RuleRow) => r.sourceId === own && (fresh.has(r.id) || qids.some((p) => r.id.startsWith(p)))
+    this.rs = compileRules([...rows, ...game.all.map((r) => r.row).filter((r) => !stale(r))])
     const ctx = makePlayContext()
     const prof = project.m?.testProfiles.find((p) => p.id === this.profileId)
     if (prof) applyProfile(ctx, $state.snapshot(prof) as TestProfile, project.m?.quests ?? [])

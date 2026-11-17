@@ -292,6 +292,8 @@ See [Test a quest in Play mode](#test-a-quest-in-play-mode).
 
 ![Play mode: the offer, with Arrive buttons in the green bar](../img/quests-play.png)
 
+![Play mode in The Lost Convoy: the offer's options, one only shown once and one that costs a story point](../img/quests-play-offer.png)
+
 ### The script and rules views
 
 The **Chart / Script / Rules** buttons switch the middle of the page:
@@ -303,6 +305,8 @@ The **Chart / Script / Rules** buttons switch the middle of the page:
   options), and which node each row comes from. Click a row to select its node.
 
 ![The Script view of The Lost Convoy](../img/quests-script.png)
+
+![The Rules view of The Lost Convoy: one row per rule, with the node it comes from](../img/quests-rules.png)
 
 The **Problems** tab in the dock lists this quest's problems; click one to select its node. See
 [Problems › Fix a problem](problems.md#fix-a-problem).
