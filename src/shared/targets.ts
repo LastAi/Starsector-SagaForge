@@ -150,6 +150,13 @@ export const targetPartOf = (ref: string | undefined): TargetPart => { const p =
 
 export const targetVars = (q: QuestPlan): (QuestVar & { target: TargetDef })[] => q.variables.filter((v): v is QuestVar & { target: TargetDef } => v.type === 'target' && !!v.target)
 
+/**
+ * #71: contacts and bar events create the mission, and so search its targets and set its
+ * variables, when they offer it (SagaQuest.create); every other start creates it when the quest
+ * starts (SF_Start / its first Stage node), so only what comes after that can name them.
+ */
+export const targetsPickedAtOffer = (q: QuestPlan): boolean => q.start.kind === 'contact' || q.start.kind === 'bar'
+
 /** The runtime form (quest JSON "targets", SagaLib 1.2). */
 export function runtimeTargets(q: QuestPlan): Record<string, unknown>[] {
   return targetVars(q).map((v) => {
@@ -164,11 +171,13 @@ export const newTarget = (): TargetDef => ({ pick: 'planet', require: [], prefer
 /** Phase 7d: the places a quest's targets offer to markers and Arrive nodes: each target, its person, what was spawned there. */
 export function targetPlaces(q: QuestPlan): { id: string; name: string }[] {
   const spawned = new Set(q.nodes.flatMap((n) => (n.type === 'action' ? n.ops.filter((o) => o.op === 'spawnAtTarget').map((o) => (o as { target: string }).target) : [])))
-  return targetVars(q).flatMap((v) => [
+  // #64: the quest's named places ("place:<id>"), changed once for every spot that uses them
+  const named = (q.places ?? []).map((p) => ({ id: `place:${p.id}`, name: `named place ${p.name || p.id}${p.entity ? ` (${p.entity})` : ''}` }))
+  return [...named, ...targetVars(q).flatMap((v) => [
     { id: targetRef(v.name), name: `random target ${v.name} (${v.target.pick})` },
     ...(v.target.person?.posts.length ? [{ id: targetRef(v.name, 'person'), name: `the person at random target ${v.name}` }] : []),
     ...(spawned.has(v.name) ? [{ id: targetRef(v.name, 'spawned'), name: `what was spawned at random target ${v.name}` }] : [])
-  ])
+  ])]
 }
 
 /**

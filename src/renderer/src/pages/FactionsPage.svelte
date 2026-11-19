@@ -1,4 +1,8 @@
 <script lang="ts">
+  import VersionStrip from '../ui/VersionStrip.svelte'
+  import ScriptedChanges from '../factions/ScriptedChanges.svelte'
+  import type { FactionsRuntime } from '../../../shared/model'
+  import { itemVer, setDescription, descriptionText } from '../state/itemver.svelte'
   /**
    * Factions (PLAN.md §4.1, mock-up factions.html): this mod's factions and its changes to other
    * factions are separate lists; everyone else is read-only.
@@ -17,6 +21,14 @@
   import ImageView from '../ui/ImageView.svelte'
   import Splitter from '../Splitter.svelte'
   import { layout, saveLayout } from '../layout.svelte'
+  import ModsCond from '../ui/ModsCond.svelte'
+  import ShowAllMods from '../ui/ShowAllMods.svelte'
+  import { mods } from '../state/mods.svelte'
+  import type { ModsCondition } from '../../../shared/model'
+  import NexerelinTab from '../factions/NexerelinTab.svelte'
+  import { newNexConfig, nexRelationPairs, type NexConfig } from '../../../shared/nexconfig'
+  import { nexListed } from '../../../shared/modlist'
+  import { effectiveConds } from '../../../shared/moduses'
 
   const index = $derived(app.index!)
   const m = $derived(project.m)
@@ -111,6 +123,7 @@
       delete mm.factionsRuntime.relations[e.id]
       delete mm.factionsRuntime.scripted[e.id]
       delete mm.descriptions[`FACTION:${e.id}`]
+      if (e.kind === 'addition') delete mm.nexerelin?.[e.id]
     })
     if (project.loaded?.files[e.file]) project.deletedFactionFiles = [...project.deletedFactionFiles, e.file]
     app.selected.factions = null
@@ -134,6 +147,8 @@
       for (const r of Object.values(rt.relations)) if (e.id in r) { r[to] = r[e.id]; delete r[e.id] }
       const d = mm.descriptions[`FACTION:${e.id}`]
       if (d) { mm.descriptions[`FACTION:${to}`] = d; delete mm.descriptions[`FACTION:${e.id}`] }
+      // #63: its Nexerelin config follows (Export removes the old file and writes the new one)
+      if (mm.nexerelin?.[e.id]) { mm.nexerelin[to] = mm.nexerelin[e.id]; delete mm.nexerelin[e.id] }
       for (const p of mm.people) if (p.faction === e.id) p.faction = to
     })
     if (project.loaded?.files[oldFile]) project.deletedFactionFiles = [...project.deletedFactionFiles, oldFile]
@@ -147,30 +162,79 @@
     const c = cantRemove
     const id = sel
     if (!c || !id) return
-    project.change((mm) => {
+    edRt((rt) => {
       // re-read after creating: the state proxy wraps a new array, so pushing to the plain one would be lost
-      mm.factionsRuntime.scripted[id] ??= []
-      const list = mm.factionsRuntime.scripted[id]
+      rt.scripted[id] ??= []
+      const list = rt.scripted[id]
       if (!list.some((s) => s.path === c.path && s.value === c.value)) list.push({ op: 'remove', path: c.path, value: c.value })
     })
     cantRemove = null
   }
-  const scriptedList = $derived(sel ? m?.factionsRuntime.scripted[sel] ?? [] : [])
+  // #64: starting relations and scripted changes as in the open version (one versioned item for the mod: factions.json)
+  const rtView = $derived(m ? itemVer.view('factions', 'factions', m.factionsRuntime) : null)
+  const edRt = (fn: (rt: FactionsRuntime) => void) => itemVer.edit<FactionsRuntime>('factions', 'factions', (rt) => fn(rt))
+  const rtPaths = (id: string) => (p: string) => p === `relations.${id}` || p.startsWith(`relations.${id}.`) || p === `scripted.${id}` || p.startsWith(`scripted.${id}[`) || p.startsWith(`scripted.${id}.`) || p.startsWith(`relationMods.${id}`)
+  const editScripted = (id: string, fn: (l: import('../../../shared/faction').ScriptedFactionChange[]) => void) => edRt((rt) => { rt.scripted[id] ??= []; fn(rt.scripted[id]); if (!rt.scripted[id].length) delete rt.scripted[id] })
+  const scriptedList = $derived(sel ? rtView?.scripted[sel] ?? [] : [])
 
   // ---- relations (additions only; SagaLib sets them on new game)
-  const relations = $derived(sel ? m?.factionsRuntime.relations[sel] ?? {} : {})
+  const relations = $derived(sel ? rtView?.relations[sel] ?? {} : {})
   function setRel(other: string, v: number | undefined) {
     const id = sel
     if (!id) return
-    project.change((mm) => {
-      const r = (mm.factionsRuntime.relations[id] ??= {})
-      if (v === undefined) delete r[other]
+    edRt((rt) => {
+      const r = (rt.relations[id] ??= {})
+      if (v === undefined) { delete r[other]; if (rt.relationMods?.[id]) delete rt.relationMods[id][other] }
       else r[other] = Math.max(-1, Math.min(1, v))
-      if (!Object.keys(r).length) delete mm.factionsRuntime.relations[id]
+      if (!Object.keys(r).length) delete rt.relations[id]
     })
   }
+  /** #60: a starting relation only with / without optional mods (SagaLib 1.3). */
+  function setRelMods(other: string, c: ModsCondition | undefined) {
+    const id = sel
+    if (!id) return
+    edRt((rt) => {
+      const rm = (rt.relationMods ??= {})
+      const x = (rm[id] ??= {})
+      if (c) x[other] = c
+      else delete x[other]
+      if (!Object.keys(x).length) delete rm[id]
+      if (!Object.keys(rm).length) delete rt.relationMods
+    })
+  }
+  /** #60: a faction that only matters with a mod: hidden from the intel tab under these conditions (scripted change, SagaLib 1.3). */
+  const hideCond = $derived(sel ? rtView?.scripted[sel]?.find((c) => c.op === 'hideFromIntelTab')?.mods : undefined)
+  function setHide(c: ModsCondition | undefined) {
+    const id = sel
+    if (!id) return
+    edRt((rt) => {
+      const l = (rt.scripted[id] ??= []).filter((x) => x.op !== 'hideFromIntelTab')
+      if (c) l.push({ op: 'hideFromIntelTab', path: '', value: '', mods: c })
+      if (l.length) rt.scripted[id] = l
+      else delete rt.scripted[id]
+    })
+  }
+  // ---- #63: the Nexerelin tab (own factions; shown when the mod lists Nexerelin, or the faction already has a config)
+  const nexConfig = $derived(sel ? ((m?.nexerelin?.[sel] as NexConfig | undefined) ?? null) : null)
+  const showNex = $derived(!!m && (nexListed(m.project) || !!nexConfig))
+  const nexPairs = $derived(tab === 'nexerelin' && sel && m && app.index ? nexRelationPairs(m, sel, effectiveConds(m, app.index, project.loaded?.sourceId ?? '')) : { inConfig: {}, stayWithSagaLib: [] })
+  function editNex(fn: (c: NexConfig) => void) {
+    const id = sel
+    if (!id) return
+    project.change((mm) => { const c = mm.nexerelin?.[id]; if (c) fn(c) })
+  }
+  function createNex() {
+    const id = sel
+    if (!id) return
+    project.change((mm) => { (mm.nexerelin ??= {})[id] = newNexConfig() })
+  }
+  function removeNex() {
+    const id = sel
+    if (!id || !confirm(`Remove ${id}'s Nexerelin config? Export then removes the file it wrote. Undo can bring it back until you save.`)) return
+    project.change((mm) => { delete mm.nexerelin?.[id] })
+  }
   const allFactionOptions = $derived([...index.factions.map((f) => ({ id: f.id, name: f.name })), ...additions.filter((a) => !index.factions.some((f) => f.id === a.id)).map((a) => ({ id: a.id, name: String(a.raw.displayName ?? a.id) })), { id: 'player', name: 'Player' }])
-  const desc = $derived(sel ? m?.descriptions[`FACTION:${sel}`]?.text1 ?? '' : '')
+  const desc = $derived(sel && m ? descriptionText(`FACTION:${sel}`) : '')
 
   // ---- name lists (R3): selected as "@people:<id>" / "@ships:<id>"
   const nameSel = $derived.by((): { kind: 'people' | 'ships'; id: string } | null => {
@@ -240,8 +304,9 @@
         {#if !(m?.names.people.length || m?.names.ships.length)}<li class="muted small">None: factions use the game's names.</li>{/if}
       </ul>
       <div class="sect">Everyone else (read-only)</div>
+      <ShowAllMods list="factions" hidden={mods.hidden('factions', others, (f) => f.definedBy)} />
       <ul class="list ro">
-        {#each others as f (f.id)}
+        {#each mods.filter('factions', others, (f) => f.definedBy) as f (f.id)}
           <li class:on={sel === f.id}><button class="li" title={f.id} onclick={() => (app.selected.factions = f.id)}><span class="swatch" style="background:{swatch(f.color)}"></span>{f.name}{#if sameName.has(f.name)}<span class="mono idtag">{f.id}</span>{/if}<span class="sub">{srcName(f.definedBy)}</span></button></li>
         {/each}
       </ul>
@@ -270,18 +335,26 @@
         <button class="mini danger" onclick={remove}>Delete</button>
       </div>
       <FactionForm {ed} {edit} factionId={entry.id} bind:tab {showOthers}
-        extraTabs={entry.kind === 'addition' ? [{ id: 'relations', label: 'Relations' }, { id: 'description', label: 'Description' }] : []}
+        extraTabs={entry.kind === 'addition' ? [{ id: 'relations', label: 'Relations & changes' }, { id: 'description', label: 'Description' }, ...(showNex ? [{ id: 'nexerelin', label: 'Nexerelin' }] : [])] : [{ id: 'scripted', label: 'Scripted changes' }]}
         onCantRemove={(path, value) => (cantRemove = { path, value })}>
         {#snippet extra(t)}
-          {#if t === 'relations' && entry.kind === 'addition'}
+          {#if t === 'scripted'}
             <div class="group">
+              <VersionStrip kind="factions" id="factions" paths={rtPaths(entry.id)} what={`${entry.id}'s scripted changes`} />
+              <div class="gt"><span>Scripted changes</span><span class="badge b-lib">SagaLib, every load</span></div>
+              <ScriptedChanges factionId={entry.id} list={scriptedList} onEdit={(fn) => editScripted(entry.id, fn)} />
+            </div>
+          {:else if t === 'relations' && entry.kind === 'addition'}
+            <div class="group">
+              <VersionStrip kind="factions" id="factions" paths={rtPaths(entry.id)} what={`${entry.id}'s starting relations and scripted changes`} />
               <div class="gt"><span>Starting relations</span><span class="badge b-lib">set by SagaLib on new game</span></div>
               <table class="t rel">
                 <colgroup><col /><col class="c-start" /><col class="c-level" /><col class="c-x" /></colgroup>
                 <thead><tr><th>Faction</th><th>Start</th><th>Level</th><th></th></tr></thead>
                 <tbody>
                   {#each Object.entries(relations) as [other, v] (other)}
-                    <tr><td>{allFactionOptions.find((o) => o.id === other)?.name ?? other} <span class="mono muted">{other}</span></td>
+                    <tr><td>{allFactionOptions.find((o) => o.id === other)?.name ?? other} <span class="mono muted">{other}</span>
+                      <ModsCond compact value={rtView?.relationMods?.[entry.id]?.[other]} itemKey={`relation:${entry.id}/${other}`} onChange={(c) => setRelMods(other, c)} /></td>
                       <td><input type="range" min="-1" max="1" step="0.05" value={v} oninput={(e) => setRel(other, Number(e.currentTarget.value))} /> <input type="number" class="mono relv" min="-1" max="1" step="0.05" value={v} title="Type an exact value, -1 to 1" onchange={(e) => { const n = Number(e.currentTarget.value); if (Number.isFinite(n)) setRel(other, Math.max(-1, Math.min(1, n))) }} /></td>
                       <td class:good={v >= 0.24} class:bad={v <= -0.49}>{repLevelName(v, app.defs.repLevels)}</td>
                       <td><button class="mini" onclick={() => setRel(other, undefined)}>✕</button></td></tr>
@@ -289,12 +362,22 @@
                   <tr><td colspan="4"><IdInput value="" placeholder="+ faction…" width="220px" clearOnCommit options={allFactionOptions.filter((o) => o.id !== entry.id && !(o.id in relations))} onCommit={(id) => { if (id) setRel(id, 0) }} /></td></tr>
                 </tbody>
               </table>
-              <div class="help">Everyone else starts neutral (vanilla default). Starting relations aren't a .faction key, so they go into <span class="mono">data/sagaforge/factions.json</span> and the mod needs SagaLib.</div>
+              <div class="help">Everyone else starts neutral (vanilla default). Starting relations aren't a .faction key, so they go into <span class="mono">data/sagaforge/factions.json</span> and the mod needs SagaLib. A relation with an optional mod's faction gets "Only with" that mod by itself.{#if nexConfig} The faction has a Nexerelin config: these relations are written there too, and with Nexerelin it sets them (randomized only when the player asks) and SagaLib leaves them alone; those that depend on mods stay SagaLib's.{/if}</div>
+              <div class="gt"><span>Hidden from the intel tab</span><span class="badge b-lib">SagaLib 1.3</span></div>
+              <ModsCond value={hideCond} onChange={setHide} />
+              <div class="help">For a faction that only matters with an optional mod: the game always loads it, so hide it from the intel tab when it isn't needed, e.g. <b>Only without</b> that mod. SagaLib calls the game's setShowInIntelTab(false) on every load. The file's own showInIntelTab can't depend on mods.</div>
+              <div class="gt"><span>Scripted changes</span><span class="badge b-lib">SagaLib, every load</span></div>
+              <ScriptedChanges factionId={entry.id} list={scriptedList.filter((c) => c.op !== 'hideFromIntelTab')} onEdit={(fn) => editScripted(entry.id, (l) => { const hide = l.filter((c) => c.op === 'hideFromIntelTab'); const rest = l.filter((c) => c.op !== 'hideFromIntelTab'); fn(rest); l.splice(0, l.length, ...rest, ...hide) })} />
             </div>
+          {:else if t === 'nexerelin' && entry.kind === 'addition'}
+            <NexerelinTab factionId={entry.id} config={nexConfig} relations={nexPairs.inConfig} stay={nexPairs.stayWithSagaLib}
+              factionOptions={allFactionOptions} onFleets={() => app.go('fleets', `nex=${entry.id}`)}
+              onEdit={editNex} onCreate={createNex} onRemove={removeNex} onRelations={() => (tab = 'relations')} />
           {:else if t === 'description'}
             <div class="group">
               <div class="gt"><span>Description</span><span class="mono">descriptions.csv · {entry.id} · FACTION</span></div>
-              <textarea rows="10" value={desc} spellcheck="true" onchange={(e) => { const v = e.currentTarget.value; const id = entry.id; project.change((mm) => { if (v.trim()) mm.descriptions[`FACTION:${id}`] = { text1: v }; else delete mm.descriptions[`FACTION:${id}`] }) }}></textarea>
+              {#if m?.descriptions[`FACTION:${entry.id}`]}<VersionStrip kind="description" id={`FACTION:${entry.id}`} what="this description (set at startup from the installed mods)" />{/if}
+              <textarea rows="10" value={desc} spellcheck="true" onchange={(e) => setDescription(`FACTION:${entry.id}`, e.currentTarget.value)}></textarea>
               <div class="help">Shown in the intel tab. Written to the mod's <span class="mono">data/strings/descriptions.csv</span> on Export.</div>
             </div>
           {/if}
@@ -333,16 +416,7 @@
         {#if !entry.listed}<button class="mini" onclick={() => { const id = entry.id; project.change((mm) => { const f = mm.factions.find((x) => x.id === id); if (f?.kind === 'addition') f.listed = true }) }}>List it in factions.csv</button>{/if}
       {:else}
         <div class="muted small">The writer for overrides can't produce a full copy of the original; it only writes the patch.</div>
-        {#if scriptedList.length}
-          <div class="group">
-            <div class="gt"><span>Scripted changes</span><span class="badge b-lib">SagaLib</span></div>
-            {#each scriptedList as s, i (s.path + s.value)}
-              <div class="scr"><span class="chip scripted">− {s.value} · {s.path}</span>
-                <button class="mini" onclick={() => { const id = entry.id; project.change((mm) => { mm.factionsRuntime.scripted[id].splice(i, 1); if (!mm.factionsRuntime.scripted[id].length) delete mm.factionsRuntime.scripted[id] }) }}>✕</button></div>
-            {/each}
-            <div class="muted small">→ <span class="mono">data/sagaforge/factions.json</span>, applied by SagaLib on load. Other mods that add these back would be undone.</div>
-          </div>
-        {/if}
+        {#if scriptedList.length}<div class="muted small">+ {scriptedList.length} scripted change{scriptedList.length === 1 ? '' : 's'} (tab Scripted changes) → <span class="mono">data/sagaforge/factions.json</span>, applied by SagaLib on load.</div>{/if}
       {/if}
     {/if}
   </aside>
@@ -452,6 +526,4 @@
   .grid2 { display: grid; grid-template-columns: 80px 1fr; gap: 2px 10px; align-items: center; width: 440px; max-width: 100%; }
   .grid2.wide { width: 520px; }
   .ico { width: 14px; text-align: center; font-size: 11px; flex: none; }
-  .chip.scripted { font-size: 11px; padding: 1px 7px; border-radius: 10px; border: 1px dashed var(--bad); color: var(--bad); }
-  .scr { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
 </style>

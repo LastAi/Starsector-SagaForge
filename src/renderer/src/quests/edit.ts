@@ -3,8 +3,17 @@ import type { QNode, QuestPlan } from '../../../shared/model'
 import type { ModModel } from '../../../shared/serialize'
 import { project } from '../state/project.svelte'
 import { TARGET_DETAILS } from '../../../shared/targets'
+import { itemVer } from '../state/itemver.svelte'
+import { bountyIdsOf, existingBounties } from '../../../shared/bounties'
+import { settingConditionTemplates } from '../../../shared/settings'
 
+/** #64: in an open version (the versions strip), the fields the edit changes become that version's. */
 export function editQuest(qid: string, fn: (q: QuestPlan, m: ModModel) => void): void {
+  itemVer.edit<QuestPlan>('quest', qid, fn)
+}
+
+/** An edit of the quest itself, never of a version (on/off, kind, deleting). */
+export function editQuestBase(qid: string, fn: (q: QuestPlan, m: ModModel) => void): void {
   project.change((m) => {
     const q = m.quests.find((x) => x.id === qid)
     if (q) fn(q, m)
@@ -18,8 +27,16 @@ export function editNode<T extends QNode>(qid: string, nid: string, fn: (n: T, q
   })
 }
 
+/** #59: the MagicLib bounties a quest can start or test: the ones it uses, the mod's own, the hand-written ones in its file. */
+export function bountyChoices(q: QuestPlan | null): string[] {
+  const m = project.m
+  if (!m) return []
+  const hand = project.loaded ? existingBounties(project.loaded.files, []).map((b) => b.id) : []
+  return [...new Set([...(q ? bountyIdsOf(q) : []), ...(m.bounties ?? []).map((b) => b.id), ...hand])].filter((id) => id && id !== '?')
+}
+
 /** Condition templates offered by the "+ condition" menu (PLAN.md §4.3: a picker for common conditions). */
-export function conditionTemplates(q: QuestPlan | null, factions: string[], quests: QuestPlan[]): { label: string; line: string }[] {
+export function conditionTemplates(q: QuestPlan | null, factions: string[], quests: QuestPlan[], bounties: string[] = []): { label: string; line: string }[] {
   const out: { label: string; line: string }[] = []
   if (q) {
     for (const v of q.variables) {
@@ -33,6 +50,8 @@ export function conditionTemplates(q: QuestPlan | null, factions: string[], ques
     }
     for (const s of q.stages) out.push({ label: `At stage "${s.title}"`, line: `SF_AtStep ${q.id} ${s.id}` })
   }
+  // #62: the mod's settings (Saga › Settings; SagaLib sets $global.<id> on every load)
+  out.push(...settingConditionTemplates(project.m?.project.settings ?? []))
   const f = factions[0] ?? 'hegemony'
   out.push({ label: 'Commissioned with a faction', line: `$player.commissionFactionId == ${f}` })
   out.push({ label: 'Reputation at least…', line: `RepIsAtWorst ${f} FAVORABLE` })
@@ -45,5 +64,15 @@ export function conditionTemplates(q: QuestPlan | null, factions: string[], ques
   out.push({ label: 'At a market of…', line: `$market.factionId == ${f}` })
   // Phase 7e (RC-R11): SagaLib 1.2 remembers every colony that decivilises
   out.push({ label: 'A colony has decivilised', line: '$global.sagaforge_deciv_<market id>' })
+  // #70 (SagaLib 1.3): relations between two factions (vanilla's RepIsAtWorst is the player's), and who is away
+  out.push({ label: 'Market owner gets on with a faction (at least…)', line: `SF_FactionRep $faction.id ${f} NEUTRAL` })
+  out.push({ label: 'Market owner not hostile to a faction', line: `SF_FactionRep $faction.id ${f} notHostile` })
+  for (const p of (project.m?.people ?? []).filter((x) => !!x.presence).slice(0, 8)) out.push({ label: `${`${p.name.first} ${p.name.last}`.trim() || p.id} is away (presence)`, line: `$global.sagaforge_away_${p.id}` })
+  // #59 (SagaLib 1.3): a MagicLib bounty's state (unavailable = no MagicLib, or MagicLib doesn't have it)
+  for (const b of bounties.slice(0, 8)) {
+    for (const [s, what] of [['unavailable', 'unavailable (no MagicLib)'], ['offered', 'offered, not taken'], ['active', 'taken, running'], ['succeeded', 'succeeded'], ['failed', 'failed (flagship salvaged)'], ['ended', 'ended (any way)']] as const) {
+      out.push({ label: `MagicLib bounty ${b}: ${what}`, line: `SF_BountyState ${b} ${s}` })
+    }
+  }
   return out
 }

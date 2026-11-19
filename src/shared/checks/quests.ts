@@ -1,20 +1,23 @@
 /** Quest checks (PLAN.md §5, "Problems show as a red corner on the node"; §4.4). */
+import { addNameTokens, nameVersioned } from '../modelversions'
 import type { Problem } from '../api'
 import type { QuestPlan } from '../model'
 import { compileQuest } from '../export/questrules'
-import { reachable } from '../quest'
+import { beforeStart, reachable } from '../quest'
 import { TOKEN_RE } from '../rules/parse'
 import type { CheckContext } from '.'
 import { prefixProblem, ID_PATTERN } from '.'
 import { lockedEntityIds, populateLinkProblems, unguardedWreckProblems } from '../patterns'
 import { isTodoActive } from '../todo'
-import { arriveTakesOver, criteriaFor, criterion, targetPartOf, targetVarOf } from '../targets'
+import { arriveTakesOver, criteriaFor, criterion, targetKeys, targetPartOf, targetsPickedAtOffer, targetVarOf, targetVars } from '../targets'
 
 export function questProblems(ctx: CheckContext, q: QuestPlan): Problem[] {
   const out: Problem[] = []
   const ref = (sub?: string) => ({ page: 'quests' as const, id: q.id, sub })
   const m = ctx.model
-  const phrases = [...m.phrases, ...m.people.flatMap((p) => p.phrases)]
+  // #64: with the name tokens the export adds ($<person>_name, _firstName, _lastName)
+  const named = addNameTokens(m, nameVersioned(m))
+  const phrases = [...named.phrases, ...named.people.flatMap((p) => p.phrases)]
   const c = compileQuest(q, { sagalib: true, phrases, lockedEntities: lockedEntityIds(m.quests), pools: m.pools ?? [] })
   out.push(...c.problems)
   if (!ID_PATTERN.test(q.id)) out.push({ level: 'error', area: 'Quest', message: `Quest id "${q.id}" may only use lowercase letters, digits and _.`, ref: ref() })
@@ -94,6 +97,7 @@ export function questProblems(ctx: CheckContext, q: QuestPlan): Problem[] {
   }
   for (const r of q.rewards) for (const it of r.items ?? []) if (!itemIds.has(it.item)) out.push({ level: 'error', area: 'Quest', message: `Reward "${r.id}": unknown item "${it.item}".`, ref: ref() })
   out.push(...targetProblems(q))
+  out.push(...earlyTokenProblems(q))
   const stepIds = new Set<string>()
   for (const s of q.stages) {
     if (stepIds.has(s.id)) out.push({ level: 'error', area: 'Quest', message: `Two stages use the id "${s.id}".`, ref: ref() })
@@ -172,12 +176,67 @@ export function targetProblems(q: QuestPlan): Problem[] {
 }
 
 /**
+ * #71 (in game, 2026-11-18): with a start other than a contact or a bar event, SagaLib creates the
+ * mission when the quest starts (SF_Start, its first Stage node): only then are its random targets
+ * searched and its variables set to their initial values. A text shown before that (the start
+ * option, a bar scene's blurb, the offer) showed their tokens raw. One warning per place and kind.
+ */
+export function earlyTokenProblems(q: QuestPlan): Problem[] {
+  if (q.kind !== 'quest' || targetsPickedAtOffer(q)) return []
+  const pre = beforeStart(q)
+  // a variable set before the start (an Action's Set, a dialog's script line) has a value there,
+  // except in that dialog's own text (its script runs after the text)
+  const setAt = new Map<string, Set<string>>()
+  const mark = (k: string, id: string) => setAt.set(k, new Set([...(setAt.get(k) ?? []), id]))
+  for (const n of q.nodes) {
+    if (!pre.has(n.id)) continue
+    if (n.type === 'action') for (const o of n.ops) if (o.op === 'set') mark(o.key.trim(), n.id)
+    if (n.type === 'dialog') for (const l of n.script) { const x = /^\s*(\$[\w.]+)\s*=/.exec(l); if (x) mark(x[1], n.id) }
+  }
+  const setElsewhere = (k: string, here: string) => [...(setAt.get(k) ?? [])].some((id) => id !== here)
+  const targets = new Map<string, string>(targetVars(q).flatMap((v) => targetKeys(q.id, v.name).map((k) => [k, v.name] as const)))
+  const plain = new Map<string, string>(q.variables.filter((v) => v.type !== 'target').map((v) => [`$global.${q.id}_${v.name}`, v.name] as const))
+  if (!targets.size && !plain.size) return []
+  const out: Problem[] = []
+  const manual = q.start.kind === 'manual' ? ' If the quest that starts this one runs "Start another quest" before it jumps here, the mission exists already: ignore this.' : ''
+  const report = (where: string, sub: string, texts: (string | undefined)[]) => {
+    const found = [...new Set(texts.flatMap((t) => (t?.match(TOKEN_RE) ?? []).map((x) => x.replace(/\.+$/, ''))))]
+    const names = (keys: Map<string, string>, toks: string[]) => [...new Set(toks.map((t) => keys.get(t)))].map((v) => `"${v}"`).join(', ')
+    const tt = found.filter((t) => targets.has(t))
+    if (tt.length) out.push({
+      level: 'warning', area: 'Quest', ref: { page: 'quests', id: q.id, sub }, key: `tgtearly:${q.id}:${sub}`,
+      message: `${where}: ${tt.join(', ')} ${tt.length > 1 ? 'name' : 'names'} random target ${names(targets, tt)}, but with this start SagaLib only picks it when the quest starts (its first Stage node), after this text. In game the token shows as it is. Name the target after the Stage node, or offer the quest from a contact or a bar event (they pick their targets with the offer).${manual}`
+    })
+    const vt = found.filter((t) => plain.has(t) && !setElsewhere(t, sub))
+    if (vt.length) out.push({
+      level: 'warning', area: 'Quest', ref: { page: 'quests', id: q.id, sub }, key: `varearly:${q.id}:${sub}`,
+      message: `${where}: ${vt.join(', ')} ${vt.length > 1 ? 'are quest variables' : 'is quest variable'} ${names(plain, vt)}, which SagaLib only sets to ${vt.length > 1 ? 'their' : 'its'} initial value when the quest starts (its first Stage node) with this start, after this text. In game the token shows as it is the first time. Set it with an Action before this text, use it after the Stage node, or offer the quest from a contact or a bar event.${manual}`
+    })
+  }
+  const s = q.start
+  if (s.kind === 'option') report('Start option', 'start', [s.optionText])
+  if (s.kind === 'barScene') report('Bar scene', 'start', [s.optionText, s.blurb])
+  for (const n of q.nodes) {
+    if (!pre.has(n.id)) continue
+    if (n.type === 'dialog') {
+      report(`"${n.title || n.id}"`, n.id, [
+        n.text, ...n.options.flatMap((o) => [o.text, o.tooltip]),
+        ...n.displays.map((d) => (d.kind === 'text' || d.kind === 'heading' ? d.text : undefined)),
+        ...n.phrases.flatMap((p) => [...p.cases.map((c) => c.text), p.otherwise])
+      ])
+    } else if (n.type === 'raid') report(`Raid "${n.title || n.id}"`, n.id, [n.text, n.raidText, n.objective, n.tooltip])
+    else if (n.type === 'wait') report(`Arrive "${n.id}"`, n.id, [n.arriveText, n.optionText])
+  }
+  return out
+}
+
+/**
  * A derelict's dialog is built by vanilla's salvage rules (PopulateSalvageOptions), which never fire
  * PopulateOptions, so an option added there never appears (found while building the 7a test mod,
  * 2026-11-16; user decision: warn). Covers start options and menu-option Arrives at the mod's wrecks
  * or at "$customType == wreck"; a takeover, an interjection on salExplore, or a wreck lock work.
  */
-export function wreckOptionProblems(q: QuestPlan, m: { systems: { entities: { id: string; kind: string }[] }[]; quests: QuestPlan[] }): Problem[] {
+export function wreckOptionProblems(q: QuestPlan, m: { systems: { entities: { id: string; kind: string; market?: unknown; interaction?: string }[] }[]; quests: QuestPlan[] }): Problem[] {
   const out: Problem[] = []
   const wrecks = new Set(m.systems.flatMap((s) => s.entities.filter((e) => e.kind === 'derelict').map((e) => e.id)))
   const locked = lockedEntityIds(m.quests)
@@ -189,6 +248,37 @@ export function wreckOptionProblems(q: QuestPlan, m: { systems: { entities: { id
   for (const n of q.nodes) {
     if (n.type !== 'wait' || n.mode !== 'arrive' || !n.entity || !wrecks.has(n.entity) || locked.has(n.entity) || arriveTakesOver(q, n)) continue
     out.push({ level: 'warning', area: 'Quest', ref: { page: 'quests', id: q.id, sub: n.id }, key: `wreckarrive:${q.id}:${n.id}`, message: `Arrive "${n.id}": "${n.entity}" is a wreck, and a wreck's dialog (vanilla's salvage) never shows menu options. Set it to "takes over the arrival".` })
+  }
+  // #62 (found in game, 2026-11-18): a place of the mod without a market that isn't a planet (a plain
+  // station, a buoy, a custom object) gets vanilla's defaultOpenDialog: its description and Leave,
+  // never PopulateOptions, so an option added to its menu never appears
+  const plain = new Set(m.systems.flatMap((sy) => sy.entities.filter((e) => !e.market && e.kind !== 'planet' && e.kind !== 'derelict' && !e.interaction).map((e) => e.id)))
+  const atPlain = (lines: string[]) => lines.map((l) => /^\$id\s*==\s*(\S+)/.exec(l.trim())?.[1]).find((id) => !!id && plain.has(id))
+  const ps = s.kind === 'option' && (s.trigger || 'PopulateOptions') === 'PopulateOptions' ? atPlain(s.conditions) : undefined
+  if (ps) out.push({ level: 'warning', area: 'Quest', ref: { page: 'quests', id: q.id, sub: 'start' }, key: `plainopt:${q.id}`, message: `${q.title}: its start option is added at "${ps}", which has no market: vanilla's dialog there shows only its description and Leave, so the option never appears. Give it a market, or start the quest with "a dialog that opens on a trigger" (OpenInteractionDialog).` })
+  for (const n of q.nodes) {
+    if (n.type !== 'wait' || n.mode !== 'arrive' || !n.entity || !plain.has(n.entity) || locked.has(n.entity) || arriveTakesOver(q, n)) continue
+    out.push({ level: 'warning', area: 'Quest', ref: { page: 'quests', id: q.id, sub: n.id }, key: `plainarrive:${q.id}:${n.id}`, message: `Arrive "${n.id}": "${n.entity}" has no market, and vanilla's dialog there shows only its description and Leave (never the menu's options), so the arrival option never appears. Set it to "takes over the arrival", or give the place a market.` })
+  }
+  // #62 (found in game, 2026-11-18): an arrival that takes over at a place without a menu (no market,
+  // a wreck) and reaches "back to the menu" without a Dialog in between: there is no menu to go back
+  // to, so the dialog closes at once and the player never reads the arrival's text or rewards
+  const menuless = new Set([...plain, ...wrecks])
+  const byId = new Map(q.nodes.map((n) => [n.id, n]))
+  for (const n of q.nodes) {
+    if (n.type !== 'wait' || n.mode !== 'arrive' || !n.entity || !menuless.has(n.entity) || !arriveTakesOver(q, n)) continue
+    const seen = new Set<string>()
+    let closes = false
+    const walk = (id: string) => {
+      if (seen.has(id) || closes) return
+      seen.add(id)
+      const x = byId.get(id)
+      if (!x || x.type === 'dialog' || x.type === 'raid' || x.type === 'encounter' || (x.type === 'wait' && x !== n)) return
+      if (x.type === 'link') { if (x.mode === 'menu') closes = true; return }
+      for (const e of q.edges) if (e.from === id) walk(e.to)
+    }
+    walk(n.id)
+    if (closes) out.push({ level: 'warning', area: 'Quest', ref: { page: 'quests', id: q.id, sub: n.id }, key: `menulessclose:${q.id}:${n.id}`, message: `Arrive "${n.id}" takes over at "${n.entity}", which has no menu, and goes on to "back to the menu" without a Dialog: there is nothing to go back to, so the dialog closes at once and the player never reads the arrival's text or the "Gained …" lines. End it on a Dialog node with an option (such as Leave) first.` })
   }
   return out
 }

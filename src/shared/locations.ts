@@ -164,7 +164,8 @@ export function locationProblems(ctx: CheckContext): Problem[] {
   const out: Problem[] = []
   const m = ctx.model
   const ids = new Set<string>()
-  const vanillaMarkets = new Set(ctx.index.markets.map((x) => x.id))
+  // #64: the index also has other Saga Forge mods' markets (their content.csv); the mod's own exported ones aren't a clash
+  const vanillaMarkets = new Set(ctx.index.markets.filter((x) => x.definedBy !== ctx.loaded.sourceId).map((x) => x.id))
   for (const s of m.systems) {
     const ref = (sub?: string) => ({ page: 'locations' as const, id: s.id, sub })
     if (s.kind === 'new') {

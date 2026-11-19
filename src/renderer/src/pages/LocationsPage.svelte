@@ -1,4 +1,6 @@
 <script lang="ts">
+  import VersionStrip from '../ui/VersionStrip.svelte'
+  import { itemVer, setDescription, descriptionText } from '../state/itemver.svelte'
   import { dropGroupChoices } from '../../../shared/pools'
   /** Locations (PLAN.md §4.5, mock-up locations.html): new systems on the hyperspace map, entities, markets. */
   import type { StarSystemDef, SystemEntity } from '../../../shared/model'
@@ -13,6 +15,10 @@
   import IdInput from '../ui/IdInput.svelte'
   import Modal from '../ui/Modal.svelte'
   import Field from '../ui/Field.svelte'
+  import ModsCond from '../ui/ModsCond.svelte'
+  import ModsChip from '../ui/ModsChip.svelte'
+  import ShowAllMods from '../ui/ShowAllMods.svelte'
+  import { mods } from '../state/mods.svelte'
   import { defaultLockUntil, guardsOf, protectWreck, questsSendingTo } from '../../../shared/patterns'
   import { lastRelease } from '../../../shared/release'
 
@@ -23,18 +29,20 @@
   const dropGroupOptions = $derived(dropGroupChoices(m?.pools ?? [], app.index))
   const index = $derived(app.index!)
   const sel = $derived(app.selected.locations ?? null)
-  const sys = $derived(m?.systems.find((s) => s.id === sel) ?? null)
+  // #64: the system as in the open version (the versions strip)
+  const sys = $derived(itemVer.view('system', sel, m?.systems.find((s) => s.id === sel) ?? null))
   // screenshot mode: "locations:<system>:entity=<id>" opens that entity in the system view
   const smokeEnt = app.smokeArg?.startsWith('entity=') ? app.smokeArg.slice(7) : null
   let entSel = $state<string | null>(smokeEnt)
   const ent = $derived(sys?.entities.find((e) => e.id === entSel) ?? null)
   // ("locations:<system>:system" opens the system view with nothing selected)
   let view = $state<'map' | 'system'>(smokeEnt || app.smokeArg === 'system' ? 'system' : 'map')
-  const edSys = (fn: (s: StarSystemDef) => void) => { const id = sel; project.change((mm) => { const s = mm.systems.find((x) => x.id === id); if (s) fn(s) }) }
+  const edSys = (fn: (s: StarSystemDef) => void) => { const id = sel; if (id) itemVer.edit<StarSystemDef>('system', id, (s) => fn(s)) }
   const edEnt = (fn: (e: SystemEntity, s: StarSystemDef) => void) => { const id = entSel; edSys((s) => { const e = s.entities.find((x) => x.id === id); if (e) fn(e, s) }) }
 
   // ---- hyperspace map (game units; starmap.json)
-  const vanillaSys = $derived(index.systems.filter((s) => s.x != null))
+  // #60: the map shows vanilla, this mod and its listed mods' systems (Show all installed mods for every one)
+  const vanillaSys = $derived(mods.filter('systems', index.systems.filter((s) => s.x != null), (s) => s.definedBy))
   let mapEl = $state<SVGSVGElement | null>(null)
   let vb = $state({ x: -24000, y: -18000, w: 48000, h: 30000 })
   // start with every known system in view (y is flipped: the game's y grows upwards)
@@ -321,7 +329,7 @@
   <aside class="left">
     <div class="sect">This mod's systems <button disabled={!m} onclick={() => (showNew = true)}>+ New…</button></div>
     <ul class="list">
-      {#each m?.systems.filter((s) => s.kind === 'new') ?? [] as s (s.id)}<li class:on={sel === s.id}><button class="li" onclick={() => { app.selected.locations = s.id; entSel = null }}>✦ {s.name}<span class="sub">{s.entities.length} entities</span></button></li>{/each}
+      {#each m?.systems.filter((s) => s.kind === 'new') ?? [] as s (s.id)}<li class:on={sel === s.id}><button class="li" onclick={() => { app.selected.locations = s.id; entSel = null }}>✦ {s.name}<ModsChip itemKey={`system:${s.id}`} /><span class="sub">{s.entities.length} entities</span></button></li>{/each}
     </ul>
     <div class="sect">Additions to existing systems</div>
     <ul class="list">
@@ -336,12 +344,14 @@
     {#if sys}
       <div class="sect">{sys.name}: entities <select value={addKind} onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; if (v) addEntity(v) }}><option value="">+ add…</option>{#each ENTITY_KINDS as k (k.kind)}<option value={k.kind}>{k.label}</option>{/each}{#each presets as p (p.key)}<option value={`preset:${p.key}`}>{p.label}</option>{/each}</select></div>
       <ul class="list">
-        {#each sys.entities as e (e.id)}<li class:on={entSel === e.id}><button class="li" onclick={() => { entSel = e.id; view = 'system' }}>{e.orbit.focus === 'star' ? '' : '· '}{e.name}<span class="sub">{e.kind}{e.market ? ' · market' : ''}</span></button></li>{/each}
+        {#each sys.entities as e (e.id)}<li class:on={entSel === e.id}><button class="li" onclick={() => { entSel = e.id; view = 'system' }}>{e.orbit.focus === 'star' ? '' : '· '}{e.name}<ModsChip itemKey={`entity:${e.id}`} /><span class="sub">{e.kind}{e.market ? ' · market' : ''}</span></button></li>{/each}
       </ul>
     {/if}
   </aside>
   <section class="main">
+    {#if sys && m?.systems.some((s) => s.id === sys.id)}<VersionStrip kind="system" id={sys.id} what="this system and its markets" />{/if}
     <div class="toolbar">
+      <ShowAllMods list="systems" />
       <div class="seg"><button class:on={view === 'map'} onclick={() => (view = 'map')}>Hyperspace map</button><button class:on={view === 'system'} onclick={() => (view = 'system')} disabled={!sys && !peekInfo}>System view</button></div>
       {#if near && view === 'map'}<span class="muted">nearest: <b>{near.sys.name}</b> {near.ly.toFixed(1)} ly</span>{/if}
       <span class="spacer"></span><span class="muted small">{view === 'map' ? 'Drag your systems; click a vanilla system to look at it. Wheel zooms, drag pans.' : sys ? 'Drag bodies along their orbits (Shift: also their distance); drag the round handles to resize. Wheel zooms.' : 'Read-only. Wheel zooms.'}</span>
@@ -451,6 +461,9 @@
         </Field>
         <Field label="Id" help={entReleased ? 'Stage markers, Arrive nodes and spawns use it; it is in a release, so saves remember it: change it only if you must (Change id… updates everything in this mod that uses it).' : 'Stage markers, Arrive nodes and spawns use it. Until the mod is released it follows the name; Change id… sets your own. Everything in this mod that uses it follows.'}>
           <span style="display:flex;gap:8px;align-items:center"><span class="mono">{ent.id}</span><button class="mini" style="white-space:nowrap" onclick={changeEntityId}>Change id…</button></span>
+        </Field>
+        <Field label="Mods" help="Only built with / without optional mods (Saga › Mods; SagaLib 1.3). Set automatically (greyed) when it orbits an optional mod's object, or when only conditional content uses it.">
+          <ModsCond value={ent.mods} itemKey={`entity:${ent.id}`} onChange={(v) => edEnt((x) => { if (v) x.mods = v; else delete x.mods })} />
         </Field>
         <Field label="Kind" help="What it is; fixed when it is added.">
           <span>{ENTITY_KINDS.find((k) => k.kind === ent.kind)?.label ?? ent.kind}</span>
@@ -603,6 +616,10 @@
             <Field label="Never decivilises" for="lm-nd" help="A colony at zero stability for months decivilises in vanilla (it becomes ruins). Ticked: vanilla's $core_noDeciv, as its pirate and Pather bases; a colony a quest needs should have it. Needs SagaLib 1.2.">
               <input id="lm-nd" type="checkbox" checked={!!mk.protectFromDeciv} onchange={(e) => { const v = e.currentTarget.checked; edEnt((x) => { if (x.market) x.market.protectFromDeciv = v || undefined }) }} />
             </Field>
+            <!-- #61 (PLAN.md §10.3) -->
+            <Field label="Protect from invasion" for="lm-pi" help="For a place the story can't lose. Nexerelin never invades it: SagaLib sets $nex_uninvadable in the market's memory, which Nexerelin checks before any invasion (the player's too). Without Nexerelin it does nothing. Needs SagaLib 1.3.">
+              <input id="lm-pi" type="checkbox" checked={!!mk.protectFromInvasion} onchange={(e) => { const v = e.currentTarget.checked; edEnt((x) => { if (x.market) x.market.protectFromInvasion = v || undefined }) }} />
+            </Field>
           </div>
           {#each MARKET_LISTS as l (l.key)}
             <div class="sect3">{l.label}</div>
@@ -622,13 +639,17 @@
       {/if}
       <div class="sect2">Description <span class="mono muted">{descKey(ent)}</span></div>
       <p class="f-help">Shown when the player visits it and in its info panel (descriptions.csv).</p>
-      <textarea rows="4" value={m?.descriptions[descKey(ent)]?.text1 ?? ''} onchange={(e) => { const v = e.currentTarget.value; const k = descKey(ent); project.change((mm) => { if (v.trim()) mm.descriptions[k] = { text1: v }; else delete mm.descriptions[k] }) }}></textarea>
+      {#if m?.descriptions[descKey(ent)]}<VersionStrip kind="description" id={descKey(ent)} what="this description (set at startup from the installed mods)" />{/if}
+      <textarea rows="4" value={descriptionText(descKey(ent))} onchange={(e) => setDescription(descKey(ent), e.currentTarget.value)}></textarea>
       <p><button class="mini danger" onclick={removeEntity}>Delete entity</button></p>
     {:else if sys}
       <h3>{sys.name} <span class="mono muted">{sys.id}</span></h3>
       <div class="grid2">
         <Field label="Name" for="ls-n" help={sys.kind === 'new' ? 'The system\'s name on the hyperspace map and in the intel screen.' : 'The existing system\'s name, for this editor only.'}>
           <input id="ls-n" type="text" value={sys.name} onchange={(e) => { const v = e.currentTarget.value; edSys((s) => { s.name = v }) }} />
+        </Field>
+        <Field label="Mods" help={sys.kind === 'new' ? 'Only built with / without optional mods (Saga › Mods; SagaLib 1.3).' : 'These additions are only built with / without optional mods (Saga › Mods; SagaLib 1.3). An existing system of an optional mod gets "Only with" it by itself.'}>
+          <ModsCond value={sys.mods} itemKey={`system:${sys.id}`} onChange={(v) => edSys((s) => { if (v) s.mods = v; else delete s.mods })} />
         </Field>
         {#if sys.kind === 'new'}
           <Field label="Hyperspace" help="Its position on the sector map (drag it on the Hyperspace map). Near the core it is easy to find; at the edge it feels remote.">

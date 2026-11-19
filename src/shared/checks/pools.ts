@@ -6,6 +6,8 @@ import type { CheckContext } from '.'
 import { prefixProblem } from '.'
 import { branchPool } from '../pools'
 import { criteriaFor, criterion } from '../targets'
+import { findBlocks } from '../export/blocks'
+import { parseCsvRecords } from '../csvedit'
 
 export function poolProblems(ctx: CheckContext): Problem[] {
   const out: Problem[] = []
@@ -57,6 +59,14 @@ export function poolProblems(ctx: CheckContext): Problem[] {
     if (p.use === 'encounters' && !p.points?.length) out.push({ level: 'warning', area: 'Pool', ref, key: `encpts:${p.id}`, message: `Encounter pool "${p.name || p.id}" has no encounter points (slipstream, outside a system): it never fires.` })
     if (p.use === 'encounters' && (p.frequency ?? 10) <= 0) out.push({ level: 'warning', area: 'Pool', ref, key: `encfreq:${p.id}`, message: `Encounter pool "${p.name || p.id}" has frequency 0: it never fires.` })
   }
+  // #65 (PLAN.md §10.7, question 5): the mod's hand-written drop_groups.csv rows (outside Saga Forge's
+  // block) for an item another source's row already has in that group: one row wins, like the pools' above
+  for (const r of handDropRows(ctx.loaded?.files?.['data/campaign/procgen/drop_groups.csv']?.text)) {
+    if (r.item === 'nothing') continue
+    const there = (groupRows.get(r.group) ?? []).filter((x) => x.item === r.item && x.definedBy !== own)
+    if (there.length) out.push({ level: 'warning', area: 'Loot', key: `handdropdup:${r.group}:${r.item}`, file: 'data/campaign/procgen/drop_groups.csv', message: `drop_groups.csv (written by hand) adds "${r.item}" to "${r.group}", which ${there.map((x) => (x.definedBy === 'starsector-core' ? 'vanilla' : x.definedBy)).join(', ')} already ${there.length === 1 ? 'has' : 'have'} there. The rows don't add up: only one weight counts, so this row may replace the other (or be replaced, by load order).` })
+  }
+
   for (const q of m.quests) for (const n of q.nodes) {
     if (n.type !== 'branch' || !n.random) continue
     const ref = { page: 'quests' as const, id: q.id, sub: n.id }
@@ -123,4 +133,17 @@ function lootKnown(ctx: CheckContext, id: string): boolean | null {
   if (id.startsWith('wpn_')) return has(ctx.index.weapons, id.slice(4))
   if (id.startsWith('ftr_')) return has(ctx.index.wings, id.slice(4))
   return has(ctx.index.items, id) || has(m.items, id)
+}
+
+/** #65: the rows of a drop_groups.csv outside Saga Forge's owned blocks (item, group). */
+export function handDropRows(text: string | undefined): { item: string; group: string }[] {
+  if (!text) return []
+  let kept = text
+  for (const b of [...findBlocks(text)].sort((x, y) => y.start - x.start)) kept = kept.slice(0, b.start) + kept.slice(b.end)
+  const recs = parseCsvRecords(kept).map((r) => r.fields.map((f) => f.trim()))
+  const head = recs.findIndex((f) => f.some(Boolean))
+  if (head < 0) return []
+  const ci = recs[head].indexOf('commodity'), gi = recs[head].indexOf('group')
+  if (ci < 0 || gi < 0) return []
+  return recs.slice(head + 1).filter((f) => f[ci] && !f[ci].startsWith('#') && f[gi]).map((f) => ({ item: f[ci], group: f[gi] }))
 }

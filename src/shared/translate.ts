@@ -57,7 +57,7 @@ const VISIBLE: Record<string, RegExp[]> = {
   scatter: [/^entity\.name$/],
   events: [/^entries\[[^\]]+\]\.news\.(title|text)$/],
   progress: [/^name$/, /^stages\[[^\]]+\]\.(title|text)$/, /^factors\[[^\]]+\]\.desc$/],
-  strings: [/^rules\./, /^items\./, /^descriptions\./, /^factions\./]
+  strings: [/^rules\./, /^items\.[^.]+\.(name|desc)$/, /^descriptions\./, /^factions\./]
 }
 
 export interface TranslationEntry { key: string; context: string; original: string; source: string }
@@ -75,9 +75,12 @@ export function translationEntries(files: RuntimeText[]): TranslationEntry[] {
     for (const [key, text] of Object.entries(textLeaves(f.id, f.json))) {
       if (!text.trim()) continue
       const path = key.slice(f.id.length + 1)
-      if (!pats.some((p) => p.test(path))) continue
-      if (existing && path === 'name') continue // a vanilla system's own name
-      out.push({ key, context: contextOf(f.type, f.id, path), original: text, source: fingerprint(text) })
+      // #64: a version's texts are translated like the base's (key: …versions[<id>].set.<path>)
+      const ver = /versions\[([^\]]+)\]\.set\./.exec(path)
+      const plain = ver ? path.replace(ver[0], '') : path
+      if (!pats.some((p) => p.test(plain))) continue
+      if (existing && plain === 'name') continue // a vanilla system's own name
+      out.push({ key, context: contextOf(f.type, f.id, plain) + (ver ? ` (version ${ver[1]})` : ''), original: text, source: fingerprint(text) })
     }
   }
   return out

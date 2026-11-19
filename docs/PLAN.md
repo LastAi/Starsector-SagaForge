@@ -1073,7 +1073,8 @@ Decided (second amendment, 2026-11-10, after reviewing possible missing features
 - **Q24** **Dialog displays**: support everything the game's dialog can show, vanilla commands
   first, SagaLib commands for the rest (§4.9).
 - **Q25** **Nexerelin random-sector awareness is on hold.** All mod compatibility questions are
-  discussed together after 1.0 (§11.7).
+  discussed together after 1.0 (§11.7). *Decided 2026-11-17 (task #31): built without a bridge,
+  §10.3.*
 - **Q26** After-1.0 features and their intent are recorded in §11, so they shape 1.0's design
   (data formats, ids, extension points) without being built now.
 
@@ -1086,27 +1087,473 @@ decisions.
 
 Saga Forge can read other mods' content formats and export to them, so a modder can use a
 framework players already have instead of (or as well as) SagaLib. Each one is an
-**editor extension** (reads/writes the format, adds pages or node types) plus, where in-game
-behavior is needed, an **optional bridge** in the library (§3.1). Rules for all of them:
+**editor extension** (reads/writes the format, adds pages or node types; `docs/extensions.md`)
+plus, where in-game behavior is needed, an **optional bridge** in the library (§3.1). Rules for
+all of them:
 
 - Only the active mod is written, with prefixed ids, like everything else (§6).
-- Using one adds that mod to `mod_info.json` dependencies (asked, one click). Not using it adds
+- Every other mod the mod has content for is in its list as **required**, **optional** or
+  **incompatible** (§10.1). A required mod is added to `mod_info.json` dependencies (asked, one
+  click). An optional one is never added there, and everything that uses it is conditional
+  (§10.2) or a version (§10.6). An incompatible one only gets a warning. Not using a mod adds
   nothing.
 - The library must run normally when that mod is not installed.
 - Their formats are documented from the installed mod (read-only) in `docs/FORMATS.md` before
-  any code is written, with the version they were checked against.
+  any code is written, with the version they were checked against. For this review that is
+  FORMATS.md, "Other mods and frameworks" (Nexerelin 0.12.2d, LunaLib 2.0.5, MagicLib 1.5.6 and
+  the dependency survey of the 26 installed third-party mods).
 
-Candidates, in order:
+### Decisions (task #31, 2026-11-17)
 
-| # | Mod | What | Status |
+| Candidate | Decision | Why | Work |
 |---|---|---|---|
-| 1 | **MagicLib: bounties** (`magicBounty_data.json`) | Export a simple quest or encounter as a MagicLib bounty; show existing bounties on the quest page; optional bridge so a Saga Forge quest step can start or check a bounty. Designed together with random targets (§11.2). | **Task #27** (after M5) |
-| 2 | LunaLib settings | Settings page for a mod's quests (difficulty, toggles) read by the library | idea, §11.7 |
-| 3 | Nexerelin faction config (`exerelinFactionConfig`) and random-sector awareness | Extra faction data for Nexerelin; quests that need the vanilla sector | on hold, §11.7 |
-| 4 | **ReadAloud** voice hints (our own mod) | Per-character voice hints for ReadAloud | after 1.0, §11.8 |
+| **The mod's list of other mods (required, optional, incompatible), conditional content** (§10.1, §10.2) | **Build** (first) | The game has no optional dependency, so "works with X" has to be done the way installed mods do it: data only X reads, plus `isModEnabled` checks. The same list filters the editor's lists and shows mod-specific tools. Every integration below relies on it. | **Task #60** |
+| **Versions by installed mods**, and the editor reading other mods' content (§10.6) | **Build** | One character, quest or place with versions per combination of optional mods, chosen at new game. The editor must know other mods' places and people to offer them. | **Task #64** |
+| **Nexerelin: random sector** (§10.3) | **Build**, no bridge | The most common way quests break with Nexerelin: hand-made vanilla markets, systems and people don't exist. Nexerelin marks the sector in memory (`$nex_randomSector`), and the fallback, random targets, is already built (Phase 7c). | **Task #61** |
+| **Nexerelin: markets changing owner mid-quest** (§10.3) | **Build**, no bridge | Invasions are routine with Nexerelin. A quest pointing at a market that changed hands reads wrong or gets stuck. A daily owner check in SagaLib covers every mod that moves markets. Nexerelin's listener would need a bridge and covers only Nexerelin. | **Task #61** |
+| **Nexerelin: faction config** (`exerelinFactionConfig`, §10.3) | **Build**, data only | 5 installed faction mods ship one without depending on Nexerelin. Without it, a new faction gets Nexerelin's neutral defaults: it can't be picked at the start, and its starting relations follow Nexerelin's modes. | **Task #63** |
+| Nexerelin: quest skip (`questSkip.json`) | **Later** | A convenience, not a breakage: lists the mod's quests in Nexerelin's new-game "skip quests" screen. Data only, since a SagaLib quest's end state is memory, but it needs a small design: which ending a skip means and which flags that ending sets (the editor could compute them from the chosen path). Rewards would need a plugin. **Built (#65)**: Nexerelin applies the flags only through a plugin, so SagaLib's bridge plugin is named by every chain and also gives the rewards. | **Task #65** |
+| Nexerelin: custom starts, scenarios, its other configs | **No** | Starts and scenarios need a Java class each. The other configs (agents, mercenaries, ground battles, mining) aren't quest, faction or location content. | — |
+| **LunaLib settings page** (§10.4) | **Build** | 10 installed mods ship a LunaLib page, 7 of them without depending on LunaLib, so it's where players expect a mod's options. SagaLib can read the defaults without LunaLib, so players without it lose nothing. | **Task #62** |
+| MagicLib bounties | unchanged: **tasks #27 and #59** | Optional by default under §10.1 (the bounty file is only read by MagicLib). | #27, #59 |
+| MagicLib achievements (`magic_achievements.csv`) | **Later** | A nice reward for quest endings. The file does nothing without MagicLib, but unlocking needs a bridge (no rule command), so it belongs after #59, which creates the MagicLib bridge. **Built (#65)**: Saga › Achievements, `SF_Achievement`. | **Task #65** |
+| Version Checker files | **Done** (Phase 8b) | 22 of 26 mods ship one. Saga Forge already writes it with the release. | — |
+| ReadAloud voice hints (our mod) | unchanged: **task #58** | §11.8. | #58 |
+| LazyLib, GraphicsLib, Ashlib, Building Menu Overhaul, AoTD Theory of Toolbox, PatchLib, RetroLib, sidebarLib, VideoLib, Variants Lib, Particle Engine, Officer Extension, Crew Replacer, Second-in-Command | **No** | Popular as dependencies (LazyLib 16, Ashlib 5, GraphicsLib and BMO 3), but none has a campaign content format a quest, faction, person or location would use. They are code libraries, combat or UI frameworks, ship tools, or (PatchLib) patch the game's own code, which the project rules rule out. A mod made with Saga Forge can still list any of them as required (§10.1). | — |
+| Ruins across mods (RUINS-ASSESSMENT F9, INGAME-CHECKS RC-F9) | Covered, no separate work | AoTD Vaults of Knowledge replacing vanilla's `ruins_*` specs doesn't touch ours (separate specs). Ruins on another mod's planets are a conditional addition (§10.2). In a random sector, random ruins targets (Phase 7c) are the fallback (§10.3). | — |
 
-Note: bounties are MagicLib's (`magicBounty_data.json`, plus the older `vayraBounties` format it
-also reads). LunaLib (2.0.5 installed) has settings and title screens, but no bounty system.
+### 10.1 The mod's list of other mods (Saga › Mods)
+
+The game has no optional dependency and no "incompatible" key (FORMATS.md, "mod_info.json and
+dependencies"). A mod in `dependencies` must be enabled, and the launcher knows nothing else.
+Mods that support another mod "if present" check `isModEnabled` in code and ship data files only
+that mod reads. Saga Forge does the same, driven by **one list per mod**: the other mods it has
+content for.
+
+**Where.** Stored in `sagaforge/project.json` → `mods: [{ id, name, use: 'required' | 'optional' |
+'incompatible', minVersion?, reason? }]`, next to the prefix and the target game version (#47). A
+mod that isn't in the list is not used. The list is edited in a new **Saga › Mods** tab, a table of
+the installed mods with these columns:
+
+| Column | What it shows |
+|---|---|
+| Mod | name, id and version |
+| Use | required / optional / incompatible / not used |
+| Min version | the lowest version of that mod this one needs |
+| Used by | what in this mod uses it |
+| Unlocks | the tools that appear when it's selected, e.g. "Nexerelin: Sector condition, faction config tab" |
+| Reason | incompatible only |
+
+A **pill in the header**, next to the prefix and the target-version pill ("Works with: Nexerelin,
+LunaLib"), opens the same tab, so the reason a list is filtered is visible from every page. It's
+built there without a mock-up first, and can move if it doesn't fit (§10.7, question 2).
+
+**What each choice does:**
+
+| Use | `mod_info.json` | Content | Lists, pickers, tools | In game | Release notes |
+|---|---|---|---|---|---|
+| **Required** | in `dependencies` (with `version` when a minimum is set); the launcher won't enable the mod without it | may use the mod freely | its content and its tools show | — | "Requires" |
+| **Optional** | never | conditional (§10.2) or a version (§10.6); the mod must load and play without it | its content and tools show; Play mode gets a switch for it | — | "Works with" |
+| **Incompatible** | never: the game can't express it | referring to its content is an Error | hidden | **doesn't stop loading.** When both are enabled, SagaLib logs a warning at startup ("<this mod>: the author marks <other mod> as possibly conflicting: <reason>") and shows it once per save as a notice in game | "Known conflicts", with the reason |
+| **Not used** | nothing | referring to its content is a Problem (below) | hidden | — | — |
+
+- **Which mods are offered**: every installed mod, enabled or not (you may have one switched off
+  in your own game while you write for it). Not offered: the active mod, SagaLib (still automatic:
+  added when the export needs it, §3.1), translation mods (they keep their own link, Phase 8c),
+  and the libraries the listed mods depend on, which don't need listing.
+- **The incompatible warning** comes from a small file the export writes for SagaLib,
+  `data/sagaforge/mods.json`: the mod's optional and incompatible lists with their reasons, which
+  SagaLib also uses for its dev menu and for the record of the mods a save started with (§10.2).
+  A dialog-only mod has no SagaLib, so it only gets the release notes' "Known conflicts".
+- **Filtering the lists.** Read-only lists and pickers (factions, people, systems, markets, images
+  and portraits, items, ships, the Dialog browser) show vanilla + this mod + its required and
+  optional mods. Each list has a **Show all installed mods** switch. Picking something from a
+  mod that isn't in the list offers **Add as optional / Add as required** right there, so the
+  filter is never a dead end.
+- **Checks are never filtered.** Id clashes and dialog takeovers are still checked against every
+  installed mod, as Q8 decided: a clash with an unlisted mod still hits players who use both.
+- **Mod-specific tools show only for listed mods.** Examples: the Nexerelin tab on factions and the
+  Sector condition (§10.3), the LunaLib Settings list (§10.4), MagicLib bounties (#27), and every
+  future purpose-built tab. Settings › Extensions stays app-wide and means "this tool is
+  available". The per-mod list decides whether it shows in this mod. The extension contract's
+  `requiresMod` drives both (`docs/extensions.md`). Mod conditions (`SF_HasMod`), the "Only with"
+  pickers and versions offer only the optional mods. A required mod is always there, so it needs
+  no condition or version.
+- **What counts as using a mod is found by the editor, not typed.** Every id in the game index
+  carries the source that defines it (`Origin.sourceId`). The editor collects references to
+  another mod's faction, person, market, system, hull, item, image or rule command, plus the
+  framework files the mod writes (LunaSettings, Nexerelin config, MagicLib files). A used mod
+  that isn't in the list is a Problem with two fixes, **Add as required** and **Add as optional**.
+  The suggestion: a framework used only through its data files (LunaLib, Nexerelin, MagicLib
+  bounties and achievements) → optional; another mod's content the story itself needs →
+  required.
+- **Removing a used mod from the list, or marking it incompatible**, asks first ("12 items use
+  UAF"), and the items show in Problems if you go ahead.
+- **Load order for changes to another mod's content.** A patch of another mod's `.faction` (or any
+  merged JSON) wins for single values only if this mod sorts **after** that mod (FORMATS.md, "Load
+  order": for JSON the last mod wins, for CSV rows the first). A check warns when a patched value
+  would lose and offers a `sortString`. Without the other mod, the patch does nothing (§10.2).
+- **Reading the listed mods' content** (places, people, quests) is §10.6, "What the editor knows
+  about other mods".
+
+### 10.2 Conditional content
+
+One setting on every item, the same everywhere: **Only with** these mods / **Only without** these
+mods, plus, for Nexerelin, **Only in the hand-made sector** / **Only in a random sector** (§10.3;
+on hold since 2026-11-18).
+It shows as a chip ("only with Nexerelin") on the item's card and in lists.
+
+**Combining mods.** Both lists take any number of mods, and everything listed must hold: every
+"with" mod installed, no "without" mod installed. So mutually exclusive versions of one option or
+scene are written like this:
+
+| Version | Only with | Only without | Exported conditions |
+|---|---|---|---|
+| neither mod | — | A, B | `!SF_HasMod A` + `!SF_HasMod B` |
+| A only | A | B | `SF_HasMod A` + `!SF_HasMod B` |
+| B only | B | A | `SF_HasMod B` + `!SF_HasMod A` |
+| both | A, B | — | `SF_HasMod A B` (all listed) |
+
+- "Either A or B" (any of them) is a switch on the "with" list, exported as `SF_HasAnyMod A B`. A
+  rule's conditions are always all-must-hold, so this needs its own command.
+- An option with conditions is exported like a show-once option (§4.3): as its own small rule on
+  the node's options trigger, carrying the conditions.
+- A check plays every combination of the mod's optional mods (2 mods = 4 combinations) and
+  reports a node left with no options, or a Branch with no case, in any of them. Play mode's
+  switches show each combination.
+- `SF_HasMod` tests whether a mod is enabled, not its version. A minimum version
+  (`SF_HasMod A 1.2`) can be added later if needed.
+
+**Whole questlines.** "Only with" on a quest means SagaLib never offers or starts it. Its dialog
+never fires, because those rules test the quest's state, and every later quest that requires it
+stays unreachable through its prerequisites (§4.8). The condition **spreads automatically**: to the
+quests that need this one, and to the people, places, encounters and events that only this
+questline uses. Each shows it greyed, "from: The Lost Convoy", so the designer sets it once on the
+first quest. Things also used by unconditional content keep no condition, and the editor says
+which ones. The questline's new items and new factions still exist, because the game always loads
+them (table below). They stay unused. A faction that should only appear with the mod gets a
+scripted change, "hide from the intel tab", with `modsWithout` (SagaLib calls
+`FactionAPI.setShowInIntelTab(false)`, in both game versions). The file's own `showInIntelTab`
+key can't do it: it would hide the faction with the mod too.
+
+How each kind of output becomes conditional:
+
+| What | How | Without the mod |
+|---|---|---|
+| Quests, people, systems and additions to systems, encounters, world events, roaming fleets, progress events, pools (SagaLib JSON) | `"modsWith": [...]`, `"modsWithout": [...]` on the item (SagaLib 1.3, additive) | SagaLib skips the item and logs one info line: a quest isn't offered or started, a person isn't created, a system or addition isn't built |
+| Dialog: an option, a Branch case, a phrase case, a start rule (`rules.csv`) | condition `SF_HasMod <modId>`, or `!SF_HasMod <modId>` (a new SagaLib rule command; vanilla negates commands with `!`) | the rule doesn't match. The export adds SagaLib as a required dependency (see below) |
+| Starting relations and scripted faction changes (`factions.json`) | the same `modsWith` per entry | skipped quietly (today a relation with an unknown faction logs an error) |
+| Rewards and costs in another mod's items or ships | a Branch case, or a reward with a fallback | the fallback is given |
+| A patch of another mod's faction (`.faction` at its path) | nothing to do: the game loads a `.faction` only through a `factions.csv` row, and this mod has none for it | does nothing (to confirm in game) |
+| Framework files (`LunaSettings.csv`, `exerelinFactionConfig/*`, `magic_achievements.csv`, `magicBounty_data.json`, `questSkip.json`, version files) | nothing to do: only that framework reads them | does nothing |
+| Game-loaded rows that point at the mod: a new faction's known ships or portraits from it, an item using its plugin class or icon, an industry or market condition from it | **can't be conditional**: the game loads them every time | **Error**: "loaded by the game every time; make <mod> required, or move it into a SagaLib change". Unknown hull ids in a faction count as an error until checked in game |
+| Dialog that uses the optional mod's **own rule commands** (e.g. Nexerelin's `Nex_*`, MagicLib's bounty board command) | **can't be conditional**: the game looks up every rule command when it loads `rules.csv` and stops with "Command [X] not found" (seen with SagaLib switched off, INGAME-CHECKS.md 2026-11-15), even inside a rule that `SF_HasMod` guards | **Error**: make the mod required, use its memory keys instead (unset = false, safe), or a SagaLib bridge command that calls it only when it's there |
+| Text tokens of the optional mod (`$someModToken`) | safe inside a guarded rule: the text is only shown when the mod is there | an unguarded one shows as raw `$token`: warning |
+
+- **Automatic conditions.** When an item refers to an optional mod's content (a person placed at
+  a UAF market, a quest whose contact is that person, an encounter with a UAF fleet), the editor
+  adds the condition itself and shows it greyed, "from: uses UAF". The designer adds conditions by
+  hand for the opposite case, e.g. a vanilla-only version of a scene with **Only without**.
+- **Play mode and the Test context** get a switch per optional mod in the list (default: whether
+  it's installed) and the sector switch. Content outside the current setting is greyed and skipped.
+- **Check mod** runs a second pass "without the optional mods". The reference checks run with
+  those mods' ids removed, so anything that still depends on them unconditionally is reported.
+- Test profiles don't switch mods: in game, the real mod list decides. SagaLib's dev menu lists
+  what was skipped and why. `SF_HasMod` and the skipping get shared golden cases, like every SagaLib
+  rule (§3.1).
+- **The mod list a save started with is what counts** (decided 2026-11-17, §10.7). Changing mods
+  in a running game isn't encouraged, so SagaLib does what is least likely to break the save:
+  - The first time SagaLib sees this mod in a save (at new game, or when the mod itself is added
+    to a running game), it records in the save which of the mod's optional and incompatible
+    mods are enabled.
+  - Every mod condition (`SF_HasMod`, `SF_HasAnyMod`, `modsWith` / `modsWithout`) and every version
+    (§10.6) uses that record: a mod counts only if it was enabled when the game started **and** is
+    still enabled. A mod added later changes nothing in this mod: no new content appears and
+    nothing switches. A mod removed later stops what depends on it, and what already exists
+    stays. SagaLib doesn't clean up.
+  - **The player is told.** When the enabled mods differ from the record, SagaLib logs it on every
+    load and shows a one-time notice per save and per change. Example: "<This mod> was set up for
+    the mods this game started with. <Mod1> was added since, so <This mod> plays on without its
+    <Mod1> content. Start a new game to get it." For a removed mod: "<Mod1> was removed after this
+    game started. The author didn't plan for that, so things may break."
+  - The release notes and forum draft (Phase 8b) say it next to "Works with": "Add or remove these
+    mods only before starting a new game."
+- `SF_HasMod` can't change which mod's JSON value wins (load order, §10.1).
+- `SF_HasMod` and `SF_HasAnyMod` are SagaLib rule commands, so a mod that uses them depends on
+  SagaLib: the export adds SagaLib as a required dependency, as it does for every `SF_` command
+  (§3.1). This only matters for a dialog-only mod, which today ships without SagaLib. Nexerelin's
+  sector condition is an exception: it's a plain memory key and works without SagaLib.
+
+### 10.3 Nexerelin (0.12.2d)
+
+**Random sector** (no bridge). **On hold** (decided 2026-11-18, after it was built for #61 and
+passed its first in-game check: all random-sector support is descoped for now and kept in its own
+on-hold task; the removed code is saved as `docs/parked/random-sector.patch`, see
+`docs/parked/README.md`). Only "a quest isn't offered or started when a place it needs doesn't
+exist" stayed in #61, as general protection. The design as built:
+- Condition **Sector: hand-made / random**, exported as `!$global.nex_randomSector` /
+  `$global.nex_randomSector`. That's Nexerelin's own sector-memory flag, unset (= hand-made) when
+  Nexerelin isn't installed. It works in `rules.csv` without SagaLib.
+- **"Needs the hand-made sector" is found automatically**: content that names a vanilla market,
+  system, planet or person that vanilla creates for its hand-made sector (the index knows them,
+  §4.5). Problems lists them per item with three choices:
+  - **only in the hand-made sector**: skipped in a random sector. This is the default.
+  - **use a random target** instead (§11.2, built in Phase 7c): the only kind of place that exists
+    in both.
+  - **keep**: the designer accepts that it doesn't run there.
+- SagaLib already acts like vanilla when a fixed place is missing: the person isn't placed, the
+  addition to a missing system isn't built, and the log says so. New: a quest isn't offered or
+  started when a fixed market, person or system it needs doesn't exist (`create()` returns false,
+  as vanilla's missions do when a search finds nothing), so it can't break halfway.
+- The mod's new systems are still built in a random sector, since they don't depend on vanilla's.
+  The existing spacing log (`onNewGameAfterProcGen`) reports overlaps with random systems.
+
+**Markets changing owner mid-quest** (no bridge):
+- Vanilla has no event for it, and Nexerelin's `InvasionListener` would need a bridge while
+  covering only Nexerelin. Instead, when a quest starts, SagaLib remembers the owner of each fixed
+  market the quest uses: the giver's market, stage markers, Arrive places, and random targets
+  that are markets. It checks them once a day in its runtime script. This covers invasions,
+  rebellions, sales and any other mod.
+- Per quest, **If a market of this quest changes owner**:
+  - **keep going** (the default)
+  - **fail the quest**
+  - **go to a stage**, where a Branch can test `$global.<quest>_ownerChanged` (the market id) and
+    `$global.<quest>_newOwner` (the faction)
+
+  Play mode offers the event in its menu, like an encounter outcome.
+- **Contacts.** On capture, Nexerelin changes the faction of a market's administrator, portmaster,
+  supply officer and station, base or outpost commander only (FORMATS.md). The People page warns
+  when a quest contact has one of those posts at a market that can be invaded.
+- **Protect from invasion**: a checkbox on the mod's own markets. SagaLib sets `$nex_uninvadable`
+  in the market's memory, and Nexerelin then never invades it. Without Nexerelin it does
+  nothing. It's meant for places the story can't lose.
+
+**Faction config** (editor extension, data only):
+- A **Nexerelin** tab on the mod's **own** factions (not on overrides):
+  - playable and starting faction, difficulty text and new-game tooltip
+  - pirate or hostile to all, can invade and invasion strength
+  - morality, alignments, diplomacy traits, liked and disliked factions
+  - fleet names, free market and tariff, special forces, `corvusCompatible`
+  - "keep these relations when Nexerelin randomizes"
+
+  It's exported as `data/config/exerelinFactionConfig/<id>.json` plus a row in
+  `data/config/exerelinFactionConfig/mod_factions.csv`. It does nothing without Nexerelin and is
+  optional by default.
+- **One source for starting relations.** On export, `startRelationships` is filled from the
+  faction's relations (§4.1), together with `useConfigRelationshipsInNonRandomSector: true`, so
+  Nexerelin applies them in every mode and randomizes them only when the player asks. SagaLib then
+  leaves the starting relations of such a faction to Nexerelin whenever Nexerelin is enabled (it
+  checks that the mod ships the config file), so the two never overwrite each other. Without
+  Nexerelin, SagaLib sets them as today.
+- Changing Nexerelin's config for **other** factions (a merged JSON patch would work) is not
+  included. Later, if asked. One exception (user, 2026-11-19): **ready-made fleets added to the
+  player faction** (free start, own faction), an appended `player.json` with only the fleet lists,
+  edited with the factions' ready-made fleets on Fleets › New-game fleets.
+
+### 10.4 LunaLib settings (2.0.5)
+
+- The mod gets a **Settings** list (Saga overview → Settings). Each setting has:
+  - an id (prefixed), a label and a tooltip
+  - a type: on/off, whole number, number, choice or text, plus header and text lines for layout
+  - a default, a minimum and maximum, the choices, and a tab
+- Export writes `data/config/LunaSettings.csv`, plus `LunaSettingsConfig.json` when the mod has an
+  icon. LunaLib shows the page. Without LunaLib, the file is never read.
+- SagaLib reads the defaults from the same file itself (the game's `loadCSV`, no LunaLib needed)
+  and sets each value as `$global.<settingId>` on every game load. The LunaLib bridge
+  (`src-optional/lunalib`, the same pattern as ReadAloud's) replaces them with the player's values
+  and registers a `LunaSettingsListener`, so a change in the menu applies at once.
+- Settings work as conditions everywhere: quest `requires`, Branch cases, phrases, and
+  on/off switches for whole quest lines ("Enable the pirate questline"). In this first version a
+  setting can also scale **encounter fleet size** and **credit rewards** (difficulty). Other numbers
+  come later.
+- LunaLib's values are shared by every save (FORMATS.md), and the editor says so next to the list.
+  Quests read a setting when they decide (when offered, at a Branch), so changing it doesn't break
+  a quest that's already running.
+- Play mode and the Test context show each setting as a control.
+- Optional by default: LunaLib is never added to `mod_info.json` unless the designer makes it
+  required.
+
+### 10.5 Order of work
+
+1. The mod's list of other mods, conditional content (§10.1, §10.2): **#60**. Everything below
+   uses it. **Built 2026-11-17** (Saga Forge, SagaLib 1.3; in game: INGAME-CHECKS.md, "Task #60").
+2. Versions by installed mods, reading other mods' content, the sector snapshot (§10.6): **#64**.
+   **Built 2026-11-17** (Saga Forge, SagaLib 1.3; in game: INGAME-CHECKS.md, "Task #64"). As built:
+   a version is a set of fields per combination (`versions: [{ mods, set }]` in the plan, SagaLib
+   `versions: [{ id, modsWith, set }]` computed from each combination's export); names in dialog use
+   generated phrase tokens `$<person>_name` / `_firstName` / `_lastName`; a dialog rule whose
+   conditions a version changes (a moved named place) gets copies that exclude each other instead
+   of a score; 0.98a has no setter for a faction's long display name.
+3. Nexerelin: owner changes (§10.3): **#61**. **Built 2026-11-18** (Saga Forge, SagaLib 1.3; in
+   game: INGAME-CHECKS.md, "Task #61", test mod `sixtyone_a`, passed 2026-11-18). As built: the "places a quest needs"
+   are read by SagaLib from the quest JSON it already has (contact, `$id ==` start conditions,
+   markers, Arrive places), so that part needs no export change; "If a market of this quest changes
+   owner" defaults to not watching, and "go to a stage" fires a trigger that runs what follows that
+   Stage node. **The random sector was descoped the same day** and is on hold in its own task (its
+   code, built and partly checked in game, is in `docs/parked/random-sector.patch`). As it was
+   built: the sector was part of every Mods field (`sector`: handmade, random, or any = keep), the
+   automatic "only in the hand-made sector" applied only when the mod listed Nexerelin, and "Use a
+   random target" replaced the place with a market target in both sectors.
+   Follow-up **#70** (a character's presence depends on who controls their market): **built
+   2026-11-18** (People › Presence, SagaLib 1.3 `presence` and `SF_FactionRep`; in game:
+   INGAME-CHECKS.md, "Task #70", test mod `seventy_a`, passed 2026-11-18). As built: the check runs with
+   #61's daily tick and on load and compares the owner's relation level, so wars and peace count
+   too; "away" hides the comm-directory entry (`setHidden`), refuses the contact's offers and sets
+   `$global.sagaforge_away_<person>`; "elsewhere" only lists them in another comm directory.
+4. LunaLib settings (§10.4): **#62**. **Built 2026-11-18** (Saga Forge, SagaLib 1.3 with its
+   LunaLib bridge; in game: INGAME-CHECKS.md, "Task #62", test mod `sixtytwo_a`, passed 2026-11-18).
+   As built: the list is in `project.json` (`settings`, `settingsIcon`) and Saga › Settings;
+   LunaSettings.csv is an owned block, so hand-written rows stay. A whole-number setting scales as
+   a percent (100 = as made), a number as times, on/off and choice settings by a factor per value;
+   only fleets sized by points scale. A quest-line switch is a quest prerequisite on the setting.
+   The editor doesn't translate the page's labels (LunaLib reads the CSV itself).
+5. Nexerelin faction config (§10.3): **#63**. **Built 2026-11-18** (Saga Forge, SagaLib 1.3; in game:
+   INGAME-CHECKS.md, "Task #63", test mod `sixtythree_a`, passed 2026-11-19; the random sector on hold). As built: the configs are in
+   `sagaforge/nexerelin.json` (raw, so unknown keys stay), read in from the mod's own config files
+   the first time a mod is opened. **Ready-made fleets** were added (not in the decided list), on Fleets › New-game fleets with the
+   player faction's (an appended player.json; user, 2026-11-19): without them, a player joining a
+   faction only gets Nexerelin's Custom fleet (FORMATS.md). Only the
+   relations without mod conditions go into the config; those with conditions stay SagaLib's.
+   SagaLib checks that the mod ships the config before leaving relations to Nexerelin. Answered from
+   the code: ModPlugins run in mod order.
+6. Deferred cross-mod items: Nexerelin quest skip, MagicLib achievements (after #59), the
+   shared-drop-group warning (§10.7, question 5): **#65**. **Built 2026-11-19** (Saga Forge, SagaLib
+   1.3 with its third bridge, `src-optional/nexerelin`; in game: INGAME-CHECKS.md, "Task #65", test mod
+   `sixtyfive_a`, passed 2026-11-19). As built:
+   - **Quest skip** (Saga › Quest skip): chains of the mod's quests; per quest the ending a skip
+     means, and Saga Forge computes its flags along the shortest path from the Start node (state, step,
+     completed key, ended key, variables, Sets on the way; keys can be left out or added).
+     Nexerelin's forced on/off lists come from the prerequisites. **Rewards: given** (the decision this
+     task had to make): Nexerelin's code applies a skip's flags only through a plugin, so data only
+     was never possible; the plugin SagaLib needs anyway (`SagaQuestSkipPlugin`) gives the path's
+     rewards after the time pass, once (`$global.sagaforge_skipped_<quest>`), switchable per quest.
+     People to show go through the plugin, not `peopleToUnhide` (Nexerelin's loop throws on a person
+     without a comm-directory entry). A skip doesn't unlock achievements.
+   - **Achievements** (Saga › Achievements): `magic_achievements.csv` rows (owned block), unlocked at
+     an End node or by an action (`SF_Achievement`, through the MagicLib bridge).
+   - Images only MagicLib or Nexerelin draw are listed in the mod's `settings.json` graphics
+     (`<prefix>images`), since neither loads them.
+   - **Shared drop groups**: Phase 8a's warning already covered loot pools; it now covers the mod's
+     hand-written rows too.
+7. Economy mods review (AoTD, Industrial.Evolution) and commodity targets (§10.7, question 6):
+   **#66**.
+
+MagicLib bounties (#27, #59) follow §10.1 (optional by default) whichever is built first.
+**#27 built 2026-11-18** (format and export, no SagaLib change; DESIGN-MAGICLIB-BOUNTIES.md; in
+game: INGAME-CHECKS.md, "Task #27", test mod `twentyseven_a`). The bounty file makes MagicLib a used
+mod: Problems and the Export dialog offer Add as optional (suggested) or required (one click).
+**#59 built 2026-11-18** (SagaLib 1.3's first optional bridge, `src-optional/magiclib`: Action
+"Start a MagicLib bounty" = `SF_StartBounty`, conditions "MagicLib bounty … is <state>" =
+`SF_BountyState`, read from MagicLib's memory keys; without MagicLib every bounty is unavailable;
+true/false quest-ended keys for MagicLib's triggers; DESIGN-MAGICLIB-BOUNTIES.md §6; in game:
+INGAME-CHECKS.md, "Task #59", same test mod; passed 2026-11-18 with and without MagicLib).
+**#69 built 2026-11-19**: the quest node "Wait for a MagicLib bounty" (outputs succeeded / failed /
+expired / dismissed) goes on by itself when the bounty ends; SagaLib watches MagicLib's memory keys
+(quest JSON `bountyWaits`; decided over `job_conclusion_script`; DESIGN-MAGICLIB-BOUNTIES.md §7; in
+game: INGAME-CHECKS.md, "Task #69", same test mod; passed 2026-11-19 with and without MagicLib). If #27
+comes before step 1, it keeps today's one-click dependency question, and step 1 turns that into
+the required/optional choice. ReadAloud hints (#58) are independent.
+
+### 10.6 Versions by installed mods
+
+The bigger form of §10.2: instead of an item that exists or not, **one item with versions** per
+combination of the mod's optional mods. Example: a character, Reyes, with two optional mods,
+Mod1 and Mod2.
+
+| Version | What the designer sets there | What Reyes ends up with |
+|---|---|---|
+| Base | everything, as today | normal location, name, portrait and dialog |
+| + Mod1 | location: a market from Mod1 | Mod1 location; the rest from Base |
+| + Mod2 | last name, portrait | Mod2 name and portrait; the rest from Base |
+| + Mod1 & Mod2 | the swapped dialog | Mod1 location + Mod2 name and portrait + swapped dialog |
+
+- **One id, not copies.** Four separate characters would mean four ids that every quest, rule,
+  flag and save would have to choose between. With versions, the id never changes (save-safe),
+  the designer edits one item, and each version stores only what differs.
+- **The editor**: a versions strip at the top of each editor that supports versions, built from the
+  optional mods (2 mods → Base, Mod1, Mod2, both). Picking a version shows the item as it will be
+  in that version. A field changed there becomes that version's value, with **Revert**, like a
+  faction override's `set` entries (§4.1).
+- **Inheritance**: the most specific matching version wins, field by field (both → Mod1 or Mod2 →
+  Base). So the "both" version above only holds the dialog swap. If Mod1 and Mod2 set the same
+  field differently, the editor asks for the value in the "both" cell.
+- **Chosen from the mod list the save started with** (§10.2), and kept. SagaLib picks each item's
+  version from that record and stores it in the save. Generated rules test the stored choice, so a
+  mod added to a running game never changes an established character mid-story. Items the mod adds
+  in a later update of its own get their version from the same record the first time a save sees
+  them. Versions never switch later (§10.7, question 4).
+- **What Saga Forge generates** (the designer never writes the copies):
+  - SagaLib content (people, quests, encounters, systems, events, pools, relations, scripted
+    faction changes): one entry with `"versions": [{ "modsWith": [...], "modsWithout": [...],
+    "set": {...} }]`, which SagaLib resolves.
+  - Dialog (`rules.csv`): one extra rule per node that a version changes, carrying the stored
+    version as a condition. The more specific rule wins (§6). A version can change a single node
+    or replace a whole conversation from its first line.
+  - Quest starts: a contact quest starts wherever its contact is, so the person's version is
+    enough. A start at a place (Arrive, bar) gets its own version. A place used in several spots
+    (start, stage markers, Arrive) can be one **named place**, so it's changed once.
+  - Names in dialog use the person's name token, so a version's name shows everywhere. A check
+    warns when a text spells out a versioned name literally.
+- **Play mode and the Test context** get a version switch (the optional mods' switches).
+
+**What can have versions:**
+
+| Kind | How |
+|---|---|
+| People, quests (start, places, text, rewards, time limits), dialog, encounters and fleets, the mod's own systems and markets, world events, pools, starting relations | fully, chosen at new game |
+| A faction at runtime: display name, logo, crest, secondary color, known ships, illegal goods, doctrine, hidden from the intel tab | through SagaLib's scripted faction changes. `FactionAPI` has setters for these (`setDisplayNameOverride`, `setFactionLogoOverride`, `setFactionCrestOverride`, `setSecondaryColorOverride`, `setShowInIntelTab`, …), in both game versions |
+| Items: name, description, icon, base price; descriptions of the mod's places and factions | at startup, from the installed mods, the way translations already rename items (SagaLib 1.2, Phase 8c). `CommoditySpecAPI` and `SpecialItemSpecAPI` have `setName`, `setIconName`, `setBasePrice` (and `setDesc` for special items) in both game versions. The one exception to "the mod list the save started with": these are set before any save is loaded, so they follow the installed mods |
+| **Can't have versions** | **Why** |
+| A faction or item that exists only with a mod | the game loads it at startup, before anything can check |
+| A faction's main color, ranks or music; item tags, stack size and cargo space | loaded at startup, with no setter |
+| Other mods' own characters and factions | read-only by project rule. Versioned dialog around them is fine |
+| Framework files (LunaLib page, Nexerelin config, MagicLib files) | static files, only read by their framework |
+
+**What the editor knows about other mods.** To offer Mod1's market as Reyes's location, the
+editor has to know Mod1's places and people. Today it doesn't, for two reasons:
+
+| | A mod made with Saga Forge | A vanilla-style (Java) mod |
+|---|---|---|
+| Factions, items, rules, portraits | read today | read today |
+| Systems, markets, people | **not read today** (they're in its SagaLib files). New: the index reads every installed mod's `data/config/sagaforge/content.csv` and the files it lists, with that mod as their origin | read only when the mod ships `data/scripts/world/*.java` sources. Otherwise the id is typed and marked "not checked", or comes from a **sector snapshot** (below) |
+| Its quests | new: their state keys (`$global.<quest>_state`), so "after Mod1's quest X" works as a prerequisite, conditional on Mod1 automatically | only the memory keys its own rules use (the flags scan already reads them) |
+
+- **Sector snapshot**: a SagaLib dev-menu button (dev mode only) writes the id, name, faction and
+  system of every system, market, person and place in the running game to the game's common data.
+  The editor imports it as a source "seen in game", together with the mod list it was taken with.
+  This turns "not checked" into checked for any mod, Java-only ones included. It was deferred
+  from Phase 7c (RC-R1b, for random targets); this is the reason to build it.
+- In game there's no difference between the two kinds: SagaLib finds markets and people by id
+  through the game's API.
+
+### 10.7 Questions decided (2026-11-17, user)
+
+1. **Task split**: versions, reading other mods' content and the sector snapshot (§10.6) are "Saga
+   Forge + SagaLib: versions by installed mods, and other mods' content" (#64), right after "Saga
+   Forge + SagaLib: optional and required mods, conditional content" (#60). #60 keeps the rest of
+   §10.1 and §10.2, and its description was updated to these decisions.
+2. **The header pill**: no mock-up. It's built in the header, and moved later if it doesn't fit.
+3. **The incompatible warning**: log + a one-time notice in game per save. A dialog-only mod
+   (no SagaLib) gets "Known conflicts" in its release notes only.
+4. **Mods added or removed mid-save**: not encouraged. SagaLib does what is least likely to break
+   the save: everything follows the mod list the save started with, versions never switch, and
+   the player is told plainly that the game is in a state the author didn't intend (§10.2).
+5. **Mod-related deferred items** leave the deferred list for "Saga Forge: pick the next
+   features from the deferred list" (#53) and are grouped in their own task, "Cross-mod support:
+   deferred items (Nexerelin quest skip, MagicLib achievements, shared drop groups)" (#65):
+   - Nexerelin quest skip and MagicLib achievements (the "Later" items above).
+   - Two mods adding the same item to one vanilla drop group: only one row wins (FORMATS.md, "Loot,
+     defenders…"; noted for the cross-mod work in DESIGN-PHASE7). A Check warning when another
+     installed mod has a row for the same item and group.
+   
+   Other Saga Forge mods' dialog text (DESIGN-PHASE8, 8c item 13: their rules show with tokens;
+   fill them from their `text.json`) goes to the versions task, since it reads other mods'
+   content.
+6. **Economy mods and commodity targets** (user, 2026-11-17): only after the mod-support baseline
+   exists. Commodity targets leave #53's deferred list and go to "Cross-mod support: economy mods
+   review (AoTD, Industrial.Evolution) and commodity targets" (#66), a review like #31 that runs
+   after #65. Economy mods will probably need their own tabs and tools, shown only when the mod is
+   in Saga › Mods (§10.1).
 
 ---
 
@@ -1139,9 +1586,10 @@ mod-related work (§11.2, §11.7, §11.8; plus the existing task #27).
   vanilla's own contact missions.
 - In the editor: text uses the target's tokens (`$vgc_q_target_marketName`, system name,
   distance), and Play mode picks from the real sector data in the game index.
-- **To decide**, together with task #27: one picker shared by SagaLib quests and MagicLib
-  bounties (MagicLib bounties have their own target criteria), so a modder describes "where"
-  once and can export it either way.
+- **Decided** (task #27, 2026-11-18; DESIGN-MAGICLIB-BOUNTIES.md §3): no second picker. "Where" is
+  described once, as a fixed place or a 7c random target, and a MagicLib bounty gets a
+  translation into MagicLib's coarser search (distance bands from the sector's centre, system
+  themes, entity tags); the target editor and Problems say which criteria MagicLib can't use.
 - 1.0 already prepares: the `target` type in the model, a reserved field in the quest JSON format.
 
 ### 11.3 Quest templates
@@ -1190,18 +1638,24 @@ mod-related work (§11.2, §11.7, §11.8; plus the existing task #27).
   Checker file, and a forum post draft following `Forum Posts/FORUM_POST_RULES.md`. Discuss when
   there is a working version to release.
 
-### 11.7 Mod compatibility (all together, after 1.0)
+### 11.7 Mod compatibility (reviewed 2026-11-17, task #31)
 
-One review of every compatibility question instead of piecemeal decisions:
+The one review of every compatibility question is done. The decisions, with reasons, are in
+§10's table, and the designs are in §10.1–§10.4. The formats checked are in FORMATS.md, "Other
+mods and frameworks". In short:
 
-- **Nexerelin**: random-sector mode (vanilla systems, markets and people don't exist; quests
-  that need them should say so and be skipped or use random targets), invasions changing market
-  owners mid-quest, its faction config (`exerelinFactionConfig`).
-- **LunaLib**: settings pages for a mod's quests (difficulty, toggles), read by SagaLib through a
-  bridge.
-- **MagicLib**: bounties (task #27, §11.2).
-- Other popular frameworks found by looking at what installed mods depend on.
-- Each result becomes an extension (editor) and/or a bridge (SagaLib), following §10's rules.
+- **Build**: the mod's list of other mods (required, optional, incompatible; Saga › Mods) with
+  list filtering, tool visibility and conditional content (§10.1, §10.2; #60); versions by
+  installed mods and reading other mods' content (§10.6; #64); Nexerelin
+  random-sector awareness and markets changing owner mid-quest, both without a bridge (§10.3;
+  #61); a LunaLib settings page with a SagaLib bridge (§10.4; #62); Nexerelin faction config for
+  the mod's own factions (§10.3; #63).
+- **Already planned**: MagicLib bounties (#27, #59), ReadAloud voice hints (#58, §11.8).
+- **Later**, grouped in #65: Nexerelin quest skip, MagicLib achievements, plus the shared-drop-group
+  warning from the deferred list. **Built** (2026-11-19, §10.5 step 6).
+- **No**: Nexerelin custom starts and scenarios, and the libraries with no campaign content
+  format (§10's table).
+- Questions raised in the review and the user's answers: §10.7.
 
 ### 11.8 ReadAloud voice hints
 

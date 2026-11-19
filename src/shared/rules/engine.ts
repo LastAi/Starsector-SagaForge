@@ -6,6 +6,7 @@
  * battles) are answered by `assume` or hooks, never guessed silently: they are logged.
  */
 import type { RuleRow } from './types'
+import { levelAtLeast, repLevelOf, type RelationLookup } from '../replevels'
 import {
   ruleScore, optionCondition, parseConditions, parseOptions, parseScript, textVariants, paragraphs, tokenize, TOKEN_RE,
   type Condition, type OptionLine, type ScriptLine, type Value
@@ -128,6 +129,10 @@ export interface PlayContext {
   assume: Record<string, boolean>
   day: number
   random: () => number
+  /** #60: the mods that count (Play mode and Test context switches), for SF_HasMod / SF_HasAnyMod; missing = unknown (assumed). */
+  mods?: Set<string>
+  /** #70: faction-to-faction relation levels for SF_FactionRep (the mod's starting relations); undefined = unknown (asked). */
+  relation?: RelationLookup
 }
 
 export interface EngineHooks {
@@ -345,6 +350,15 @@ const REP_ACTIONS: Record<string, number> = { COOPERATIVE: 0.75, FRIENDLY: 0.5, 
 
 /** Condition commands the engine evaluates itself. undefined = unknown. */
 export function builtinCondition(e: Engine, name: string, args: string[]): boolean | undefined {
+  // #60 (SagaLib 1.3): the Test context's mod switches
+  if ((name === 'SF_HasMod' || name === 'SF_HasAnyMod') && e.ctx.mods) return args.length > 0 && (name === 'SF_HasMod' ? args.every((id) => e.ctx.mods!.has(id)) : args.some((id) => e.ctx.mods!.has(id)))
+  // #70 (SagaLib 1.3): faction A at least a level with B; a relation the editor doesn't know stays unknown (asked)
+  if (name === 'SF_FactionRep' && args.length >= 3 && repLevelOf(args[2])) {
+    const r = (s: string) => (s.startsWith('$') ? String(e.get(s) ?? '') : s)
+    const a = r(args[0]), b = r(args[1])
+    const is = a && a === b ? 'COOPERATIVE' : a && b ? e.ctx.relation?.(a, b) : undefined
+    return is === undefined ? undefined : levelAtLeast(is, args[2]) ?? false
+  }
   const p = e.ctx.player
   const rep = (f: string) => (f === 'player' ? 1 : p.rep[f] ?? 0)
   switch (name) {

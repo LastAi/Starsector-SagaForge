@@ -4,6 +4,8 @@
    * kind first, then the game's and other mods' (marked by source), with a search box and Import….
    * Illustrations are chosen by key (their settings.json name), everything else by path.
    */
+  import ShowAllMods from './ShowAllMods.svelte'
+  import { mods } from '../state/mods.svelte'
   import { onMount } from 'svelte'
   import Modal from './Modal.svelte'
   import ImageView from './ImageView.svelte'
@@ -58,11 +60,16 @@
 
   const shown = $derived.by(() => {
     const f = filter.trim().toLowerCase()
-    return (f ? all.filter((e) => `${e.value} ${e.path} ${srcName(e.sourceId)}`.toLowerCase().includes(f)) : all).slice(0, 400)
+    // #60: vanilla, this mod and its listed mods (Show all installed mods for every image)
+    const vis = mods.filter('images', all, (e) => e.sourceId)
+    return (f ? vis.filter((e) => `${e.value} ${e.path} ${srcName(e.sourceId)}`.toLowerCase().includes(f)) : vis).slice(0, 400)
   })
   const matches = $derived(filter.trim() ? all.filter((e) => `${e.value} ${e.path} ${srcName(e.sourceId)}`.toLowerCase().includes(filter.trim().toLowerCase())).length : all.length)
 
   function click(v: string) {
+    // #60: an image from a mod that isn't in the list offers Add as optional / required
+    const e = all.find((x) => x.value === v)
+    if (e && !e.mine) void mods.picked(e.sourceId, `The image ${e.path}`)
     if (!req.multi) { picker.close([v]); return }
     chosen = chosen.includes(v) ? chosen.filter((x) => x !== v) : [...chosen, v]
   }
@@ -72,6 +79,7 @@
   <div class="bar">
     <input type="search" placeholder="Filter by name or source…" bind:value={filter} />
     <span class="muted small">{loading ? 'Reading the game and mods…' : `${matches} image${matches === 1 ? '' : 's'}${matches > shown.length ? `, first ${shown.length} shown: filter to narrow` : ''}`}</span>
+    <ShowAllMods list="images" hidden={mods.hidden('images', all, (e) => e.sourceId)} />
     <span class="spacer"></span>
     <button onclick={startImport} title="Bring your own images into the mod: pick the files, then crop; resized and named with the prefix">Import…</button>
   </div>

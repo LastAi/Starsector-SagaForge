@@ -24,7 +24,7 @@ open full size is `guide.html` (open it in your browser). It is also a download 
 | Tab | What you do there |
 |---|---|
 | [Getting started and Settings](sections/settings.md) | Point Saga Forge at the game, choose your mods folder, create or open a mod, move a mod to a new game version |
-| [Saga](sections/saga.md) | The whole mod at a glance: quest board, timeline, flags, test profiles, phrases, random pools, scatter, world events, progress events |
+| [Saga](sections/saga.md) | The whole mod at a glance: quest board, timeline, flags, test profiles, phrases, random pools, scatter, world events, progress events, the other mods it works with, its LunaLib settings page, MagicLib achievements, Nexerelin's quest skip |
 | [Factions](sections/factions.md) | New factions, and changes to existing ones (yours or vanilla's) |
 | [People](sections/people.md) | Characters: contacts, market staff, quest givers |
 | [Items](sections/items.md) | Commodities and special items, such as a quest item |
@@ -44,7 +44,7 @@ open full size is `guide.html` (open it in your browser). It is also a download 
   the game folder and the mods installed there; it writes only into the mod you are editing.
 - **SagaLib.** Quests, people, star systems, encounters and the other runtime parts are exported
   as data that the free library mod **SagaLib** runs in game, so your mod needs no code. When your
-  mod uses it, players need SagaLib (1.2 for the newest features) enabled next to your mod, and
+  mod uses it, players need SagaLib (1.3 for content that depends on other mods) enabled next to your mod, and
   the export adds it to your `mod_info.json` dependencies, with the version your mod needs (see
   [Export the mod](sections/export.md#export-the-mod)).
 - **Where to get them.** Saga Forge:

@@ -39,6 +39,9 @@ export function imagePaths(model: CheckContext['model']): string[] {
   for (const q of model.quests) if (q.icon) out.add(q.icon)
   for (const t of model.types?.entities ?? []) for (const p of [t.sprite, t.icon, t.interactionImage]) if (p) out.add(p)
   for (const t of model.types?.planets ?? []) if (t.texture) out.add(t.texture)
+  // #65: achievement images (MagicLib) and quest chain images (Nexerelin's skip screen)
+  for (const a of model.project.achievements ?? []) if (a.image) out.add(a.image)
+  for (const c of model.project.questSkip ?? []) if (c.image) out.add(c.image)
   return [...out]
 }
 
@@ -58,5 +61,8 @@ export function missingImageProblems(ctx: CheckContext): Problem[] {
     if (p && files[p] === false) out.push({ level: 'error', area: 'Type', message: `Type ${t.name}: ${p} doesn't exist in the mod, the game or an installed mod.`, ref: { page: 'locations' } })
   }
   for (const t of ctx.model.types?.planets ?? []) if (t.texture && files[t.texture] === false) out.push({ level: 'error', area: 'Type', message: `Type ${t.name}: texture ${t.texture} doesn't exist in the mod, the game or an installed mod.`, ref: { page: 'locations' } })
+  // #65
+  for (const a of ctx.model.project.achievements ?? []) if (a.image && files[a.image] === false) out.push({ level: 'error', area: 'Achievements', message: `Achievement "${a.name || a.id}": image ${a.image} doesn't exist in the mod, the game or an installed mod.`, ref: { page: 'saga', id: 'achievements', sub: a.id } })
+  for (const c of ctx.model.project.questSkip ?? []) if (c.image && files[c.image] === false) out.push({ level: 'error', area: 'Quest skip', message: `Quest chain "${c.name || c.id}": image ${c.image} doesn't exist in the mod, the game or an installed mod.`, ref: { page: 'saga', id: 'questskip', sub: c.id } })
   return out
 }

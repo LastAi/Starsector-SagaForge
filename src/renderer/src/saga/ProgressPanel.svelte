@@ -12,6 +12,7 @@
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
   import Field from '../ui/Field.svelte'
+  import ModsCond from '../ui/ModsCond.svelte'
   import OpsEditor from './OpsEditor.svelte'
 
   const m = $derived(project.m!)
@@ -55,6 +56,9 @@
       <div class="grid2">
         <Field label="Name" for="pe-n" help="The event's title in the intel screen.">
           <input id="pe-n" type="text" value={sel.name} onchange={(e) => { const v = e.currentTarget.value; edP((p) => { p.name = v }) }} />
+        </Field>
+        <Field label="Mods" help="Only starts with / without optional mods (Saga › Mods; SagaLib 1.3). Set automatically (greyed) when only conditional quests use it.">
+          <ModsCond value={sel?.mods} itemKey={`progress:${sel?.id}`} onChange={(c) => edP((p) => { if (c) p.mods = c; else delete p.mods })} />
         </Field>
         <Field label="Id" help={`SagaLib's name for it (data/sagaforge/progress/<id>.json). ${progressStageKey(sel.id)} holds the last stage reached.`}><span class="mono">{sel.id}</span></Field>
         <Field label="Bar" help="The bar's maximum (vanilla's events use 1000) and its color: red when progress is bad for the player (a crisis), otherwise vanilla's normal color.">

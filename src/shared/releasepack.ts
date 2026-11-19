@@ -3,7 +3,7 @@
  * file and the forum post draft. Pure; the main process reads the files and writes the zip.
  */
 import type { ModInfo } from './project'
-import type { ReleaseDetails } from './model'
+import type { ProjectFile, ReleaseDetails } from './model'
 import { versionFamily } from './version'
 import { parseCsvRecords } from './csvedit'
 
@@ -95,6 +95,8 @@ export interface ForumPostInput {
   details: ReleaseDetails | undefined
   /** What the mod adds, e.g. ["2 factions", "3 quests"]. */
   contents: string[]
+  /** #60: the mod's list of other mods (Works with, Known conflicts). */
+  project?: Pick<ProjectFile, 'mods'>
 }
 
 /**
@@ -124,6 +126,8 @@ export function forumPost(i: ForumPostInput): string {
     '',
     h('Requirements'),
     deps.length ? `[list]${deps.join('')}[/list]` : '[size=8pt]None.[/size]',
+    // #60: optional and incompatible mods from Saga › Mods
+    ...(i.project && (i.project.mods ?? []).some((x) => x.use !== 'required') ? ['', modListNotes({ mods: (i.project.mods ?? []).filter((x) => x.use !== 'required') }, [], true).trim()] : []),
     '',
     h('Note from the author'),
     d.authorNote?.trim() || todo('your own words'),
@@ -151,4 +155,26 @@ export function forumPost(i: ForumPostInput): string {
 
 function joinAnd(xs: string[]): string {
   return xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`
+}
+
+/**
+ * #60 (PLAN.md §10.1, §10.2): the release notes' mod section: Requires (the required mods and
+ * SagaLib), Works with (the optional mods, with the new-game rule), Known conflicts (incompatible
+ * mods with their reasons). Plain text, or BBCode list items for the forum post.
+ */
+export function modListNotes(p: Pick<ProjectFile, 'mods'>, deps: { id: string; name?: string; version?: string }[] = [], bb = false): string {
+  const name = (id: string, n?: string) => KNOWN_MODS[id]?.name ?? n ?? id
+  const req = [...new Map([...deps.map((d) => [d.id, `${name(d.id, d.name)}${d.version ? ` ${d.version}` : ''}`] as [string, string]),
+    ...(p.mods ?? []).filter((m) => m.use === 'required').map((m) => [m.id, `${m.name}${m.minVersion ? ` ${m.minVersion}` : ''}`] as [string, string])]).values()]
+  const opt = (p.mods ?? []).filter((m) => m.use === 'optional').map((m) => m.name)
+  const bad = (p.mods ?? []).filter((m) => m.use === 'incompatible').map((m) => `${m.name}${m.reason?.trim() ? `: ${m.reason.trim()}` : ''}`)
+  if (!req.length && !opt.length && !bad.length) return ''
+  const sect = (title: string, items: string[], after?: string) => items.length
+    ? (bb ? `[b]${title}[/b]\n[list]${items.map((x) => `[*][size=8pt]${x}[/size]`).join('')}[/list]${after ? `\n${after}` : ''}` : `${title}:\n${items.map((x) => `- ${x}`).join('\n')}${after ? `\n${after}` : ''}`)
+    : ''
+  return [
+    sect('Requires', req),
+    sect('Works with (optional)', opt, 'Add or remove these mods only before starting a new game.'),
+    sect('Known conflicts', bad)
+  ].filter(Boolean).join('\n\n') + '\n'
 }

@@ -8,11 +8,16 @@
   import { CRITERIA, criteriaFor, criterion, defaultArgs, newTarget, RUINS_SIZES, TARGET_DETAILS, TARGET_FACTS, type TargetPick } from '../../../shared/targets'
   import { app } from '../state/app.svelte'
   import type { Criterion, TargetDef } from '../../../shared/model'
+  import { project } from '../state/project.svelte'
+  import { bountyWhere, targetToMagic } from '../../../shared/bounties'
 
   interface Props { quest: string; name: string; target: TargetDef | undefined; onChange: (t: TargetDef) => void; /** Phase 7e: for a scatter (no facts, mock or person). */ scatter?: boolean }
   let { quest, name, target, onChange, scatter = false }: Props = $props()
 
   const t = $derived(target ?? newTarget())
+  // #27 (DESIGN-MAGICLIB-BOUNTIES.md §3): the same "where" as a MagicLib bounty, for the bounties that use this target
+  const bountyIds = $derived((project.m?.bounties ?? []).filter((b) => { const w = project.m ? bountyWhere(project.m, b) : null; return w?.kind === 'target' && w.quest.id === quest && w.v === name }).map((b) => b.id))
+  const asMagic = $derived(bountyIds.length ? targetToMagic(t) : null)
   const upd = (fn: (x: TargetDef) => void) => { const c: TargetDef = JSON.parse(JSON.stringify(t)); fn(c); onChange(c) }
   const PICKS: { id: TargetPick; label: string; help: string }[] = [
     { id: 'planet', label: 'a planet', help: 'A planet or moon (vanilla pickPlanet): system criteria pick its system first.' },
@@ -137,6 +142,12 @@
   {/if}
   {/if}
   <p class="muted small">{CRITERIA.length} vanilla criteria in all; only those that narrow a {t.pick} are offered.</p>
+  {#if asMagic}
+    <div class="sect">As a MagicLib bounty ({bountyIds.join(', ')})</div>
+    <p class="f-help">MagicLib has its own, coarser search (distance from the sector's centre, system themes, entity tags). The export translates this target into it:</p>
+    <div class="small mono">{Object.entries(asMagic.json).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(' · ')}</div>
+    {#each asMagic.notes as n, i (i)}<div class="small" class:bad={n.level !== 'info'}>{n.message}</div>{/each}
+  {/if}
 </div>
 
 <style>

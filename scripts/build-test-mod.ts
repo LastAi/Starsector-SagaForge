@@ -1,5 +1,5 @@
 /**
- * Builds a Phase 7 test mod (test/fixtures/phase7/<name>.ts) into D:\ModTools\mods\<name> with the
+ * Builds a test mod (Phase 7, 8, tasks #27, #60, #61-#65, #70) (test/fixtures/phase7/<name>.ts) into D:\ModTools\mods\<name> with the
  * same save + export code and write guard the app uses. Run: npx jiti scripts/build-test-mod.ts
  * seven_a [<mods folder>]. Never writes outside the mods folder.
  */
@@ -18,8 +18,16 @@ import { DROP_MERGE_TEST } from '../test/fixtures/dropmerge'
 import { EIGHT_A, EIGHT_A_TWIN } from '../test/fixtures/phase8/eight_a'
 import { EIGHT_C, EIGHT_C_XX } from '../test/fixtures/phase8/eight_c'
 import { EIGHT_D } from '../test/fixtures/phase8/eight_d'
+import { SIXTY_A } from '../test/fixtures/sixty'
+import { SIXTYFOUR_A, SIXTYFOUR_B } from '../test/fixtures/sixtyfour'
+import { TWENTYSEVEN_A } from '../test/fixtures/twentyseven'
+import { SIXTYONE_A } from '../test/fixtures/sixtyone'
+import { SEVENTY_A } from '../test/fixtures/seventy'
+import { SIXTYTWO_A } from '../test/fixtures/sixtytwo'
+import { SIXTYTHREE_A } from '../test/fixtures/sixtythree'
+import { SIXTYFIVE_A } from '../test/fixtures/sixtyfive'
 
-const MODS: Record<string, TestModDef> = { seven_a: SEVEN_A, seven_b: SEVEN_B, seven_c: SEVEN_C, seven_d: SEVEN_D, seven_e: SEVEN_E, grid_test: GRID_TEST, drop_merge_test: DROP_MERGE_TEST, eight_a: EIGHT_A, eight_a_twin: EIGHT_A_TWIN, eight_c: EIGHT_C, eight_c_xx: EIGHT_C_XX, eight_d: EIGHT_D }
+const MODS: Record<string, TestModDef> = { seven_a: SEVEN_A, seven_b: SEVEN_B, seven_c: SEVEN_C, seven_d: SEVEN_D, seven_e: SEVEN_E, grid_test: GRID_TEST, drop_merge_test: DROP_MERGE_TEST, eight_a: EIGHT_A, eight_a_twin: EIGHT_A_TWIN, eight_c: EIGHT_C, eight_c_xx: EIGHT_C_XX, eight_d: EIGHT_D, sixty_a: SIXTY_A, sixtyfour_a: SIXTYFOUR_A, sixtyfour_b: SIXTYFOUR_B, twentyseven_a: TWENTYSEVEN_A, sixtyone_a: SIXTYONE_A, seventy_a: SEVENTY_A, sixtytwo_a: SIXTYTWO_A, sixtythree_a: SIXTYTHREE_A, sixtyfive_a: SIXTYFIVE_A }
 
 async function main() {
   const name = process.argv[2]

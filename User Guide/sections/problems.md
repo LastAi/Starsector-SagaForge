@@ -54,7 +54,11 @@ also compares it with the game and **every installed mod**:
   conditions); the **Export…** dialog warns about these too;
 - image files that don't exist in the mod, the game or an installed mod (an item or quest icon
   that would show as a missing texture);
-- images that aren't at vanilla's size for their kind.
+- images that aren't at vanilla's size for their kind;
+- an optional mod's own rule commands in your dialog, and its memory keys in texts no "Only with"
+  covers;
+- with optional mods in [Saga › Mods](saga.md#mods), a second pass **without** them: what still
+  depends on them without a condition is listed as "Without the optional mods: …".
 
 The Problems tab then shows the Check mod results, with a note at the top; they stay as they were
 until you run it again. **Show live only** goes back to the live checks. Run Check mod before

@@ -35,13 +35,31 @@ From top to bottom:
   (station commander, portmaster, administrator, …) at a market takes over that post from the
   person vanilla generates there. A commander or administrator also offers the player a
   commission when the faction does (see
-  [Factions › The faction tabs](factions.md#the-faction-tabs), Behavior).
+  [Factions › The faction tabs](factions.md#the-faction-tabs), Behavior). With Nexerelin in
+  [Saga › Mods](saga.md#mods), a warning shows when a quest contact is an administrator,
+  portmaster, supply officer or station, base or outpost commander at a market that can be
+  invaded: when Nexerelin captures the market, the new owner's faction takes the post over, and the
+  contact changes faction with it. Give them another post, protect the market from invasion (one
+  click for your own markets), or set the quest's **If a market of this quest changes owner**.
 - **Portrait**: a game portrait (referenced, not copied) or your own 128×128 PNG (copied into the
   mod).
 - **Voice** and **Personality**: vanilla's voice tag (soldier, spacer, …; some vanilla dialog
   picks its wording by it, it is not a sound), and how they fight when they command a ship.
 - **Placement**: where SagaLib puts them in the sector: *at a market*, *commanding a fleet
   (encounter)*, or *nowhere until a quest needs them*.
+- **Presence** (someone at a market): *always present*, or *only while the market's owner gets on
+  with a faction*: the owner must be **at least** some level (Vengeful … Cooperative, or *not
+  hostile*) **with** a faction, by default their own. A Hegemony loyalist at a station, say, leaves
+  when the station is held by someone worse than Neutral toward the Hegemony. SagaLib checks once
+  a day and when a game loads, so a new owner, a war breaking out and peace all count. While they
+  are away they are hidden from the comm directory, quests with them as contact aren't offered,
+  and `$global.sagaforge_away_<id>` is true for dialog and Branch cases to test (the condition
+  picker has "<name> is away"). **Elsewhere**: a market where they're listed while away (their
+  quests still aren't offered); empty = nowhere. The line under it says whether they'd be present
+  at the start; vanilla sets most relations in code, so for those it can only tell in game. A quest
+  they offer gets an info line in Problems: decide what happens to it when they leave, with the
+  quest's **If a market of this quest changes owner** or a test of the away flag in its dialog.
+  Play mode and the Test context have a "<name> is away" switch.
 - **Contact**: whether they can become one of the player's contacts, with their types (military,
   trade, …) and importance.
 - **Phrases**: the character's own words, tokens you can put in any dialog text (see

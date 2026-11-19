@@ -1,5 +1,9 @@
 <script lang="ts">
+  import VersionStrip from '../ui/VersionStrip.svelte'
+  import { itemVer } from '../state/itemver.svelte'
   /** Items (PLAN.md §4.7, mock-up items.html): the mod's new commodities and special items; existing items read-only. */
+  import ShowAllMods from '../ui/ShowAllMods.svelte'
+  import { mods } from '../state/mods.svelte'
   import type { ItemDef } from '../../../shared/model'
   import { newItem, itemRow, GENERIC_SPECIAL_PLUGIN } from '../../../shared/export/items'
   import { ITEM_PLUGINS, pluginInfo } from '../../../shared/itemplugins'
@@ -17,11 +21,13 @@
   const index = $derived(app.index!)
   let filter = $state('')
   const sel = $derived(app.selected.items ?? null)
-  const item = $derived(m?.items.find((i) => i.id === sel) ?? null)
+  // #64: the item as in the open version (name, description, icon, base price; set at startup from the installed mods)
+  const item = $derived(itemVer.view('item', sel, m?.items.find((i) => i.id === sel) ?? null))
   const existing = $derived(index.items.find((i) => i.id === sel && !m?.items.some((x) => x.id === i.id)) ?? null)
   const match = (s: string) => !filter || s.toLowerCase().includes(filter.toLowerCase())
   const srcName = (id: string) => (id === 'starsector-core' ? 'vanilla' : index.sources.find((s) => s.id === id)?.name ?? id)
-  const ed = (fn: (it: ItemDef) => void) => { const id = sel; project.change((mm) => { const it = mm.items.find((x) => x.id === id); if (it) fn(it) }) }
+  // only these fields can have versions (the game loads the rest at startup); other edits change the base
+  const ed = (fn: (it: ItemDef) => void) => { const id = sel; if (id) itemVer.edit<ItemDef>('item', id, (it) => fn(it), (p) => !/^(name|description|icon|basePrice)$/.test(p)) }
 
   // ---- new item
   let showNew = $state(app.smokeModal === 'new') // screenshot mode can open it
@@ -87,9 +93,10 @@
         {:else}<li class="muted small pad">{m ? 'None yet.' : 'Pick an active mod first.'}</li>{/each}
       </ul>
       <div class="sect">Existing items (read-only)</div>
+      <ShowAllMods list="items" />
       <ul class="list ro">
         <!-- the mod's own exported items are listed above, not again here -->
-        {#each index.items.filter((i) => match(`${i.id} ${i.name}`) && !m?.items.some((x) => x.id === i.id)).slice(0, 300) as i (i.id)}
+        {#each mods.filter('items', index.items, (i) => i.definedBy).filter((i) => match(`${i.id} ${i.name}`) && !m?.items.some((x) => x.id === i.id)).slice(0, 300) as i (i.id)}
           <li class:on={sel === i.id}><button class="li" onclick={() => (app.selected.items = i.id)}><ImageView path={i.icon} w={20} h={20} sourceId={i.definedBy} /> {i.name}<span class="sub">{srcName(i.definedBy)}</span></button></li>
         {/each}
       </ul>
@@ -99,6 +106,7 @@
     {#if item}
       <div class="head"><ImageView path={item.icon} w={40} h={40} /><h2>{item.name}</h2><span class="badge b-new">new</span><span class="mono muted">{item.id}</span>
         <span class="spacer"></span><span class="muted small">writes a row in <span class="mono">{item.kind === 'special' ? 'special_items.csv' : 'commodities.csv'}</span>{item.kind === 'commodity' ? ' + descriptions.csv' : ''}</span><button class="mini danger" onclick={remove}>Delete</button></div>
+      <VersionStrip kind="item" id={item.id} what="this item (name, description, icon and base price only: the game loads the rest at startup)" paths={(p) => /^(name|description|icon|basePrice)$/.test(p)} />
       <div class="body">
         <div class="grid2">
           <Field label="Preset" for="it-p" help="Fills in the kind, tags and columns for a common use (a quest item, a trade good…). Picking one again resets those fields.">

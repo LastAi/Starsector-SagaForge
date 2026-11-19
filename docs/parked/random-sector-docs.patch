@@ -1,0 +1,174 @@
+--- a/mods/SagaLib/docs/FORMAT.md
++++ b/mods/SagaLib/docs/FORMAT.md
+@@ -803,11 +803,24 @@
+ resolved for those mods, without `versions`, and its conflicting paths, sorted) and
+ `{"chosen": "<kind>:<id>", "is": {…}}` (the item as the save uses it).
+ 
+-## Places a quest needs, markets changing owner (SagaLib 1.3, task #61)
++## Nexerelin: the sector, places a quest needs, markets changing owner (SagaLib 1.3, task #61)
+ 
+ No bridge: Nexerelin is never loaded or named in code. Everything below works the same without it
+-(owners then change only through other events and mods). Nexerelin's random sector is not supported
+-yet (on hold, its own task).
++(the sector is then always hand-made, and owners change only through other events and mods).
++
++**The sector.** At new game, before any mod's `onNewGame`, Nexerelin's sector generator sets the
++sector memory `$nex_randomSector` (`$global.nex_randomSector` in rules): true in a random sector,
++false with vanilla's hand-made core worlds, unset without Nexerelin (= hand-made). Every item that
++reads mod conditions also reads:
++
++| Key | Meaning |
++|---|---|
++| `sector` | `"handmade"`: only when the flag isn't true; `"random"`: only when it is (anything else is an error; `"any"` is the same as leaving it out) |
++
++A skipped item logs the same line as for mod conditions: `skipped quest vgc_x of vgc: only in the
++hand-made sector (this is a Nexerelin random sector)`. In `rules.csv` the condition is the plain
++memory key, `!$global.nex_randomSector` / `$global.nex_randomSector`, so it needs no SagaLib. Dev
++menu › Mods says which sector the game has, and the log says it at new game.
+ 
+ **Places a quest needs.** A quest is never offered or started (`SagaQuest.create` and `SF_Start`
+ return false, as vanilla's missions do when their search finds nothing) while one of these doesn't
+@@ -815,8 +828,8 @@
+ named by a `$id == <id>` line of `start.conditions`, a stage `marker`, or an `arrivals` entry (an
+ entity, a market or a star system). Random targets (`$global.…` keys) and the mod's own objects
+ that appear during a quest (`appears`) are left out. It logs once per game: `skipped quest vgc_x:
+-needs place jangala, which doesn't exist in this game`. So a quest can't break halfway when a mod it
+-names is gone, or a place it needs was removed.
++needs place jangala, which doesn't exist in this game`. So a quest written for vanilla's hand-made
++sector can't break halfway in a random sector, or when a mod it names is gone.
+ 
+ **Markets changing owner.** A quest may say what happens when one of its markets changes owner
+ (an invasion, a rebellion, a sale, any mod):
+--- a/mods/SagaLib/CHANGELOG.md
++++ b/mods/SagaLib/CHANGELOG.md
+@@ -49,15 +49,17 @@
+ - **Quest-ended keys**: `$global.sagaforge_success_<quest>` / `$global.sagaforge_fail_<quest>`
+   (true/false), set when a quest ends (and on load for quests that ended before), for what can't
+   test the state string, such as MagicLib's bounty triggers.
+-- **Places a quest needs, markets changing owner** (docs/FORMAT.md, same title; task #61; no
+-  bridge, works with Nexerelin's invasions):
++- **Nexerelin without a bridge** (docs/FORMAT.md, "Nexerelin: the sector, places a quest needs,
++  markets changing owner"; task #61):
++  - **`sector`** (`"handmade"` / `"random"`) on every item that reads mod conditions, from
++    Nexerelin's `$global.nex_randomSector`; skipped items log why.
+   - **A quest isn't offered or started while a place or person it needs doesn't exist** (its
+     contact, `$id ==` in its start conditions, stage markers, Arrive places): logged once.
+   - **`ownerChange`** on quests: the owners of their markets are remembered at the start and
+     compared once a day; `keep`, `fail` or `stage` (with a trigger), always with
+     `$global.<quest>_ownerChanged` and `$global.<quest>_newOwner`.
+   - **`protectFromInvasion`** on markets: `$nex_uninvadable` in the market's memory.
+-  - **Dev menu › Change a market's owner**.
++  - **Dev menu › Change a market's owner**, and the sector in Dev menu › Mods.
+   - Golden case `test/golden/places.json`.
+ 
+ ## 1.2.0 (2026-11-17)
+--- a/tools/saga-forge/CHANGELOG.md
++++ b/tools/saga-forge/CHANGELOG.md
+@@ -1,24 +1,34 @@
+ # Changelog
+ 
+-## Unreleased: markets changing owner (task #61)
++## Unreleased: Nexerelin random sector and markets changing owner (task #61)
+ 
+-For Starsector **0.98a** with **SagaLib 1.3**; works with **Nexerelin 0.12.2d**'s invasions, no
+-bridge and no dependency (PLAN.md §10.3; formats: `docs/FORMATS.md`, "Nexerelin 0.12.2d"; in game:
+-`docs/INGAME-CHECKS.md`, "Task #61"). Nexerelin's random sector is on hold (its own task).
++For Starsector **0.98a** with **Nexerelin 0.12.2d** and **SagaLib 1.3**, no bridge and no
++dependency (PLAN.md §10.3; formats: `docs/FORMATS.md`, "Nexerelin 0.12.2d"; in game:
++`docs/INGAME-CHECKS.md`, "Task #61", not run yet). The sector tools show when the mod lists
++Nexerelin (Saga › Mods).
+ 
++- **Sector: hand-made / random** next to "Only with / Only without" on every item, option, Branch
++  case and phrase case. Exported as `!$global.nex_randomSector` / `$global.nex_randomSector` in
++  rules (works without SagaLib) and `"sector"` in SagaLib JSON.
++- **"Needs the hand-made sector" is found automatically**: content naming vanilla's hand-made
++  markets, systems, planets or people runs only in the hand-made sector (shown greyed, "uses
++  vanilla's jangala"), and so does what only uses it (a quest whose contact is placed at Jangala, the
++  objects added to Corvus). A node only the hand-made sector reaches doesn't count. Problems lists
++  each item with three choices: **Only in the hand-made sector** (the default), **Use a random
++  target** (the quest gets a market target like the place, and its markers, Arrive places, named
++  places, pictures and `$id ==` conditions point at it), or **Keep (runs in both)**.
+ - **Quest settings › If a market of this quest changes owner**: don't watch (default), keep going,
+   fail the quest, or go to a stage (what follows its Stage node runs). SagaLib watches the giver's
+   market, stage markers, Arrive places, named places and random market targets once a day; every
+   choice sets `$global.<quest>_ownerChanged` and `$global.<quest>_newOwner`.
+-- **Play mode**: while a quest watches markets, "<market> changes owner to …" above the dialog.
+-- **People**: with Nexerelin in Saga › Mods, a warning when a quest contact is an administrator,
+-  portmaster, supply officer or station, base or outpost commander at a market that can be invaded
+-  (Nexerelin gives the post to the new owner's faction), with a one-click "Protect from invasion"
+-  for the mod's own markets.
++- **Play mode**: a "random sector" switch (also in the Test context) and, while a quest watches
++  markets, "<market> changes owner to …" above the dialog.
++- **People**: a warning when a quest contact is an administrator, portmaster, supply officer or
++  station, base or outpost commander at a market that can be invaded (Nexerelin gives the post to
++  the new owner's faction), with a one-click "Protect from invasion" for the mod's own markets.
+ - **Locations › market › Protect from invasion**: Nexerelin never invades it (SagaLib sets
+   `$nex_uninvadable`).
+-- **SagaLib never offers or starts a quest whose contact, markers or Arrive places don't exist**
+-  (a removed mod, a removed place), and logs why.
++- **Check mod**: a random sector is one more combination in the "no option left" check.
+ - Test mod `mods\sixtyone_a` (`npx jiti scripts/build-test-mod.ts sixtyone_a`).
+ 
+ ## Unreleased: MagicLib bounties from quests (task #59)
+--- a/Mod Guides/Saga Forge/sections/saga.md
++++ b/Mod Guides/Saga Forge/sections/saga.md
+@@ -563,6 +563,35 @@
+ always loads it), so on its **Relations & changes** tab set **Hidden from the intel tab** to
+ **Only without** that mod.
+ 
++### Plan for Nexerelin's random sector
++
++Nexerelin can start a game in a **random sector**: none of vanilla's hand-made core worlds exist
++(no Jangala, no Corvus, none of vanilla's named characters). With **Nexerelin** in the list
++(Optional or Required), every **Mods** field also has **Sector**: hand-made only, random only, both
++(keep), or automatic.
++
++1. Make Nexerelin **Optional** (see [Work with another mod](#work-with-another-mod)).
++2. Open **Problems**. Content that names vanilla's hand-made markets, systems, planets or people is
++   listed ("names vanilla's hand-made jangala …"). It already runs **only in the hand-made sector**
++   (greyed "uses vanilla's jangala" in its Mods field), and so does what only it uses. A part of a
++   quest that only the hand-made sector reaches (behind a Branch case set to hand-made only)
++   doesn't count.
++3. Pick one of its three buttons:
++   - **Only in the hand-made sector**: keep it that way (the default; the button makes it your
++     choice, so it leaves Problems).
++   - **Use a random target**: the quest gets a random target that picks a market like the place
++     (its faction and size preferred), and its markers, Arrive places, named places, pictures and
++     `$id ==` conditions point at the target, so it works in both sectors. Check the target's
++     criteria in the quest's Variables. Not offered where a contact, a speaker or an encounter
++     names the place.
++   - **Keep (runs in both)**: it stays offered in a random sector. SagaLib still never starts a
++     quest whose contact, markers or Arrive places don't exist, and logs why.
++4. Test both: Play mode and the Test context have a **random sector** switch.
++
++In game, the hand-made-only condition is the plain memory key `!$global.nex_randomSector` in
++rules (it works without SagaLib) and `"sector"` in SagaLib's files (SagaLib skips the item in a
++random sector and writes one line to the log). Without Nexerelin every game counts as hand-made.
++
+ ### Give a character a version for another mod
+ 
+ 1. Make the other mod **Optional** (see [Work with another mod](#work-with-another-mod)). If it
+--- a/Mod Guides/Saga Forge/sections/quests.md
++++ b/Mod Guides/Saga Forge/sections/quests.md
+@@ -298,7 +298,9 @@
+   you can try each case.
+ - With optional mods in [Saga › Mods](saga.md#mods), the toolbar has a switch for each: Play
+   as if that mod was enabled when the game started (switching restarts). Options, cases and
+-  phrases with **Only with / Only without** follow them, as in game.
++  phrases with **Only with / Only without** follow them, as in game. With Nexerelin in the list,
++  **random sector** plays as a Nexerelin random sector (see
++  [Saga › Plan for Nexerelin's random sector](saga.md#plan-for-nexerelins-random-sector)).
+ 
+ See [Test a quest in Play mode](#test-a-quest-in-play-mode).
+ 
+--- a/Mod Guides/Saga Forge/OUTLINE.md
++++ b/Mod Guides/Saga Forge/OUTLINE.md
+@@ -82,7 +82,7 @@
+   used · Add a test profile · Start the game with a test profile · Add a phrase · Make a random
+   pool · Make a loot table · Add to a vanilla drop group · Add random encounters · Scatter objects
+   across the sector · Add a world event · Add a progress event · Work with another mod · Make
+-  content only with or without a mod
++  content only with or without a mod · Plan for Nexerelin's random sector
+ 
+ **factions.md**: Factions
+ - How it works: The faction list · New factions and changes to existing ones · The faction tabs ·

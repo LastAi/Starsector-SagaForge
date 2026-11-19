@@ -1,5 +1,6 @@
 <script lang="ts">
   /** Export (PLAN.md §6 rule 9, mock-up export.html): every file and its state before anything is written. */
+  import { modListNotes } from '../../../shared/releasepack'
   import { onMount } from 'svelte'
   import Modal from '../ui/Modal.svelte'
   import Field from '../ui/Field.svelte'
@@ -13,6 +14,7 @@
   import { releaseDetailProblems, releaseName, versionFileName } from '../../../shared/releasepack'
   import type { ReleaseDetails } from '../../../shared/model'
   import type { PackResult } from '../../../shared/api'
+  import { bountyIdsOf } from '../../../shared/bounties'
 
   interface Props { onClose: () => void }
   let { onClose }: Props = $props()
@@ -21,6 +23,8 @@
   let busy = $state(false)
   let error = $state<string | null>(null)
   let addDependency = $state(true)
+  // #60: the mod's required mods (Saga › Mods) into mod_info.json dependencies (asked, one click)
+  let addRequired = $state(true)
   let overwrite = $state<string[]>([])
   let detach = $state<string[]>([])
   let diffFor = $state<string | null>(null)
@@ -39,7 +43,7 @@
       const rules = await app.loadRules()
       const m = project.m!
       // #47 §6: mod_info.json's gameVersion follows the target install
-      const opts: ExportOptions = { dialogOnly, addDependency, overwrite, detach, version: modVersion, gameVersion: app.index?.install.gameVersion ?? undefined }
+      const opts: ExportOptions = { dialogOnly, addDependency, addRequired, overwrite, detach, version: modVersion, gameVersion: app.index?.install.gameVersion ?? undefined }
       plan = planExport($state.snapshot(m) as typeof m, project.loaded!, app.index!, rules, opts)
     } catch (e) { error = cleanError(e) }
   }
@@ -52,6 +56,13 @@
     await compute()
   })
 
+  // #27: bounties need MagicLib in the mod's list (optional by default, PLAN.md §10)
+  // #27, #59: bounties of the mod, or quests that start or test bounties, use MagicLib
+  const magicUnlisted = $derived(!!project.m && (!!project.m.bounties?.length || project.m.quests.some((q) => bountyIdsOf(q).length > 0)) && !(project.m.project.mods ?? []).some((x) => x.id === 'MagicLib'))
+  function addMagic(use: 'optional' | 'required') {
+    project.change((mm) => { (mm.project.mods ??= []).push({ id: 'MagicLib', name: 'MagicLib', use }) })
+    void compute()
+  }
   const blocking = $derived([...problems.live.filter((p) => p.level === 'error'), ...(plan?.problems.filter((p) => p.level === 'error') ?? [])])
   const warnings = $derived(plan?.problems.filter((p) => p.level !== 'error') ?? [])
 
@@ -127,7 +138,9 @@
   async function packZip(v: string, overwrite: boolean) {
     if (!project.loaded) return
     // forum post drafts are off until post templates exist (user, 2026-11-17): shared/releasepack.ts forumPost() stays for then
-    const r = await window.api.packRelease({ version: v, forumPost: '', overwrite })
+    // #60: release notes with Requires / Works with / Known conflicts (Saga › Mods)
+    const notes = modListNotes(project.m?.project ?? {}, project.loaded.modInfo.dependencies)
+    const r = await window.api.packRelease({ version: v, forumPost: '', overwrite, notes: notes ? `${project.loaded.modInfo.name} ${v}\n\n${notes}` : '' })
     if ('exists' in r) {
       if (confirm(`${r.exists} already exists. Replace it?`)) return packZip(v, true)
       error = 'The release is marked; the existing zip was kept.'
@@ -238,6 +251,13 @@
           onchange={(e) => { const on = e.currentTarget.checked; project.change((mm) => { mm.project.options = { ...mm.project.options, translatable: on ? undefined : false } }); compute() }} />
         Translatable texts: others can translate the mod with a translation mod (SagaLib 1.2)
       </label>
+    {/if}
+    {#if plan.requiredMissing.length}
+      <label class="dep"><input type="checkbox" bind:checked={addRequired} onchange={() => compute()} /> Add the required mods <b>{plan.requiredMissing.map((r) => r.name + (r.minVersion ? ' ' + r.minVersion : '')).join(', ')}</b> to <span class="mono">mod_info.json</span> dependencies (Saga › Mods; the launcher won't enable this mod without them)</label>
+    {/if}
+    {#if magicUnlisted}
+      <!-- #27: a mod with MagicLib bounties uses MagicLib; one click puts it into Saga › Mods (required also writes the dependency) -->
+      <div class="dep">The mod has MagicLib bounties or quests that start them, but MagicLib isn't in Saga › Mods. <button class="mini" onclick={() => addMagic('optional')}>Add as optional</button> (suggested: only MagicLib reads the bounty file, and without it a quest sees its bounties as unavailable) <button class="mini" onclick={() => addMagic('required')}>Add as required</button> (adds it to <span class="mono">mod_info.json</span> dependencies)</div>
     {/if}
     {#if plan.dependencyMissing}
       <label class="dep"><input type="checkbox" bind:checked={addDependency} onchange={() => compute()} /> Add <b>SagaLib</b> to <span class="mono">mod_info.json</span> dependencies (the export uses its JSON and rule commands)</label>

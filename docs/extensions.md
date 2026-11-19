@@ -2,7 +2,8 @@
 
 Extensions add support for another mod's file formats without changing the core editor.
 Examples: Nexerelin faction config, MagicLib bounties, LunaLib settings (PLAN.md §10, §11.7).
-1.0 ships the extension point and no extensions. Tasks #27 and #31 add the first ones.
+1.0 ships the extension point and no extensions. Task #27 and the tasks decided in #31's review
+(PLAN.md §10: LunaLib settings, Nexerelin faction config) add the first ones.
 
 ## Contract (`src/main/ext/index.ts`)
 
@@ -22,8 +23,16 @@ in Settings → Extensions.
 These are the same rules as the core editor (PLAN.md §6, §10):
 
 - Only the active mod is written, with prefixed ids.
-- Using another mod's format adds that mod to `mod_info.json` dependencies. This is asked, one
-  click. Not using it adds nothing.
+- Using another mod's format puts that mod in the active mod's list (Saga › Mods, PLAN.md
+  §10.1) as **required** or **optional**. Required: added to `mod_info.json` dependencies, asked,
+  one click. Optional: never added there, and the content that uses it is conditional (§10.2).
+  Data files that only that mod reads (LunaLib settings, Nexerelin config, MagicLib files)
+  default to optional. Not using it adds nothing.
+- **Visibility**: Settings → Extensions (app-wide) says whether an extension is available. Its
+  tabs, fields and node types show in a mod only when its `requiresMod` is in that mod's list as
+  required or optional: the UI asks `toolVisible(extensionId)` (`src/renderer/src/state/mods.svelte.ts`),
+  and Saga › Mods lists the extension under **Unlocks** for its mod. The index passes each
+  extension's `requiresMod` to the UI (`GameIndex.extensions`).
 - The format is documented from the installed mod (read-only) in `docs/FORMATS.md` before any
   code is written, with the version it was checked against.
 - If in-game behaviour is needed, it goes into an optional SagaLib bridge (`src-optional/<mod>`),

@@ -263,18 +263,27 @@ Link the mod into `Starsector\mods`, next to SagaLib, and use a throwaway save.
 Each row is a section of this list, or a placeholder for one. When a planned workflow is built,
 add its steps as a new section above section 12 and change its status here.
 
+Status 2026-11-17 (task #56). The workflow test mod this list describes was never built: in task
+#36 the user cancelled it until the requested changes were made, and the Vanguard Compact rebuild
+by hand (`mods\vanguard_by_hand`, INGAME-CHECKS "Workflow checks" W1–W8) took its place. Each
+Phase 7–8 feature was tested with its own throwaway mod instead (seven_a…e, eight_a/c/d). Rows
+marked "built, no steps here" have no section in this list yet. Task #50 lists what is still
+untested in game; task #52 builds a compact test mod for it.
+
 | Workflow | Status | Where it's tracked |
 |---|---|---|
-| Project basics, Factions, People, Items, Locations, Encounters, Quests, Dialog, Saga, Problems, Export | **built** (§0–§11) | Saga Forge 1.0 |
-| Editor workflow and field-help pass (may change the steps above) | planned | task #36 |
-| **MagicLib bounties**: export a quest or encounter as a bounty, and start or check one from a quest | planned | task #27, PLAN §10 |
-| **Random targets** for repeatable quests (the *target* variable type, Q5) | planned (stub in 1.0) | PLAN §11.2, with #27 |
-| **Ruins follow-ups**: uncolonised planets with conditions, planet scenes, raid outcome, near-target spawns, loot tables, salvage specials and defenders | planned | `docs/RANDOM-CONTENT-ASSESSMENT.md` §3 (F1–F9, updated from `RUINS-ASSESSMENT.md`); consolidated in `INGAME-CHECKS.md` › "Random content" (RC-F1…) |
-| **Randomized and runtime-generated content**: random targets and locations, random pools, spawn at target, scatter, world events | planned (analysis done) | `docs/RANDOM-CONTENT-ASSESSMENT.md` §9; consolidated in `INGAME-CHECKS.md` › "Random content" (RC-R1…) |
-| Quest templates (delivery, bounty, escort, …) | planned | PLAN §11.3, task #30 |
-| World events (things that happen without the player) | planned | PLAN §11.4, task #30 |
-| Writing tools: script view, spellcheck, punctuation checks | planned | PLAN §11.1, task #30 |
-| Translation export | planned | PLAN §11.5, task #30 |
-| Adopt hand-written dialog into a quest plan | to discuss | PLAN §11.6, task #30 |
-| LunaLib settings, Nexerelin faction config and random sector | planned | PLAN §11.7, task #31 |
-| ReadAloud voice hints per character | planned | PLAN §11.8, task #31 |
+| Project basics, Factions, People, Items, Locations, Encounters, Quests, Dialog, Saga, Problems, Export | **built** (§0–§11); section 12 (G1–G7) never played with this list's mod | Saga Forge 1.0 |
+| Editor workflow and field-help pass (may change the steps above) | **built** (task #36, Phases 0–6), no steps here; walked with vanguard_by_hand (W1–W8) | WORK-ORDER.md |
+| Game versions: migration install, target switch, version labels, migration report | **built** (task #47), §12b; V1–V3 and V5–V7 passed (#48), V4 not run | TARGET-VERSION-ASSESSMENT.md |
+| **MagicLib bounties**: export a quest or encounter as a bounty, and start or check one from a quest | **export built** (task #27, 2026-11-18): Quests › MagicLib bounties, Encounters › MagicLib bounty…, `magicBounty_data.json` merged by key, the random target translated; no steps here; in game: INGAME-CHECKS.md "Task #27" (`twentyseven_a`), passed 2026-11-18 (0.98a-RC8). **From a quest built** (task #59, 2026-11-18): Action "Start a MagicLib bounty", conditions "MagicLib bounty … is <state>", Play mode buttons, SagaLib 1.3's MagicLib bridge; in game: INGAME-CHECKS.md "Task #59" (same test mod), passed 2026-11-18 (0.98a-RC8, with and without MagicLib). **Waiting for the end built** (task #69, 2026-11-19): the node "Wait for a MagicLib bounty" (SagaLib watches MagicLib's keys), Play mode buttons continue it; in game: INGAME-CHECKS.md "Task #69" (same test mod, 1.2.0), passed 2026-11-19 (0.98a-RC8, with and without MagicLib) | task #27 (format + export), task #59 (SagaLib bridge), task #69 (waiting for the end): DESIGN-MAGICLIB-BOUNTIES.md; PLAN §10 |
+| **Random targets** for repeatable quests (the *target* variable type, Q5) | **built** (Phase 7c), no steps here; passed in game (seven_c). Commodity/terrain picks and the rest are deferred | WORK-ORDER.md RC-R1, RC-R1b; deferred list: task #53 |
+| **Ruins follow-ups**: uncolonised planets with conditions, planet scenes, raid outcome, near-target spawns, loot tables, salvage specials and defenders | **mostly built** (Phases 4, 4b, 7b, 7e), no steps here; 7b and 7e passed in game (seven_b, seven_e). Not done: salvage specials, "generate like vanilla", "can't colonise until explored", `wasCivilized`, the rdsm fixtures | INGAME-CHECKS.md › "Random content" (RC-F1…); deferred list: task #53 |
+| **Randomized and runtime-generated content**: random targets and locations, random pools, spawn at target, scatter, world events | **built** (Phases 7a–7e, 8d), no steps here; passed in game (seven_a…e, eight_d), except 7e-5 (deciv guard, skipped) | INGAME-CHECKS.md › "Random content" (RC-R1…); deferred list: task #53 |
+| Loot groups that add to vanilla drop groups; release zips with a Version Checker file | **built** (Phases 8a, 8b), no steps here; passed in game (eight_a, eight_a_twin, drop_merge_test) | DESIGN-PHASE8.md |
+| Quest templates (delivery, bounty, escort, …) | **built** (Phase 6), no steps here: five templates and saved templates. Escort and smuggling are deferred | WORK-ORDER.md R30; deferred list: task #53 |
+| World events (things that happen without the player) | **built** (Phase 8d: event schedulers, roaming fleets, progress events), no steps here; passed in game (eight_d) | WORK-ORDER.md RC-R12, RC-R14 |
+| Writing tools: script view, spellcheck, punctuation checks | **built** (Phase 6), no steps here (editor only, nothing to test in game) | WORK-ORDER.md R29 |
+| Translation export | **built** (Phase 8c), no steps here; passed in game (eight_c, eight_c_xx) | WORK-ORDER.md R31 |
+| Adopt hand-written dialog into a quest plan | **written as a guide** (Phase 8e, docs/AI-CONVERSION.md: an AI assistant converts a copy of the mod); untested until a modder tries it on their mod | WORK-ORDER.md R12; deferred list: task #53 |
+| LunaLib settings, Nexerelin faction config and random sector | **decided** (review #31, 2026-11-17): build, after optional/required mods and conditional content (#60). **Owner changes built** (task #61, 2026-11-18): "If a market of this quest changes owner", contact-post warning, Protect from invasion, quests refused when a place they need is missing, SagaLib 1.3 (no bridge); in game: INGAME-CHECKS.md "Task #61" (`sixtyone_a`), passed 2026-11-18 (0.98a-RC8). **Random sector: on hold** (descoped 2026-11-18 after it was built and its first check passed; code in `docs/parked/random-sector.patch`). LunaLib settings (#62) and Nexerelin faction config (#63) not built yet | tasks #61, #62, #63; PLAN §10 (table, §10.1–§10.5) |
+| ReadAloud voice hints per character | planned | task #58, PLAN §11.8 |

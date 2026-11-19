@@ -11,6 +11,7 @@ import { parseLooseObject, LooseJsonError } from '../shared/loosejson'
 import { isInside, realpathLoose, workspaceProblem } from './workspace'
 import { readGameVersion } from './gameversion'
 import type { InstallInfo, ValidInstall, SourceInfo, Problem, ModsMode } from '../shared/api'
+import { translationOf } from '../shared/translate'
 
 export const isFile = (p: string): boolean => { try { return fs.statSync(p).isFile() } catch { return false } }
 export const isDir = (p: string): boolean => { try { return fs.statSync(p).isDirectory() } catch { return false } }
@@ -71,7 +72,8 @@ async function readMod(dir: string, folder: string, problems: Problem[]): Promis
       id, name: String(value.name ?? id), version: versionString(value.version), folder, dir,
       realDir: realpathLoose(dir), isCore: false, isLink: fs.lstatSync(dir).isSymbolicLink(),
       dependencies: deps, gameVersion: String(value.gameVersion ?? ''), utility: value.utility === true,
-      sortString: value.sortString == null ? '' : String(value.sortString)
+      sortString: value.sortString == null ? '' : String(value.sortString),
+      ...sagaInfo(dir, id)
     }
   } catch (e) {
     problems.push({ level: 'error', area: 'index', sourceId: folder, file: 'mod_info.json', message: errText(e) })
@@ -183,4 +185,14 @@ export async function walk(dir: string, exts: string[], out: string[] = [], dept
     else if (exts.includes(path.extname(e.name).toLowerCase())) out.push(p)
   }
   return out
+}
+
+/** #60: a Saga Forge mod (it has SagaLib's content index), and the mod a translation mod translates. */
+function sagaInfo(dir: string, id: string): { sagaforge?: boolean; translates?: string } {
+  const f = path.join(dir, 'data', 'config', 'sagaforge', 'content.csv')
+  if (!isFile(f)) return {}
+  try {
+    const tr = translationOf(fs.readFileSync(f, 'utf8'), id)
+    return tr ? { sagaforge: true, translates: tr.target } : { sagaforge: true }
+  } catch { return { sagaforge: true } }
 }

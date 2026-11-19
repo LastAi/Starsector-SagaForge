@@ -4,7 +4,7 @@
  * writes (write guard, changed-on-disk check, backups).
  */
 import type {
-  Descriptions, EncounterDef, FactionFile, FactionsRuntime, FleetPlans, ItemDef, PoolPlan, EventSchedulerPlan, ProgressEventPlan, ScatterPlan, ModTypes, NameLists, PersonDef, Phrase, ProjectFile, QuestPlan,
+  Descriptions, EncounterDef, FactionFile, FactionsRuntime, FleetPlans, ItemDef, PoolPlan, EventSchedulerPlan, ProgressEventPlan, ScatterPlan, BountyPlan, ModTypes, NameLists, PersonDef, Phrase, ProjectFile, QuestPlan,
   ReleaseSnapshot, StarSystemDef, TestProfile
 } from './model'
 
@@ -18,7 +18,7 @@ export interface ModInfo {
   name: string
   version: string
   gameVersion: string
-  dependencies: { id: string; name?: string }[]
+  dependencies: { id: string; name?: string; /** The minimum version mod_info.json asks for, if any. */ version?: string }[]
 }
 
 /** Plan files that failed to read; shown in Problems, never overwritten silently. */
@@ -54,9 +54,17 @@ export interface ProjectState {
   progress?: ProgressEventPlan[]
   /** Scatter at new game (sagaforge/scatter.json, Phase 7e); missing = none. */
   scatter?: ScatterPlan[]
+  /** #27: MagicLib bounties (sagaforge/bounties.json); missing = none. */
+  bounties?: BountyPlan[]
+  /** #63: Nexerelin faction configs (sagaforge/nexerelin.json); missing (no plan file) = read the mod's config files in. */
+  nexerelin?: Record<string, Record<string, unknown>>
+  /** #63: ready-made fleets added to the player faction (sagaforge/nexerelin.json "player"). */
+  nexerelinPlayer?: Record<string, unknown>
   /** The mod's own .faction files (additions and overrides). */
   factions: FactionFile[]
   releases: ReleaseSnapshot[]
+  /** #60: framework files the mod ships for other mods (modlist.ts FRAMEWORK_FILES); missing = none. */
+  frameworkFiles?: string[]
   /** Text of every plan file and shared output file the editor may write, by path in the mod. */
   files: Record<string, ModText>
   errors: PlanError[]

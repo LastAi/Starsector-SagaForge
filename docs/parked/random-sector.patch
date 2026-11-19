@@ -1,0 +1,2892 @@
+--- a/tools/saga-forge/src/shared/model.ts
++++ b/tools/saga-forge/src/shared/model.ts
+@@ -75,6 +75,12 @@
+   with?: string[]
+   without?: string[]
+   anyOf?: boolean
++  /**
++   * #61 (PLAN.md §10.3): Nexerelin's sector. handmade = only with vanilla's hand-made core worlds
++   * (`!$global.nex_randomSector`), random = only in a random sector; any = runs in both ("keep":
++   * no automatic "needs the hand-made sector" condition). Unset = automatic.
++   */
++  sector?: 'handmade' | 'random' | 'any'
+ }
+ 
+ /** R32: what a release needs besides the files (all optional). */
+--- a/tools/saga-forge/src/shared/modlist.ts
++++ b/tools/saga-forge/src/shared/modlist.ts
+@@ -1,198 +1,222 @@
+-/**
+- * #60 (PLAN.md §10.1, §10.2): the mod's list of other mods (sagaforge/project.json "mods") and
+- * "Only with / Only without" conditions. Pure helpers shared by the export, the checks, Play mode
+- * and the UI.
+- */
+-import type { ModUse, ModsCondition, ProjectFile } from './model'
+-import type { GameIndex, SourceInfo } from './api'
+-
+-export const SAGALIB_ID = 'lastai_sagalib'
+-export const CORE_ID = 'starsector-core'
+-export const MODS_JSON = 'data/sagaforge/mods.json'
+-
+-export type UseKind = ModUse['use'] | 'none'
+-
+-export const USE_LABEL: Record<UseKind, string> = { required: 'Required', optional: 'Optional', incompatible: 'Incompatible', none: 'Not used' }
+-
+-export function useOf(p: Pick<ProjectFile, 'mods'>, id: string): UseKind {
+-  return p.mods?.find((x) => x.id === id)?.use ?? 'none'
+-}
+-
+-/** Required and optional mods (the ones whose content and tools show). */
+-export function listedIds(p: Pick<ProjectFile, 'mods'>): Set<string> {
+-  return new Set((p.mods ?? []).filter((x) => x.use === 'required' || x.use === 'optional').map((x) => x.id))
+-}
+-
+-export const optionalMods = (p: Pick<ProjectFile, 'mods'>): ModUse[] => (p.mods ?? []).filter((x) => x.use === 'optional')
+-export const requiredMods = (p: Pick<ProjectFile, 'mods'>): ModUse[] => (p.mods ?? []).filter((x) => x.use === 'required')
+-export const incompatibleMods = (p: Pick<ProjectFile, 'mods'>): ModUse[] => (p.mods ?? []).filter((x) => x.use === 'incompatible')
+-
+-/** The source id behind an Origin's definedBy ("code:<source>" = created in that source's code). */
+-export const originSource = (definedBy: string | undefined): string => (definedBy ?? '').replace(/^code:/, '')
+-
+-/** The sources a read-only list shows by default: vanilla, the active mod and its required and optional mods. */
+-export function visibleSources(p: Pick<ProjectFile, 'mods'> | null | undefined, activeSourceId: string | null): Set<string> {
+-  const s = new Set<string>([CORE_ID])
+-  if (activeSourceId) s.add(activeSourceId)
+-  for (const id of p ? listedIds(p) : []) s.add(id)
+-  return s
+-}
+-
+-/** True when an item with this origin shows in a filtered list. */
+-export function isVisible(definedBy: string | undefined, visible: Set<string>): boolean {
+-  if (!definedBy) return true
+-  return visible.has(originSource(definedBy))
+-}
+-
+-/**
+- * The installed mods Saga Forge offers in Saga › Mods: every installed mod, enabled or not, except
+- * the active mod, SagaLib and translation mods. `libraries` are the mods the listed mods depend
+- * on (no need to list them; shown on request).
+- */
+-export function offeredMods(index: Pick<GameIndex, 'sources'>, p: Pick<ProjectFile, 'mods'>, activeSourceId: string | null): { mods: SourceInfo[]; libraries: SourceInfo[] } {
+-  const all = index.sources.filter((s) => !s.isCore && s.id !== activeSourceId && s.id !== SAGALIB_ID && !s.translates)
+-  const listed = new Set((p.mods ?? []).map((m) => m.id))
+-  const deps = new Set<string>()
+-  const byId = new Map(index.sources.map((s) => [s.id, s]))
+-  const walk = (id: string, seen: Set<string>) => {
+-    for (const d of byId.get(id)?.dependencies ?? []) if (!seen.has(d)) { seen.add(d); deps.add(d); walk(d, seen) }
+-  }
+-  for (const id of listed) walk(id, new Set([id]))
+-  const libraries = all.filter((s) => deps.has(s.id) && !listed.has(s.id))
+-  const mods = all.filter((s) => !libraries.includes(s))
+-  // a mod listed but not installed stays in the list
+-  return { mods: mods.sort((a, b) => a.name.localeCompare(b.name)), libraries: libraries.sort((a, b) => a.name.localeCompare(b.name)) }
+-}
+-
+-// ---------------------------------------------------------------- conditions
+-
+-export const emptyCond = (c: ModsCondition | undefined): boolean => !c || (!c.with?.length && !c.without?.length)
+-
+-/** #61: Nexerelin's mod id; its tools (the contact-post warning) show when the mod lists it. */
+-export const NEXERELIN_ID = 'nexerelin'
+-/** True when the mod lists Nexerelin (required or optional). */
+-export const nexListed = (p: Pick<ProjectFile, 'mods'> | null | undefined): boolean => { const u = p?.mods?.find((x) => x.id === NEXERELIN_ID)?.use; return u === 'required' || u === 'optional' }
+-
+-/** The rules.csv conditions of a "Only with / Only without" setting (PLAN.md §10.2 table). */
+-export function condLines(c: ModsCondition | undefined): string[] {
+-  if (!c || emptyCond(c)) return []
+-  const out: string[] = []
+-  const w = [...new Set(c.with ?? [])]
+-  if (w.length) out.push(c.anyOf && w.length > 1 ? `SF_HasAnyMod ${w.join(' ')}` : `SF_HasMod ${w.join(' ')}`)
+-  for (const id of new Set(c.without ?? [])) out.push(`!SF_HasMod ${id}`)
+-  return out
+-}
+-
+-/** Effective conditions: everything must hold (a merge of own, automatic and inherited conditions). */
+-export interface EffConds {
+-  with: string[]
+-  without: string[]
+-  /** Groups where at least one must count ("any of" lists). */
+-  any: string[][]
+-}
+-
+-export const noConds = (): EffConds => ({ with: [], without: [], any: [] })
+-export const isNone = (e: EffConds | undefined): boolean => !e || (!e.with.length && !e.without.length && !e.any.length)
+-
+-/** Adds a condition to an effective set (an "any of" with one mod is a plain "with"). */
+-export function addCond(e: EffConds, c: ModsCondition | EffConds | undefined): EffConds {
+-  if (!c) return e
+-  if ('any' in c && Array.isArray((c as EffConds).any)) {
+-    const x = c as EffConds
+-    for (const id of x.with) if (!e.with.includes(id)) e.with.push(id)
+-    for (const id of x.without) if (!e.without.includes(id)) e.without.push(id)
+-    for (const g of x.any) if (!e.any.some((h) => h.join(' ') === g.join(' '))) e.any.push([...g])
+-    return e
+-  }
+-  const m = c as ModsCondition
+-  const w = [...new Set(m.with ?? [])]
+-  if (m.anyOf && w.length > 1) { if (!e.any.some((h) => h.join(' ') === w.join(' '))) e.any.push(w) }
+-  else for (const id of w) if (!e.with.includes(id)) e.with.push(id)
+-  for (const id of m.without ?? []) if (!e.without.includes(id)) e.without.push(id)
+-  return e
+-}
+-
+-/** What every one of the sets requires (for spreading to things only conditional content uses). */
+-export function commonConds(list: EffConds[]): EffConds {
+-  if (!list.length) return noConds()
+-  const [first, ...rest] = list
+-  return {
+-    with: first.with.filter((id) => rest.every((e) => e.with.includes(id))),
+-    without: first.without.filter((id) => rest.every((e) => e.without.includes(id))),
+-    any: first.any.filter((g) => rest.every((e) => e.any.some((h) => h.join(' ') === g.join(' '))))
+-  }
+-}
+-
+-/** rules.csv lines of an effective set. */
+-export function effLines(e: EffConds | undefined): string[] {
+-  if (!e || isNone(e)) return []
+-  return [...(e.with.length ? [`SF_HasMod ${e.with.join(' ')}`] : []), ...e.without.map((id) => `!SF_HasMod ${id}`), ...e.any.map((g) => (g.length > 1 ? `SF_HasAnyMod ${g.join(' ')}` : `SF_HasMod ${g[0]}`))]
+-}
+-
+-/** SagaLib 1.3 JSON fields of an effective set (modsWith, modsWithout, modsAny). */
+-export function gateJson(e: EffConds | undefined): Record<string, unknown> {
+-  if (!e || isNone(e)) return {}
+-  return { ...(e.with.length ? { modsWith: [...e.with] } : {}), ...(e.without.length ? { modsWithout: [...e.without] } : {}), ...(e.any.length ? { modsAny: e.any.map((g) => [...g]) } : {}) }
+-}
+-
+-/** Whether a set holds with these mods counting (Play mode, the combination check). */
+-export function holds(e: EffConds | ModsCondition | undefined, on: Set<string>): boolean {
+-  if (!e) return true
+-  const x = 'any' in e && Array.isArray((e as EffConds).any) ? (e as EffConds) : addCond(noConds(), e as ModsCondition)
+-  return x.with.every((id) => on.has(id)) && x.without.every((id) => !on.has(id)) && x.any.every((g) => g.some((id) => on.has(id)))
+-}
+-
+-/** "only with Nexerelin; only without UAF" (mod names when known). */
+-export function condText(e: EffConds | ModsCondition | undefined, name: (id: string) => string = (id) => id): string {
+-  if (!e) return ''
+-  const x = 'any' in e && Array.isArray((e as EffConds).any) ? (e as EffConds) : addCond(noConds(), e as ModsCondition)
+-  const parts: string[] = []
+-  if (x.with.length) parts.push(`only with ${x.with.map(name).join(' and ')}`)
+-  for (const g of x.any) parts.push(`only with ${g.map(name).join(' or ')}`)
+-  if (x.without.length) parts.push(`only without ${x.without.map(name).join(' or ')}`)
+-  return parts.join('; ')
+-}
+-
+-/** Every mod a condition mentions. */
+-export const condMods = (e: EffConds | ModsCondition | undefined): string[] => {
+-  if (!e) return []
+-  if ('any' in e && Array.isArray((e as EffConds).any)) { const x = e as EffConds; return [...new Set([...x.with, ...x.without, ...x.any.flat()])] }
+-  const m = e as ModsCondition
+-  return [...new Set([...(m.with ?? []), ...(m.without ?? [])])]
+-}
+-
+-// ---------------------------------------------------------------- export
+-
+-/** data/sagaforge/mods.json for SagaLib 1.3 (the start record, the incompatible warning, the dev menu). */
+-export function modsJson(p: ProjectFile, mod: { id: string; name: string }): Record<string, unknown> {
+-  return {
+-    format: 1, mod: mod.id, name: mod.name, prefix: p.prefix,
+-    mods: (p.mods ?? []).map((m) => ({ id: m.id, name: m.name, use: m.use, ...(m.minVersion ? { minVersion: m.minVersion } : {}), ...(m.use === 'incompatible' && m.reason ? { reason: m.reason } : {}) }))
+-  }
+-}
+-
+-/** Every optional-mod combination (2 mods → 4), for the combination check and Play mode. */
+-export function combinations(ids: string[], max = 64): Set<string>[] {
+-  const n = Math.min(ids.length, Math.log2(max))
+-  const out: Set<string>[] = []
+-  for (let k = 0; k < 1 << n; k++) out.push(new Set(ids.slice(0, n).filter((_, i) => k & (1 << i))))
+-  return out
+-}
+-
+-/** "Hazard Mining Incorporated + UAF" / "no optional mods". */
+-export const comboText = (on: Set<string>, name: (id: string) => string = (id) => id): string => (on.size ? [...on].map(name).join(' + ') : 'no optional mods')
+-
+-/** The version string of a mod_info.json dependency for a minimum version ("1.2" → "1.2"). */
+-export const depVersion = (v: string | undefined): string | undefined => (v?.trim() ? v.trim() : undefined)
+-
+-/**
+- * Framework files a mod ships for another mod (FORMATS.md "What the installed mods depend on"):
+- * only that mod reads them, so they make the mod a user of it (optional by default).
+- */
+-export const FRAMEWORK_FILE_MODS: Record<string, { mod: string; name: string; what: string }> = {
+-  'data/config/LunaSettings.csv': { mod: 'lunalib', name: 'LunaLib', what: 'its settings page (LunaSettings.csv)' },
+-  'data/config/exerelinFactionConfig/mod_factions.csv': { mod: 'nexerelin', name: 'Nexerelin', what: 'its faction config (exerelinFactionConfig)' },
+-  'data/config/magic_achievements.csv': { mod: 'MagicLib', name: 'MagicLib', what: 'its achievements (magic_achievements.csv)' },
+-  'data/config/modFiles/magicBounty_data.json': { mod: 'MagicLib', name: 'MagicLib', what: 'its bounties (magicBounty_data.json)' }
+-}
+-export const FRAMEWORK_FILES = Object.keys(FRAMEWORK_FILE_MODS)
++/**
++ * #60 (PLAN.md §10.1, §10.2): the mod's list of other mods (sagaforge/project.json "mods") and
++ * "Only with / Only without" conditions. Pure helpers shared by the export, the checks, Play mode
++ * and the UI.
++ */
++import type { ModUse, ModsCondition, ProjectFile } from './model'
++import type { GameIndex, SourceInfo } from './api'
++
++export const SAGALIB_ID = 'lastai_sagalib'
++export const CORE_ID = 'starsector-core'
++export const MODS_JSON = 'data/sagaforge/mods.json'
++
++export type UseKind = ModUse['use'] | 'none'
++
++export const USE_LABEL: Record<UseKind, string> = { required: 'Required', optional: 'Optional', incompatible: 'Incompatible', none: 'Not used' }
++
++export function useOf(p: Pick<ProjectFile, 'mods'>, id: string): UseKind {
++  return p.mods?.find((x) => x.id === id)?.use ?? 'none'
++}
++
++/** Required and optional mods (the ones whose content and tools show). */
++export function listedIds(p: Pick<ProjectFile, 'mods'>): Set<string> {
++  return new Set((p.mods ?? []).filter((x) => x.use === 'required' || x.use === 'optional').map((x) => x.id))
++}
++
++export const optionalMods = (p: Pick<ProjectFile, 'mods'>): ModUse[] => (p.mods ?? []).filter((x) => x.use === 'optional')
++export const requiredMods = (p: Pick<ProjectFile, 'mods'>): ModUse[] => (p.mods ?? []).filter((x) => x.use === 'required')
++export const incompatibleMods = (p: Pick<ProjectFile, 'mods'>): ModUse[] => (p.mods ?? []).filter((x) => x.use === 'incompatible')
++
++/** The source id behind an Origin's definedBy ("code:<source>" = created in that source's code). */
++export const originSource = (definedBy: string | undefined): string => (definedBy ?? '').replace(/^code:/, '')
++
++/** The sources a read-only list shows by default: vanilla, the active mod and its required and optional mods. */
++export function visibleSources(p: Pick<ProjectFile, 'mods'> | null | undefined, activeSourceId: string | null): Set<string> {
++  const s = new Set<string>([CORE_ID])
++  if (activeSourceId) s.add(activeSourceId)
++  for (const id of p ? listedIds(p) : []) s.add(id)
++  return s
++}
++
++/** True when an item with this origin shows in a filtered list. */
++export function isVisible(definedBy: string | undefined, visible: Set<string>): boolean {
++  if (!definedBy) return true
++  return visible.has(originSource(definedBy))
++}
++
++/**
++ * The installed mods Saga Forge offers in Saga › Mods: every installed mod, enabled or not, except
++ * the active mod, SagaLib and translation mods. `libraries` are the mods the listed mods depend
++ * on (no need to list them; shown on request).
++ */
++export function offeredMods(index: Pick<GameIndex, 'sources'>, p: Pick<ProjectFile, 'mods'>, activeSourceId: string | null): { mods: SourceInfo[]; libraries: SourceInfo[] } {
++  const all = index.sources.filter((s) => !s.isCore && s.id !== activeSourceId && s.id !== SAGALIB_ID && !s.translates)
++  const listed = new Set((p.mods ?? []).map((m) => m.id))
++  const deps = new Set<string>()
++  const byId = new Map(index.sources.map((s) => [s.id, s]))
++  const walk = (id: string, seen: Set<string>) => {
++    for (const d of byId.get(id)?.dependencies ?? []) if (!seen.has(d)) { seen.add(d); deps.add(d); walk(d, seen) }
++  }
++  for (const id of listed) walk(id, new Set([id]))
++  const libraries = all.filter((s) => deps.has(s.id) && !listed.has(s.id))
++  const mods = all.filter((s) => !libraries.includes(s))
++  // a mod listed but not installed stays in the list
++  return { mods: mods.sort((a, b) => a.name.localeCompare(b.name)), libraries: libraries.sort((a, b) => a.name.localeCompare(b.name)) }
++}
++
++// ---------------------------------------------------------------- conditions
++
++export const emptyCond = (c: ModsCondition | undefined): boolean => !c || (!c.with?.length && !c.without?.length && !sectorOf(c))
++
++// ---------------------------------------------------------------- #61: Nexerelin's sector (PLAN.md §10.3)
++
++export const NEXERELIN_ID = 'nexerelin'
++/** Nexerelin's sector-memory flag in rules notation (unset without Nexerelin = hand-made). */
++export const RANDOM_SECTOR_KEY = '$global.nex_randomSector'
++/** In a set of mods that count (Play mode, the combination check): "this game has a random sector". */
++export const RANDOM_SECTOR = '@randomSector'
++/** The rules.csv line of a sector condition (no SagaLib needed). */
++export const sectorLine = (s: 'handmade' | 'random'): string => (s === 'random' ? RANDOM_SECTOR_KEY : `!${RANDOM_SECTOR_KEY}`)
++/** A condition's sector part that becomes a rule line or JSON (`any` = keep: none). */
++export const sectorOf = (c: { sector?: string } | undefined): 'handmade' | 'random' | undefined => (c?.sector === 'handmade' || c?.sector === 'random' ? c.sector : undefined)
++/** True when the mod lists Nexerelin (required or optional): the sector tools show. */
++export const nexListed = (p: Pick<ProjectFile, 'mods'> | null | undefined): boolean => { const u = p?.mods?.find((x) => x.id === NEXERELIN_ID)?.use; return u === 'required' || u === 'optional' }
++export const SECTOR_TEXT = { handmade: 'only in the hand-made sector', random: 'only in a random sector' } as const
++
++/** The rules.csv conditions of a "Only with / Only without" setting (PLAN.md §10.2 table). */
++export function condLines(c: ModsCondition | undefined): string[] {
++  if (!c || emptyCond(c)) return []
++  const out: string[] = []
++  const w = [...new Set(c.with ?? [])]
++  if (w.length) out.push(c.anyOf && w.length > 1 ? `SF_HasAnyMod ${w.join(' ')}` : `SF_HasMod ${w.join(' ')}`)
++  for (const id of new Set(c.without ?? [])) out.push(`!SF_HasMod ${id}`)
++  const sec = sectorOf(c)
++  if (sec) out.push(sectorLine(sec))
++  return out
++}
++
++/** Effective conditions: everything must hold (a merge of own, automatic and inherited conditions). */
++export interface EffConds {
++  with: string[]
++  without: string[]
++  /** Groups where at least one must count ("any of" lists). */
++  any: string[][]
++  /** #61: Nexerelin's sector (the first one set wins). */
++  sector?: 'handmade' | 'random'
++}
++
++export const noConds = (): EffConds => ({ with: [], without: [], any: [] })
++export const isNone = (e: EffConds | undefined): boolean => !e || (!e.with.length && !e.without.length && !e.any.length && !e.sector)
++
++/** Adds a condition to an effective set (an "any of" with one mod is a plain "with"). */
++export function addCond(e: EffConds, c: ModsCondition | EffConds | undefined): EffConds {
++  if (!c) return e
++  if ('any' in c && Array.isArray((c as EffConds).any)) {
++    const x = c as EffConds
++    for (const id of x.with) if (!e.with.includes(id)) e.with.push(id)
++    for (const id of x.without) if (!e.without.includes(id)) e.without.push(id)
++    for (const g of x.any) if (!e.any.some((h) => h.join(' ') === g.join(' '))) e.any.push([...g])
++    if (x.sector && !e.sector) e.sector = x.sector
++    return e
++  }
++  const m = c as ModsCondition
++  const w = [...new Set(m.with ?? [])]
++  if (m.anyOf && w.length > 1) { if (!e.any.some((h) => h.join(' ') === w.join(' '))) e.any.push(w) }
++  else for (const id of w) if (!e.with.includes(id)) e.with.push(id)
++  for (const id of m.without ?? []) if (!e.without.includes(id)) e.without.push(id)
++  const sec = sectorOf(m)
++  if (sec && !e.sector) e.sector = sec
++  return e
++}
++
++/** What every one of the sets requires (for spreading to things only conditional content uses). */
++export function commonConds(list: EffConds[]): EffConds {
++  if (!list.length) return noConds()
++  const [first, ...rest] = list
++  return {
++    with: first.with.filter((id) => rest.every((e) => e.with.includes(id))),
++    without: first.without.filter((id) => rest.every((e) => e.without.includes(id))),
++    any: first.any.filter((g) => rest.every((e) => e.any.some((h) => h.join(' ') === g.join(' ')))),
++    ...(first.sector && rest.every((e) => e.sector === first.sector) ? { sector: first.sector } : {})
++  }
++}
++
++/** rules.csv lines of an effective set. */
++export function effLines(e: EffConds | undefined): string[] {
++  if (!e || isNone(e)) return []
++  return [...(e.with.length ? [`SF_HasMod ${e.with.join(' ')}`] : []), ...e.without.map((id) => `!SF_HasMod ${id}`), ...e.any.map((g) => (g.length > 1 ? `SF_HasAnyMod ${g.join(' ')}` : `SF_HasMod ${g[0]}`)), ...(e.sector ? [sectorLine(e.sector)] : [])]
++}
++
++/** SagaLib 1.3 JSON fields of an effective set (modsWith, modsWithout, modsAny). */
++export function gateJson(e: EffConds | undefined): Record<string, unknown> {
++  if (!e || isNone(e)) return {}
++  return { ...(e.with.length ? { modsWith: [...e.with] } : {}), ...(e.without.length ? { modsWithout: [...e.without] } : {}), ...(e.any.length ? { modsAny: e.any.map((g) => [...g]) } : {}), ...(e.sector ? { sector: e.sector } : {}) }
++}
++
++/** Whether a set holds with these mods counting (Play mode, the combination check). */
++export function holds(e: EffConds | ModsCondition | undefined, on: Set<string>): boolean {
++  if (!e) return true
++  const x = 'any' in e && Array.isArray((e as EffConds).any) ? (e as EffConds) : addCond(noConds(), e as ModsCondition)
++  if (x.sector && (x.sector === 'random') !== on.has(RANDOM_SECTOR)) return false
++  return x.with.every((id) => on.has(id)) && x.without.every((id) => !on.has(id)) && x.any.every((g) => g.some((id) => on.has(id)))
++}
++
++/** "only with Nexerelin; only without UAF" (mod names when known). */
++export function condText(e: EffConds | ModsCondition | undefined, name: (id: string) => string = (id) => id): string {
++  if (!e) return ''
++  const x = 'any' in e && Array.isArray((e as EffConds).any) ? (e as EffConds) : addCond(noConds(), e as ModsCondition)
++  const parts: string[] = []
++  if (x.with.length) parts.push(`only with ${x.with.map(name).join(' and ')}`)
++  for (const g of x.any) parts.push(`only with ${g.map(name).join(' or ')}`)
++  if (x.without.length) parts.push(`only without ${x.without.map(name).join(' or ')}`)
++  if (x.sector) parts.push(SECTOR_TEXT[x.sector])
++  return parts.join('; ')
++}
++
++/** Every mod a condition mentions. */
++export const condMods = (e: EffConds | ModsCondition | undefined): string[] => {
++  if (!e) return []
++  if ('any' in e && Array.isArray((e as EffConds).any)) { const x = e as EffConds; return [...new Set([...x.with, ...x.without, ...x.any.flat()])] }
++  const m = e as ModsCondition
++  return [...new Set([...(m.with ?? []), ...(m.without ?? [])])]
++}
++
++// ---------------------------------------------------------------- export
++
++/** data/sagaforge/mods.json for SagaLib 1.3 (the start record, the incompatible warning, the dev menu). */
++export function modsJson(p: ProjectFile, mod: { id: string; name: string }): Record<string, unknown> {
++  return {
++    format: 1, mod: mod.id, name: mod.name, prefix: p.prefix,
++    mods: (p.mods ?? []).map((m) => ({ id: m.id, name: m.name, use: m.use, ...(m.minVersion ? { minVersion: m.minVersion } : {}), ...(m.use === 'incompatible' && m.reason ? { reason: m.reason } : {}) }))
++  }
++}
++
++/** Every optional-mod combination (2 mods → 4), for the combination check and Play mode. */
++export function combinations(ids: string[], max = 64): Set<string>[] {
++  const n = Math.min(ids.length, Math.log2(max))
++  const out: Set<string>[] = []
++  for (let k = 0; k < 1 << n; k++) out.push(new Set(ids.slice(0, n).filter((_, i) => k & (1 << i))))
++  return out
++}
++
++/** "Hazard Mining Incorporated + UAF" / "no optional mods". */
++export const comboText = (on: Set<string>, name: (id: string) => string = (id) => id): string => {
++  const mods = [...on].filter((x) => x !== RANDOM_SECTOR)
++  const t = mods.length ? mods.map(name).join(' + ') : 'no optional mods'
++  return on.has(RANDOM_SECTOR) ? `${t}, in a random sector` : t
++}
++
++/** The version string of a mod_info.json dependency for a minimum version ("1.2" → "1.2"). */
++export const depVersion = (v: string | undefined): string | undefined => (v?.trim() ? v.trim() : undefined)
++
++/**
++ * Framework files a mod ships for another mod (FORMATS.md "What the installed mods depend on"):
++ * only that mod reads them, so they make the mod a user of it (optional by default).
++ */
++export const FRAMEWORK_FILE_MODS: Record<string, { mod: string; name: string; what: string }> = {
++  'data/config/LunaSettings.csv': { mod: 'lunalib', name: 'LunaLib', what: 'its settings page (LunaSettings.csv)' },
++  'data/config/exerelinFactionConfig/mod_factions.csv': { mod: 'nexerelin', name: 'Nexerelin', what: 'its faction config (exerelinFactionConfig)' },
++  'data/config/magic_achievements.csv': { mod: 'MagicLib', name: 'MagicLib', what: 'its achievements (magic_achievements.csv)' },
++  'data/config/modFiles/magicBounty_data.json': { mod: 'MagicLib', name: 'MagicLib', what: 'its bounties (magicBounty_data.json)' }
++}
++export const FRAMEWORK_FILES = Object.keys(FRAMEWORK_FILE_MODS)
+--- a/tools/saga-forge/src/shared/moduses.ts
++++ b/tools/saga-forge/src/shared/moduses.ts
+@@ -8,7 +8,7 @@
+ import type { ModModel } from './serialize'
+ import type { ActionOp, Display, ModsCondition, QNode, QuestPlan, Visual } from './model'
+ import type { ProjectState } from './project'
+-import { CORE_ID, SAGALIB_ID, FRAMEWORK_FILE_MODS, addCond, commonConds, effLines, isNone, noConds, originSource, optionalMods, type EffConds } from './modlist'
++import { CORE_ID, SAGALIB_ID, FRAMEWORK_FILE_MODS, addCond, commonConds, effLines, isNone, nexListed, noConds, originSource, optionalMods, sectorOf, type EffConds } from './modlist'
+ import { targetVarOf } from './targets'
+ import { bountyIdsOf } from './bounties'
+ 
+@@ -259,7 +259,10 @@
+   const look = index ? sourceLookup(index, m, active) : () => null
+   const out = new Map<string, ItemConds>()
+   const get = (k: string): ItemConds => { let c = out.get(k); if (!c) out.set(k, (c = { eff: noConds(), from: [] })); return c }
++  // #61: "keep" (sector any) on an item: no automatic or inherited sector condition
++  const keep = new Set(items.filter((it) => it.own?.sector === 'any').map((it) => it.key))
+   const add = (k: string, cond: EffConds, why?: string) => {
++    if (cond.sector && keep.has(k)) { cond = { ...cond }; delete cond.sector }
+     if (isNone(cond)) return
+     const c = get(k)
+     const before = JSON.stringify(c.eff)
+@@ -267,10 +270,29 @@
+     if (why && JSON.stringify(c.eff) !== before) c.from.push({ cond, why })
+     return JSON.stringify(c.eff) !== before
+   }
++  // #61 (PLAN.md §10.3): with Nexerelin in the list, naming vanilla's hand-made places or people needs the hand-made sector
++  const nex = nexListed(m.project)
++  const qById0 = new Map(m.quests.map((q) => [q.id, q]))
++  const guardCache = new Map<string, Map<string, EffConds>>()
++  const handGuarded = (key: string, node: string | undefined): boolean => {
++    if (!node || !key.startsWith('quest:')) return false
++    const q = qById0.get(key.slice('quest:'.length))
++    if (!q) return false
++    let g = guardCache.get(q.id)
++    if (!g) guardCache.set(q.id, (g = nodeGuards(q, undefined)))
++    return g.get(node)?.sector === 'handmade'
++  }
+   // own and automatic (only the item's own references, not the ones inside a quest's nodes)
+   for (const it of items) {
+     get(it.key)
+     if (it.own) add(it.key, addCond(noConds(), it.own))
++    if (nex) {
++      for (const r of it.refs) {
++        if (r.gameLoaded || !HANDMADE_KINDS.has(r.kind) || look(r.kind, r.id) !== CORE_ID || handGuarded(it.key, r.node)) continue
++        add(it.key, { with: [], without: [], any: [], sector: 'handmade' }, `uses vanilla's ${r.id} (${r.where}): only in the hand-made sector`)
++        break
++      }
++    }
+     if (!optional.size) continue
+     for (const r of it.refs) {
+       if (r.node || r.gameLoaded) continue
+@@ -308,6 +330,18 @@
+       const label = first ? items.find((i) => i.key === first)?.label.replace(/^\w+ "|"$/g, '') ?? first : ''
+       if (add(key, common, `from: ${label}`)) changed = true
+     }
++    // #61: what uses a hand-made-only thing of the mod is hand-made-only too (the thing isn't there in a random sector)
++    if (nex) {
++      const hand = (k: string) => out.get(k)?.eff.sector === 'handmade'
++      const own = { person: new Set(m.people.map((p) => p.id)), entity: new Set(m.systems.flatMap((s) => s.entities.map((e) => e.id))) }
++      for (const q of m.quests) for (const r of questRefs(q)) {
++        if ((r.kind !== 'person' && r.kind !== 'entity') || !own[r.kind].has(r.id) || !hand(`${r.kind}:${r.id}`) || handGuarded(`quest:${q.id}`, r.node)) continue
++        if (add(`quest:${q.id}`, { with: [], without: [], any: [], sector: 'handmade' }, `from: ${r.id} (only in the hand-made sector)`)) changed = true
++      }
++      for (const p of m.people) if (p.placement.at === 'market' && own.entity.has(p.placement.market) && hand(`entity:${p.placement.market}`) && add(`person:${p.id}`, { with: [], without: [], any: [], sector: 'handmade' }, `from: its market ${p.placement.market}`)) changed = true
++      for (const sy of m.systems) if (hand(`system:${sy.id}`)) for (const e of sy.entities) if (add(`entity:${e.id}`, { with: [], without: [], any: [], sector: 'handmade' }, `from: ${sy.name || sy.id} (only in the hand-made sector)`)) changed = true
++      for (const e of m.encounters) if (own.entity.has(e.spawn.at) && hand(`entity:${e.spawn.at}`) && add(`encounter:${e.id}`, { with: [], without: [], any: [], sector: 'handmade' }, `from: where it spawns (${e.spawn.at})`)) changed = true
++    }
+     // an object orbiting a conditional object has its condition (else it has nothing to orbit)
+     for (const s of m.systems) for (const e of s.entities) {
+       if (!e.orbit.focus || e.orbit.focus === 'star') continue
+@@ -319,6 +353,9 @@
+   return out
+ }
+ 
++/** #61: references that name a place or person vanilla creates only for its hand-made sector. */
++const HANDMADE_KINDS = new Set<RefKind>(['entity', 'system', 'person'])
++
+ /** Who uses each person, object, encounter and progress event: item keys (quests, people, encounters). */
+ export function usersOf(m: ModModel): Map<string, string[]> {
+   const out = new Map<string, string[]>()
+@@ -409,7 +446,7 @@
+  * conditions). SagaLib JSON gets the effective conditions separately (gateJson).
+  */
+ export function lowerModConds(m: ModModel, eff: Map<string, ItemConds>): ModModel {
+-  const has = (c: ModsCondition | undefined) => !!c && (!!c.with?.length || !!c.without?.length)
++  const has = (c: ModsCondition | undefined) => !!c && (!!c.with?.length || !!c.without?.length || !!sectorOf(c))
+   const anyOwn = m.quests.some((q) => q.nodes.some((n) => (n.type === 'dialog' && (n.options.some((o) => has(o.mods)) || n.phrases.some((p) => p.cases.some((c) => has(c.mods))))) || (n.type === 'branch' && n.cases.some((c) => has(c.mods)))))
+     || [...m.phrases, ...m.people.flatMap((p) => p.phrases)].some((p) => p.cases.some((c) => has(c.mods)))
+     || (m.pools ?? []).some((p) => p.entries.some((e) => has(e.mods)))
+@@ -443,7 +480,7 @@
+ 
+ /** True when anything in the mod has mod conditions (own or automatic): it needs SagaLib 1.3. */
+ export function usesModConds(eff: Map<string, ItemConds>, m: ModModel): boolean {
+-  const has = (c: ModsCondition | undefined) => !!c && (!!c.with?.length || !!c.without?.length)
++  const has = (c: ModsCondition | undefined) => !!c && (!!c.with?.length || !!c.without?.length || !!sectorOf(c))
+   return [...eff.values()].some((c) => !isNone(c.eff)) || m.quests.some((q) => q.nodes.some((n) => (n.type === 'dialog' && (n.options.some((o) => has(o.mods)) || n.phrases.some((p) => p.cases.some((x) => has(x.mods))))) || (n.type === 'branch' && n.cases.some((x) => has(x.mods)))))
+     || [...m.phrases, ...m.people.flatMap((p) => p.phrases)].some((p) => p.cases.some((x) => has(x.mods))) || (m.pools ?? []).some((p) => p.entries.some((e) => has(e.mods)))
+ }
+--- a/tools/saga-forge/src/shared/play.ts
++++ b/tools/saga-forge/src/shared/play.ts
+@@ -17,6 +17,7 @@
+ import { javaHash } from './javarandom'
+ import { TARGET_DETAILS, targetFactKey, targetKey, targetVars } from './targets'
+ import type { PlayContext } from './rules/engine'
++import { RANDOM_SECTOR_KEY } from './modlist'
+ 
+ export interface QuestState { state: 'not-started' | 'active' | 'success' | 'fail'; step?: string }
+ 
+@@ -433,7 +434,10 @@
+ }
+ 
+ /** As core.Mods.blocked: null when the item's modsWith / modsWithout / modsAny hold. */
+-export function modGateBlocked(e: Mem, w: NonNullable<SimWorld['mods']>, owner: string | null, g: { modsWith?: string[]; modsWithout?: string[]; modsAny?: string[][] }): string | null {
++export function modGateBlocked(e: Mem, w: NonNullable<SimWorld['mods']>, owner: string | null, g: { modsWith?: string[]; modsWithout?: string[]; modsAny?: string[][]; sector?: string }): string | null {
++  // #61: Nexerelin's sector flag (unset without Nexerelin = hand-made)
++  const sec = sectorBlocked(e, g.sector)
++  if (sec) return sec
+   for (const id of g.modsWith ?? []) if (!modCounts(e, w, owner, id)) return `needs ${id}`
+   for (const id of g.modsWithout ?? []) if (modCounts(e, w, owner, id)) return `only without ${id}`
+   for (const grp of g.modsAny ?? []) if (!grp.some((id) => modCounts(e, w, owner, id))) return `needs one of ${grp.join(', ')}`
+@@ -533,13 +537,20 @@
+ 
+ // ---------------------------------------------------------------- #61: places a quest needs, markets changing owner (SagaLib 1.3 core.Places)
+ 
++/** As core.Mods.blocked's sector part: null when the item may run in this game's sector. */
++export function sectorBlocked(e: Mem, sector: string | undefined): string | null {
++  if (sector === 'handmade' && truthy(e.get(RANDOM_SECTOR_KEY))) return 'only in the hand-made sector'
++  if (sector === 'random' && !truthy(e.get(RANDOM_SECTOR_KEY))) return 'only in a random sector'
++  return null
++}
++
+ /** The parts of a quest's SagaLib JSON that name fixed places, people and watched markets. */
+ export interface RuntimeQuestJson {
+   id: string
+   start?: { kind?: string; person?: string; conditions?: string[] }
+   stages?: { id: string; marker?: string; kind?: string }[]
+   arrivals?: string[]
+-  modsWith?: string[]; modsWithout?: string[]; modsAny?: string[][]
++  modsWith?: string[]; modsWithout?: string[]; modsAny?: string[][]; sector?: string
+   ownerChange?: { do: 'keep' | 'fail' | 'stage'; stage?: string; trigger?: string; markets: string[] }
+ }
+ 
+@@ -568,7 +579,7 @@
+ 
+ /** As SagaQuest.create / QuestRuntime.start: null when the quest may be offered or started, else why not. */
+ export function offerBlocked(e: Mem, w: SimWorld, q: RuntimeQuestJson, owner: string | null = null): string | null {
+-  const g = w.mods ? modGateBlocked(e, w.mods, owner, q) : null
++  const g = w.mods ? modGateBlocked(e, w.mods, owner, q) : sectorBlocked(e, q.sector)
+   if (g) return g
+   if (e.get(stateKey(q.id)) === 'active') return 'it is active'
+   const miss = w.places ? missingNeed(w.places, q) : null
+--- a/tools/saga-forge/src/shared/nexerelin.ts
++++ b/tools/saga-forge/src/shared/nexerelin.ts
+@@ -1,12 +1,13 @@
+ /**
+  * #61 (PLAN.md §10.3): Nexerelin without a bridge. Which of a quest's markets SagaLib watches for
+- * an owner change ("ownerChange") and the posts
++ * an owner change ("ownerChange"), the "use a random target" fix for content that names vanilla's hand-made places, and the posts
+  * Nexerelin re-flags when it captures a market. Pure.
+  */
+ import type { GameIndex } from './api'
+ import type { ModModel } from './serialize'
+-import type { QuestPlan } from './model'
+-import { targetKey, targetPartKey, targetVarOf } from './targets'
++import type { QuestPlan, QuestVar, TargetDef } from './model'
++import { targetKey, targetPartKey, targetRef, targetVarOf } from './targets'
++import { CORE_ID, originSource } from './modlist'
+ 
+ /** FORMATS.md "Nexerelin 0.12.2d": SectorManager.POSTS_TO_CHANGE_ON_CAPTURE (vanilla Ranks ids). */
+ export const INVASION_POSTS = ['baseCommander', 'outpostCommander', 'stationCommander', 'portmaster', 'supplyOfficer', 'administrator'] as const
+@@ -63,3 +64,76 @@
+   const node = stage ? q.nodes.find((n) => n.type === 'stage' && n.stage === stage) : undefined
+   return { do: oc.do, ...(stage ? { stage } : {}), ...(node && q.edges.some((e) => e.from === node.id) ? { trigger: ownerChangeTrigger(q.id) } : {}), markets }
+ }
++
++// ---------------------------------------------------------------- the "use a random target" fix
++
++/** What "use a random target" would replace in a quest, and what it can't (a contact, an encounter's place). */
++export function randomTargetScope(q: QuestPlan, id: string, m: ModModel): { replace: string[]; cannot: string[] } {
++  const replace: string[] = []
++  const cannot: string[] = []
++  const s = q.start
++  if ((s.kind === 'contact' || s.kind === 'bar') && s.person === id) cannot.push('the contact')
++  if (s.kind === 'option' || s.kind === 'trigger' || s.kind === 'interject' || s.kind === 'barScene') if (s.conditions.some((l) => idLine(l, id))) replace.push('the start conditions')
++  for (const st of q.stages) if (st.marker === id) replace.push(`stage "${st.title || st.id}" marker`)
++  for (const pl of q.places ?? []) if (pl.entity === id) replace.push(`named place "${pl.name || pl.id}"`)
++  for (const n of q.nodes) {
++    const t = (n as { title?: string }).title || n.id
++    if (n.type === 'wait' && n.mode === 'arrive' && n.entity === id) replace.push(`Arrive "${t}"`)
++    if (n.type === 'dialog') {
++      if ((n.visual.kind === 'planet' || n.visual.kind === 'mapMarker') && n.visual.entity === id) replace.push(`the picture of "${t}"`)
++      if (n.conditions.some((l) => idLine(l, id))) replace.push(`conditions of "${t}"`)
++      if (n.speaker === id) cannot.push(`the speaker of "${t}"`)
++    }
++    if (n.type === 'branch' && n.cases.some((c) => c.conditions.some((l) => idLine(l, id)))) replace.push(`cases of "${t}"`)
++    if (n.type === 'action' && n.ops.some((o) => (o.op === 'removeEntity' && o.entity === id) || (o.op === 'rep' && o.person === id))) cannot.push(`Action "${t}"`)
++    if (n.type === 'encounter') { const e = m.encounters.find((x) => x.id === n.encounter); if (e && (e.spawn.at === id || e.spawn.to === id)) cannot.push(`where encounter ${e.id} spawns`) }
++  }
++  return { replace, cannot }
++}
++
++const idLine = (l: string, id: string) => new RegExp(`^\\s*\\$id\\s*==\\s*${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`).test(l)
++
++/**
++ * "Use a random target" (PLAN.md §10.3, §11.2): the quest gets a random target that picks a market
++ * like this one (its faction and size preferred, not hidden), and every replaceable use of the place
++ * points at the target instead. Returns the new variable's name, or null when nothing was replaced.
++ */
++export function useRandomTarget(m: ModModel, questId: string, id: string, index: GameIndex | null): string | null {
++  const q = m.quests.find((x) => x.id === questId)
++  if (!q) return null
++  const mk = marketOf(id, m, index)
++  const base = `t_${id.replace(/[^\w]/g, '_')}`.slice(0, 24)
++  let name = base
++  for (let i = 2; q.variables.some((v) => v.name === name); i++) name = `${base}${i}`
++  const target: TargetDef = {
++    pick: 'market',
++    require: [{ id: 'mkNotHidden', args: [] }, { id: 'mkNotPlayer', args: [] }],
++    prefer: [...(mk?.faction ? [{ id: 'mkFaction', args: [[mk.faction]] }] : []), ...(mk?.size ? [{ id: 'mkSizeAtLeast', args: [Math.max(3, mk.size - 1)] }] : [])],
++    mock: { name: mk ? `${mk.name} (or a market like it)` : `A market like ${id}`, factionId: mk?.faction ?? '', faction: mk?.faction ?? '' }
++  }
++  let n = 0
++  const ref = targetRef(name)
++  const cond = `SF_IsTarget ${q.id} ${name}`
++  const lines = (ls: string[]) => ls.map((l) => (idLine(l, id) ? (n++, cond) : l))
++  const s = q.start
++  if (s.kind === 'option' || s.kind === 'trigger' || s.kind === 'interject' || s.kind === 'barScene') s.conditions = lines(s.conditions)
++  for (const st of q.stages) if (st.marker === id) { st.marker = ref; n++ }
++  for (const pl of q.places ?? []) if (pl.entity === id) { pl.entity = ref; n++ }
++  for (const nd of q.nodes) {
++    if (nd.type === 'wait' && nd.mode === 'arrive' && nd.entity === id) { nd.entity = ref; n++ }
++    if (nd.type === 'dialog') {
++      if ((nd.visual.kind === 'planet' || nd.visual.kind === 'mapMarker') && nd.visual.entity === id) { nd.visual.entity = ref; n++ }
++      nd.conditions = lines(nd.conditions)
++    }
++    if (nd.type === 'branch') for (const c of nd.cases) c.conditions = lines(c.conditions)
++  }
++  if (!n) return null
++  const v: QuestVar = { name, type: 'target', scope: 'quest', initial: '', target }
++  q.variables.push(v)
++  return name
++}
++
++/** Is this reference a vanilla hand-made place or person (the index says vanilla made it)? */
++export function isHandmade(definedBy: string | undefined): boolean {
++  return originSource(definedBy) === CORE_ID
++}
+--- a/tools/saga-forge/src/shared/checks/nexerelin.ts
++++ b/tools/saga-forge/src/shared/checks/nexerelin.ts
+@@ -1,24 +1,60 @@
+ /**
+- * #61 (PLAN.md §10.3): markets changing owner:
+- *  - "If a market of this quest changes owner" with nothing to watch;
+- *  - with Nexerelin in the mod's list (Saga › Mods): a quest contact whose post Nexerelin re-flags
+- *    when it captures the market.
++ * #61 (PLAN.md §10.3): checks for Nexerelin, only when the mod lists it (Saga › Mods):
++ *  - content that names vanilla's hand-made places or people (only in the hand-made sector unless
++ *    the designer chooses: only hand-made, use a random target, or keep);
++ *  - a quest contact whose post Nexerelin re-flags when it captures the market;
++ *  - "If a market of this quest changes owner" with nothing to watch.
+  */
+ import type { Problem, ProblemFix } from '../api'
+ import type { CheckContext } from './index'
+-import { nexListed } from '../modlist'
+-import { INVASION_POSTS, POST_NAMES, marketOf, questWatch } from '../nexerelin'
++import type { ModModel } from '../serialize'
++import { CORE_ID, nexListed } from '../modlist'
++import { effectiveConds, nodeGuards, scanItems, sourceLookup, type Ref } from '../moduses'
++import { INVASION_POSTS, POST_NAMES, marketOf, questWatch, randomTargetScope } from '../nexerelin'
++
++const HANDMADE = new Set(['entity', 'system', 'person'])
++
++/** Each item's references to vanilla's hand-made places and people (outside nodes only the hand-made sector reaches). */
++export function handmadeRefs(ctx: Pick<CheckContext, 'model' | 'index' | 'loaded'>): Map<string, { label: string; ref: Problem['ref']; refs: Ref[] }> {
++  const { model: m, index, loaded } = ctx
++  const look = sourceLookup(index, m, loaded.sourceId)
++  const out = new Map<string, { label: string; ref: Problem['ref']; refs: Ref[] }>()
++  for (const it of scanItems(m)) {
++    const q = it.key.startsWith('quest:') ? m.quests.find((x) => `quest:${x.id}` === it.key) : undefined
++    const guards = q ? nodeGuards(q, undefined) : null
++    const refs = it.refs.filter((r) => HANDMADE.has(r.kind) && !r.gameLoaded && look(r.kind, r.id) === CORE_ID && !(r.node && guards?.get(r.node)?.sector === 'handmade'))
++    if (refs.length) out.set(it.key, { label: it.label, ref: it.ref, refs })
++  }
++  return out
++}
+ 
+ export function nexerelinProblems(ctx: CheckContext): Problem[] {
+-  const { model: m, index } = ctx
++  const { model: m, index, loaded } = ctx
++  if (!nexListed(m.project)) return []
+   const out: Problem[] = []
++  const eff = effectiveConds(m, index, loaded.sourceId)
++  const own = new Map(scanItems(m).map((it) => [it.key, it.own]))
+ 
+-  // ---- owner changes with nothing to watch
+-  for (const q of m.quests) {
+-    if (!q.ownerChange || q.kind !== 'quest') continue
+-    if (!questWatch(q, m, index).length) out.push({ level: 'info', area: 'Quest', message: `"${q.title}": "If a market of this quest changes owner" is set, but the quest names no market (its contact's market, a stage marker, an Arrive place or a random market target). SagaLib still watches the giver's market of a mission.`, ref: { page: 'quests', id: q.id }, key: `nexwatch:${q.id}` })
++  // ---- "needs the hand-made sector" (automatic; the designer picks one of three)
++  for (const [key, h] of handmadeRefs(ctx)) {
++    const mine = own.get(key)?.sector
++    if (mine) continue // chosen: only hand-made, random only, or keep
++    if (eff.get(key)?.eff.sector !== 'handmade') continue
++    const ids = [...new Set(h.refs.map((r) => r.id))]
++    const sample = h.refs.slice(0, 3).map((r) => `${r.id} (${r.where})`).join(', ')
++    const fixes: ProblemFix[] = [{ label: 'Only in the hand-made sector', action: 'sectorSet', arg: { key, sector: 'handmade' } }]
++    const q = key.startsWith('quest:') ? m.quests.find((x) => `quest:${x.id}` === key) : undefined
++    if (q && h.refs.every((r) => r.kind === 'entity')) {
++      const scopes = ids.map((id) => randomTargetScope(q, id, m))
++      if (scopes.every((s) => s.replace.length && !s.cannot.length)) fixes.push({ label: 'Use a random target', action: 'sectorRandomTarget', arg: { quest: q.id, ids } })
++    }
++    fixes.push({ label: 'Keep (runs in both)', action: 'sectorSet', arg: { key, sector: 'any' } })
++    out.push({
++      level: 'info', area: 'Nexerelin',
++      message: `${h.label} names vanilla's hand-made ${sample}${h.refs.length > 3 ? `, +${h.refs.length - 3}` : ''}. In a Nexerelin random sector ${ids.length === 1 ? 'it doesn\'t' : 'they don\'t'} exist, so this runs only in the hand-made sector. Keep that, use a random target instead${fixes.some((f) => f.action === 'sectorRandomTarget') ? '' : ' (not possible here: a contact, speaker or encounter names it)'}, or keep it as it is in both.`,
++      ref: h.ref, fixes, key: `nexhandmade:${key}`
++    })
+   }
+-  if (!nexListed(m.project)) return out
+ 
+   // ---- quest contacts with a post Nexerelin re-flags on capture
+   for (const q of m.quests) {
+@@ -40,5 +76,36 @@
+     })
+   }
+ 
++  // ---- owner changes with nothing to watch
++  for (const q of m.quests) {
++    if (!q.ownerChange || q.kind !== 'quest') continue
++    if (!questWatch(q, m, index).length) out.push({ level: 'info', area: 'Nexerelin', message: `"${q.title}": "If a market of this quest changes owner" is set, but the quest names no market (its contact's market, a stage marker, an Arrive place or a random market target). SagaLib still watches the giver's market of a mission.`, ref: { page: 'quests', id: q.id }, key: `nexwatch:${q.id}` })
++  }
+   return out
+ }
++
++/** The "Sector" choice of an item by its scan key (quest:, person:, system:, entity:, encounter:, …). */
++export function setItemSector(m: ModModel, key: string, sector: 'handmade' | 'random' | 'any' | undefined): boolean {
++  const [kind, rest] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)]
++  const set = (o: { mods?: { sector?: string } } | undefined) => {
++    if (!o) return false
++    const mods = (o.mods ??= {}) as { sector?: string }
++    if (sector) mods.sector = sector
++    else delete mods.sector
++    if (!Object.keys(o.mods!).length) delete o.mods
++    return true
++  }
++  switch (kind) {
++    case 'quest': return set(m.quests.find((x) => x.id === rest))
++    case 'person': return set(m.people.find((x) => x.id === rest))
++    case 'system': return set(m.systems.find((x) => x.id === rest))
++    case 'entity': return set(m.systems.flatMap((s) => s.entities).find((x) => x.id === rest))
++    case 'encounter': return set(m.encounters.find((x) => x.id === rest))
++    case 'events': return set((m.events ?? []).find((x) => x.id === rest))
++    case 'progress': return set((m.progress ?? []).find((x) => x.id === rest))
++    case 'pool': return set((m.pools ?? []).find((x) => x.id === rest))
++    case 'scatter': return set((m.scatter ?? []).find((x) => x.id === rest))
++    case 'event': { const [s, ev] = rest.split('/'); return set((m.events ?? []).find((x) => x.id === s)?.events.find((x) => x.id === ev)) }
++  }
++  return false
++}
+--- a/tools/saga-forge/src/shared/checks/mods.ts
++++ b/tools/saga-forge/src/shared/checks/mods.ts
+@@ -1,297 +1,298 @@
+-/**
+- * #60 (PLAN.md §10.1, §10.2): checks of the mod's list of other mods and of conditional content.
+- * Live: unlisted and incompatible mods in use, game-loaded rows pointing at an optional mod, node
+- * references to an optional mod outside a guard, every combination of the optional mods (no node
+- * left without options, no Branch without a case), the load order of patches. Check mod (with every
+- * rule): an optional mod's own rule commands, its text tokens in unguarded rules.
+- */
+-import type { Problem, ProblemFix } from '../api'
+-import type { CheckContext } from './index'
+-import type { ModModel } from '../serialize'
+-import type { DialogNode, ModUse, QuestPlan } from '../model'
+-import { modUses, effectiveConds, nodeGuards, sharedWithUnconditional, type ItemConds, type ModUseSite } from '../moduses'
+-import { addCond, combinations, comboText, condText, CORE_ID, holds, isNone, noConds, optionalMods, SAGALIB_ID, useOf, type EffConds } from '../modlist'
+-import { parseCondition, parseScriptLine, TOKEN_RE } from '../rules/parse'
+-
+-const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
+-
+-export function modFixes(id: string, name: string, suggestOptional: boolean): ProblemFix[] {
+-  const req = { label: 'Add as required', action: 'modAdd', arg: { id, name, use: 'required' } }
+-  const opt = { label: 'Add as optional', action: 'modAdd', arg: { id, name, use: 'optional' } }
+-  return suggestOptional ? [opt, req] : [req, opt]
+-}
+-
+-export function modProblems(ctx: CheckContext): Problem[] {
+-  const { model: m, index, loaded } = ctx
+-  const out: Problem[] = []
+-  const name = (id: string) => m.project.mods?.find((x) => x.id === id)?.name ?? index.sources.find((s) => s.id === id)?.name ?? id
+-  const uses = modUses(m, index, loaded)
+-  const eff = effectiveConds(m, index, loaded.sourceId, name)
+-
+-  // ---- the list itself
+-  for (const x of m.project.mods ?? []) {
+-    if (!index.sources.some((s) => s.id === x.id)) out.push({ level: 'warning', area: 'Mods', message: `${x.name} (${x.id}) is in the mod's list as ${x.use} but isn't installed: its content can't be checked.`, ref: { page: 'saga', id: 'mods' }, key: `modmissing:${x.id}` })
+-    if (x.id === SAGALIB_ID || x.id === loaded.sourceId) out.push({ level: 'warning', area: 'Mods', message: `${x.name} shouldn't be in the mod's list (${x.id === SAGALIB_ID ? 'SagaLib is added by the export when needed' : 'it is this mod'}).`, ref: { page: 'saga', id: 'mods' }, key: `modself:${x.id}` })
+-    if (x.use === 'incompatible' && !x.reason?.trim()) out.push({ level: 'info', area: 'Mods', message: `${x.name} is marked incompatible without a reason: players see the reason in game and in the release notes.`, ref: { page: 'saga', id: 'mods' }, key: `modreason:${x.id}` })
+-  }
+-
+-  // ---- what uses which mod
+-  for (const [id, sites] of uses) {
+-    const use = useOf(m.project, id)
+-    const n = name(id)
+-    const items = [...new Set(sites.map((s) => s.label))]
+-    const sample = items.slice(0, 3).join(', ') + (items.length > 3 ? `, +${items.length - 3}` : '')
+-    if (use === 'none') {
+-      // a framework used only through its data files → optional; another mod's content the story needs → required
+-      const onlyFiles = sites.every((s) => s.kind === 'file' || s.key.startsWith('override:'))
+-      out.push({ level: 'warning', area: 'Mods', message: `Uses ${n} (${sample}), but ${n} isn't in the mod's list (Saga › Mods). Add it as required or optional${onlyFiles ? ' (suggested: optional; only its own files or a patch of its faction use it)' : ''}.`, ref: { page: 'saga', id: 'mods' }, fixes: modFixes(id, n, onlyFiles), key: `modunlisted:${id}` })
+-    } else if (use === 'incompatible') {
+-      for (const s of sites) out.push({ level: 'error', area: 'Mods', message: `${s.label} refers to ${n} (${s.where}: ${s.id}), which the mod marks incompatible.`, ref: s.ref, key: `modincompat:${id}:${s.key}:${s.id}` })
+-    } else if (use === 'optional') {
+-      for (const s of sites.filter((x) => x.gameLoaded)) out.push(gameLoaded(s, n))
+-    }
+-  }
+-
+-  // ---- references inside quests to an optional mod's content, outside a guard
+-  const optional = new Set(optionalMods(m.project).map((x) => x.id))
+-  if (optional.size) {
+-    for (const [id, sites] of uses) {
+-      if (!optional.has(id)) continue
+-      for (const s of sites) {
+-        if (!s.node || !s.key.startsWith('quest:')) continue
+-        const q = m.quests.find((x) => `quest:${x.id}` === s.key)
+-        if (!q) continue
+-        const g = nodeGuards(q, eff.get(s.key)?.eff).get(s.node)
+-        if (g && guardsMod(g, id)) continue
+-        out.push({ level: 'warning', area: 'Mods', message: `${s.label}, ${s.where}: uses ${name(id)}'s ${s.kind} ${s.id}, but ${name(id)} is optional and nothing guards this node. Put "Only with ${name(id)}" on the quest, or on the option or Branch case that leads here.`, ref: s.ref, key: `modunguarded:${q.id}:${s.node}:${s.id}` })
+-      }
+-    }
+-  }
+-
+-  // ---- things used by conditional and by unconditional content keep no condition (the editor says which)
+-  for (const x of sharedWithUnconditional(m, eff)) {
+-    out.push({ level: 'info', area: 'Mods', message: `${x.key.replace(':', ' ')} is used by conditional content (${x.conditional.map((k) => k.replace(/^\w+:/, '')).slice(0, 3).join(', ')}) and by content without conditions (${x.plain.map((k) => k.replace(/^\w+:/, '')).slice(0, 3).join(', ')}), so it keeps no condition.`, key: `modshared:${x.key}` })
+-  }
+-
+-  // ---- every combination of the optional mods
+-  out.push(...combinationProblems(m, eff, name))
+-
+-  // ---- load order: a patch of another mod's faction wins for single values only after that mod
+-  out.push(...loadOrderProblems(ctx))
+-
+-  // ---- Check mod only: the optional mods' own rule commands and text tokens
+-  if (ctx.rules && optional.size) out.push(...ruleProblems(ctx, eff, optional, name))
+-  return out
+-}
+-
+-function gameLoaded(s: ModUseSite, n: string): Problem {
+-  return { level: 'error', area: 'Mods', message: `${s.label}: ${s.where} use ${n}'s ${s.kind} ${s.id}, which the game loads every time, with or without ${n}. Make ${n} required, or remove it here${s.key.startsWith('faction:') ? ' (a SagaLib scripted change can add to a faction at runtime)' : ''}.`, ref: s.ref, key: `modgameloaded:${s.key}:${s.id}` }
+-}
+-
+-/** The guard makes sure the mod counts (it is in "with", or every "any of" group is only it). */
+-function guardsMod(g: EffConds, id: string): boolean {
+-  return g.with.includes(id) || g.any.some((grp) => grp.length === 1 && grp[0] === id)
+-}
+-
+-/**
+- * PLAN.md §10.2: plays every combination of the optional mods (2 mods = 4): a Dialog node that can
+- * be reached with no option left, a Branch (not random) with no case and no "otherwise".
+- */
+-export function combinationProblems(m: ModModel, eff: Map<string, ItemConds>, name: (id: string) => string = (id) => id): Problem[] {
+-  const ids = optionalMods(m.project).map((x) => x.id)
+-  const out: Problem[] = []
+-  const used = (q: QuestPlan) => q.nodes.some((n) => (n.type === 'dialog' && n.options.some((o) => !!o.mods)) || (n.type === 'branch' && n.cases.some((c) => !!c.mods)))
+-  for (const q of m.quests) {
+-    if (q.inactive || (!ids.length && !used(q))) continue
+-    const qe = eff.get(`quest:${q.id}`)?.eff
+-    const guards = nodeGuards(q, qe)
+-    const combos = ids.length ? combinations(ids) : [new Set<string>()]
+-    for (const on of combos) {
+-      if (qe && !holds(qe, on)) continue
+-      for (const n of q.nodes) {
+-        const g = guards.get(n.id)
+-        if (g && !holds(g, on)) continue
+-        if (n.type === 'dialog' && n.options.length && !n.options.some((o) => holds(addCond(noConds(), o.mods), on))) {
+-          out.push({ level: 'error', area: 'Mods', message: `"${n.title || n.id}" has no option left with ${comboText(on, name)}: every option is "Only with / without" mods. Add an option without conditions, or one for this combination.`, ref: { page: 'quests', id: q.id, sub: n.id }, key: `modcombo:${q.id}:${n.id}:${[...on].join('+')}` })
+-        }
+-        if (n.type === 'branch' && !n.random && n.cases.length && !q.edges.some((e) => e.from === n.id && e.handle === 'else') && !n.cases.some((c) => holds(addCond(noConds(), c.mods), on))) {
+-          out.push({ level: 'error', area: 'Mods', message: `Branch "${n.title || n.id}" has no case with ${comboText(on, name)} and no "otherwise": the conversation stops there.`, ref: { page: 'quests', id: q.id, sub: n.id }, key: `modcombo:${q.id}:${n.id}:${[...on].join('+')}` })
+-        }
+-      }
+-    }
+-  }
+-  // one message per node is enough: keep the first combination
+-  const seen = new Set<string>()
+-  return out.filter((p) => { const k = p.key!.split(':').slice(0, 3).join(':'); if (seen.has(k)) return false; seen.add(k); return true })
+-}
+-
+-/** FORMATS.md "Load order": for merged JSON the last mod wins; a patch of another mod's faction should load after it. */
+-export function loadOrderProblems(ctx: CheckContext): Problem[] {
+-  const { model: m, index, loaded } = ctx
+-  const out: Problem[] = []
+-  const order = index.sources.map((s) => s.id)
+-  const me = order.indexOf(loaded.sourceId)
+-  if (me < 0) return out
+-  for (const f of m.factions) {
+-    if (f.kind !== 'override' || !Object.keys(f.patch.set ?? {}).length) continue
+-    const info = index.factions.find((x) => x.id === f.id)
+-    const owner = info?.definedBy.replace(/^code:/, '')
+-    if (!owner || owner === CORE_ID || owner === loaded.sourceId) continue
+-    const at = order.indexOf(owner)
+-    if (at < 0 || at < me) continue
+-    const src = index.sources[at]
+-    const want = `${src.sortString || src.name} ~ ${loaded.modInfo.name}`
+-    if (m.project.sortString === want) continue
+-    out.push({
+-      level: 'warning', area: 'Mods', message: `The change to faction "${f.id}" sets single values, but ${src.name} (which defines it) loads after this mod, so its values win. Give this mod a sortString that sorts after ${src.name}.`,
+-      ref: { page: 'factions', id: f.id }, fixes: [{ label: `Set sortString "${want}"`, action: 'setSortString', arg: want }], key: `loadorder:${f.id}`
+-    })
+-  }
+-  return out
+-}
+-
+-/** Every rule command name and memory key set by each source's rules (Check mod's full rule set). */
+-function ruleSources(rules: NonNullable<CheckContext['rules']>): { commands: Map<string, Set<string>>; keys: Map<string, Set<string>> } {
+-  const commands = new Map<string, Set<string>>()
+-  const keys = new Map<string, Set<string>>()
+-  const add = (m: Map<string, Set<string>>, k: string, s: string) => { let x = m.get(k); if (!x) m.set(k, (x = new Set())); x.add(s) }
+-  for (const r of rules) {
+-    for (const l of r.conditions.split('\n')) { const c = l.trim() && parseCondition(l.trim()); if (c && c.kind === 'command') add(commands, c.name, r.sourceId) }
+-    for (const l of r.script.split('\n')) {
+-      if (!l.trim() || l.trim().startsWith('#')) continue
+-      const s = parseScriptLine(l.trim())
+-      if (s.kind === 'command') add(commands, s.name, r.sourceId)
+-      if (s.kind === 'set' || s.kind === 'incr') add(keys, s.key, r.sourceId)
+-    }
+-  }
+-  return { commands, keys }
+-}
+-
+-/** Known rule command prefixes of frameworks (FORMATS.md, Other mods and frameworks). */
+-const COMMAND_PREFIXES: [RegExp, string][] = [[/^Nex_/, 'nexerelin'], [/^MagicBounty/, 'MagicLib']]
+-
+-function ruleProblems(ctx: CheckContext, eff: Map<string, ItemConds>, optional: Set<string>, name: (id: string) => string): Problem[] {
+-  const out: Problem[] = []
+-  const { commands, keys } = ruleSources(ctx.rules!)
+-  const ownerOfCommand = (cmd: string): string | null => {
+-    for (const [re, mod] of COMMAND_PREFIXES) if (re.test(cmd) && optional.has(mod)) return mod
+-    const srcs = commands.get(cmd)
+-    if (!srcs || srcs.has(CORE_ID) || srcs.has(SAGALIB_ID) || srcs.has(ctx.loaded.sourceId)) return null
+-    const opt = [...srcs].filter((s) => optional.has(s))
+-    return opt.length === srcs.size ? opt[0] : null
+-  }
+-  const ownerOfKey = (key: string): string | null => {
+-    const srcs = keys.get(key)
+-    if (!srcs || srcs.has(CORE_ID) || srcs.has(ctx.loaded.sourceId)) return null
+-    const opt = [...srcs].filter((s) => optional.has(s))
+-    return opt.length ? opt[0] : null
+-  }
+-  for (const q of ctx.model.quests) {
+-    if (q.inactive) continue
+-    const guards = nodeGuards(q, eff.get(`quest:${q.id}`)?.eff)
+-    const lines: { node: string; line: string; cond: boolean }[] = []
+-    const s = q.start
+-    if ('conditions' in s) for (const l of s.conditions) lines.push({ node: '', line: l, cond: true })
+-    for (const n of q.nodes) {
+-      if (n.type === 'dialog') {
+-        for (const l of n.conditions) lines.push({ node: n.id, line: l, cond: true })
+-        for (const l of n.script) lines.push({ node: n.id, line: l, cond: false })
+-        for (const o of n.options) for (const l of [...(o.showIf ?? []), ...(o.disabledIf ?? [])]) lines.push({ node: n.id, line: l, cond: true })
+-      }
+-      if (n.type === 'branch') for (const c of n.cases) for (const l of c.conditions) lines.push({ node: n.id, line: l, cond: true })
+-      if (n.type === 'action') for (const o of n.ops) if (o.op === 'line') lines.push({ node: n.id, line: o.line, cond: false })
+-    }
+-    for (const x of lines) {
+-      const t = x.line.trim()
+-      if (!t || t.startsWith('#')) continue
+-      const c = x.cond ? parseCondition(t) : null
+-      const nm = c ? (c.kind === 'command' ? c.name : null) : (() => { const sl = parseScriptLine(t); return sl.kind === 'command' ? sl.name : null })()
+-      const mod = nm ? ownerOfCommand(nm) : null
+-      if (nm && mod) out.push({ level: 'error', area: 'Mods', message: `${q.title}${x.node ? `, node "${x.node}"` : ''}: ${nm} is ${name(mod)}'s rule command. The game looks up every command of rules.csv when it loads and stops with "Command [${nm}] not found" without ${name(mod)}, even in a guarded rule. Make ${name(mod)} required, or use its memory keys instead.`, ref: { page: 'quests', id: q.id, sub: x.node || undefined }, key: `modcommand:${q.id}:${x.node}:${nm}` })
+-    }
+-    // text tokens set only by an optional mod's rules, in text no guard covers
+-    for (const n of q.nodes) {
+-      if (n.type !== 'dialog') continue
+-      const g = guards.get(n.id) ?? noConds()
+-      for (const tok of new Set((textOf(n).match(TOKEN_RE) ?? []).map((t) => t.replace(/\.+$/, '')))) {
+-        const mod = ownerOfKey(tok)
+-        if (!mod || guardsMod(g, mod)) continue
+-        out.push({ level: 'warning', area: 'Mods', message: `${q.title}, node "${n.title || n.id}": the text uses ${tok}, which only ${name(mod)} sets. Without ${name(mod)} it shows as "${tok}". Guard the node with "Only with ${name(mod)}" (on the quest, or the option or case that leads here).`, ref: { page: 'quests', id: q.id, sub: n.id }, key: `modtoken:${q.id}:${n.id}:${tok}` })
+-      }
+-    }
+-  }
+-  return out
+-}
+-
+-const textOf = (n: DialogNode) => [n.text, ...n.options.map((o) => o.text)].join('\n')
+-
+-/** "12 items use UAF": what removing a mod from the list, or marking it incompatible, affects. */
+-export function usesSummary(m: ModModel, index: CheckContext['index'], loaded: CheckContext['loaded'], id: string): { count: number; items: string[] } {
+-  const sites = modUses(m, index, loaded).get(id) ?? []
+-  const items = [...new Set(sites.map((s) => s.label))]
+-  return { count: items.length, items }
+-}
+-
+-/** For the Saga › Mods table: what in the mod uses each mod (labels). */
+-export function usedBy(m: ModModel, index: CheckContext['index'], loaded: CheckContext['loaded']): Map<string, string[]> {
+-  const out = new Map<string, string[]>()
+-  for (const [id, sites] of modUses(m, index, loaded)) out.set(id, [...new Set(sites.map((s) => s.label))])
+-  return out
+-}
+-
+-/** Every item's condition text for chips ("only with Nexerelin", greyed parts "from: …"). */
+-export function chipText(c: ItemConds | undefined, name: (id: string) => string): { own: string; from: { text: string; why: string }[] } {
+-  if (!c || isNone(c.eff)) return { own: '', from: [] }
+-  return { own: condText(c.eff, name), from: c.from.map((f) => ({ text: condText(f.cond, name), why: f.why })) }
+-}
+-
+-export { plural }
+-export type { ModUse }
+-
+-/** The game index as it would be without these mods (their ids removed), for Check mod's second pass. */
+-export function indexWithout(index: CheckContext['index'], ids: Set<string>): CheckContext['index'] {
+-  const keep = <T extends { definedBy?: string }>(l: T[] | undefined): T[] => (l ?? []).filter((x) => !ids.has((x.definedBy ?? '').replace(/^code:/, '')))
+-  return {
+-    ...index,
+-    sources: index.sources.filter((s) => !ids.has(s.id)),
+-    factions: keep(index.factions), people: keep(index.people), markets: keep(index.markets), systems: keep(index.systems), items: keep(index.items),
+-    industries: keep(index.industries), conditions: keep(index.conditions), submarkets: keep(index.submarkets), hulls: keep(index.hulls), wings: keep(index.wings),
+-    weapons: keep(index.weapons), hullmods: keep(index.hullmods), variants: keep(index.variants), illustrations: keep(index.illustrations),
+-    portraits: (index.portraits ?? []).filter((p) => !ids.has(p.sourceId)), customEntityTypes: keep(index.customEntityTypes), planetTypes: keep(index.planetTypes),
+-    codeSystems: (index.codeSystems ?? []).filter((s) => !ids.has(s.sourceId))
+-  }
+-}
+-
+-/**
+- * PLAN.md §10.2: Check mod's second pass "without the optional mods": the checks run again with
+- * their ids removed; what is new there, outside content that is conditional on them, depends on
+- * them without a condition.
+- */
+-export function withoutOptionalPass(ctx: CheckContext, first: Problem[], run: (c: CheckContext) => Problem[]): Problem[] {
+-  const opt = optionalMods(ctx.model.project)
+-  if (!opt.length) return []
+-  const ids = new Set(opt.map((x) => x.id))
+-  const eff = effectiveConds(ctx.model, ctx.index, ctx.loaded.sourceId)
+-  const seen = new Set(first.map((p) => p.key ?? p.message))
+-  const names = opt.map((x) => x.name).join(', ')
+-  const gated = (p: Problem): boolean => {
+-    const r = p.ref
+-    if (!r?.id) return false
+-    const key = r.page === 'quests' ? `quest:${r.id}` : r.page === 'people' ? `person:${r.id}` : r.page === 'encounters' ? `encounter:${r.id}` : r.page === 'locations' ? (r.sub ? `entity:${r.sub}` : `system:${r.id}`) : null
+-    if (!key) return false
+-    const e = eff.get(key)?.eff
+-    if (!e) return false
+-    if (e.with.some((id) => ids.has(id)) || e.any.some((g) => g.every((id) => ids.has(id)))) return true
+-    // a node guarded by its option or case
+-    if (r.page === 'quests' && r.sub) {
+-      const q = ctx.model.quests.find((x) => x.id === r.id)
+-      const g = q && nodeGuards(q, e).get(r.sub.split('/')[0])
+-      if (g && (g.with.some((id) => ids.has(id)) || g.any.some((grp) => grp.every((id) => ids.has(id))))) return true
+-    }
+-    return false
+-  }
+-  const second = run({ ...ctx, index: indexWithout(ctx.index, ids), rules: ctx.rules?.filter((r) => !ids.has(r.sourceId)) ?? null })
+-  return second
+-    .filter((p) => p.area !== 'Mods' && (p.level === 'error' || p.level === 'warning') && !seen.has(p.key ?? p.message) && !gated(p))
+-    .map((p) => ({ ...p, area: `Without ${names}`, message: `Without the optional mods (${names}): ${p.message}`, key: p.key ? `without:${p.key}` : undefined }))
+-}
++/**
++ * #60 (PLAN.md §10.1, §10.2): checks of the mod's list of other mods and of conditional content.
++ * Live: unlisted and incompatible mods in use, game-loaded rows pointing at an optional mod, node
++ * references to an optional mod outside a guard, every combination of the optional mods (no node
++ * left without options, no Branch without a case), the load order of patches. Check mod (with every
++ * rule): an optional mod's own rule commands, its text tokens in unguarded rules.
++ */
++import type { Problem, ProblemFix } from '../api'
++import type { CheckContext } from './index'
++import type { ModModel } from '../serialize'
++import type { DialogNode, ModUse, QuestPlan } from '../model'
++import { modUses, effectiveConds, nodeGuards, sharedWithUnconditional, type ItemConds, type ModUseSite } from '../moduses'
++import { addCond, combinations, comboText, condText, CORE_ID, holds, isNone, nexListed, noConds, optionalMods, RANDOM_SECTOR, SAGALIB_ID, useOf, type EffConds } from '../modlist'
++import { parseCondition, parseScriptLine, TOKEN_RE } from '../rules/parse'
++
++const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
++
++export function modFixes(id: string, name: string, suggestOptional: boolean): ProblemFix[] {
++  const req = { label: 'Add as required', action: 'modAdd', arg: { id, name, use: 'required' } }
++  const opt = { label: 'Add as optional', action: 'modAdd', arg: { id, name, use: 'optional' } }
++  return suggestOptional ? [opt, req] : [req, opt]
++}
++
++export function modProblems(ctx: CheckContext): Problem[] {
++  const { model: m, index, loaded } = ctx
++  const out: Problem[] = []
++  const name = (id: string) => m.project.mods?.find((x) => x.id === id)?.name ?? index.sources.find((s) => s.id === id)?.name ?? id
++  const uses = modUses(m, index, loaded)
++  const eff = effectiveConds(m, index, loaded.sourceId, name)
++
++  // ---- the list itself
++  for (const x of m.project.mods ?? []) {
++    if (!index.sources.some((s) => s.id === x.id)) out.push({ level: 'warning', area: 'Mods', message: `${x.name} (${x.id}) is in the mod's list as ${x.use} but isn't installed: its content can't be checked.`, ref: { page: 'saga', id: 'mods' }, key: `modmissing:${x.id}` })
++    if (x.id === SAGALIB_ID || x.id === loaded.sourceId) out.push({ level: 'warning', area: 'Mods', message: `${x.name} shouldn't be in the mod's list (${x.id === SAGALIB_ID ? 'SagaLib is added by the export when needed' : 'it is this mod'}).`, ref: { page: 'saga', id: 'mods' }, key: `modself:${x.id}` })
++    if (x.use === 'incompatible' && !x.reason?.trim()) out.push({ level: 'info', area: 'Mods', message: `${x.name} is marked incompatible without a reason: players see the reason in game and in the release notes.`, ref: { page: 'saga', id: 'mods' }, key: `modreason:${x.id}` })
++  }
++
++  // ---- what uses which mod
++  for (const [id, sites] of uses) {
++    const use = useOf(m.project, id)
++    const n = name(id)
++    const items = [...new Set(sites.map((s) => s.label))]
++    const sample = items.slice(0, 3).join(', ') + (items.length > 3 ? `, +${items.length - 3}` : '')
++    if (use === 'none') {
++      // a framework used only through its data files → optional; another mod's content the story needs → required
++      const onlyFiles = sites.every((s) => s.kind === 'file' || s.key.startsWith('override:'))
++      out.push({ level: 'warning', area: 'Mods', message: `Uses ${n} (${sample}), but ${n} isn't in the mod's list (Saga › Mods). Add it as required or optional${onlyFiles ? ' (suggested: optional; only its own files or a patch of its faction use it)' : ''}.`, ref: { page: 'saga', id: 'mods' }, fixes: modFixes(id, n, onlyFiles), key: `modunlisted:${id}` })
++    } else if (use === 'incompatible') {
++      for (const s of sites) out.push({ level: 'error', area: 'Mods', message: `${s.label} refers to ${n} (${s.where}: ${s.id}), which the mod marks incompatible.`, ref: s.ref, key: `modincompat:${id}:${s.key}:${s.id}` })
++    } else if (use === 'optional') {
++      for (const s of sites.filter((x) => x.gameLoaded)) out.push(gameLoaded(s, n))
++    }
++  }
++
++  // ---- references inside quests to an optional mod's content, outside a guard
++  const optional = new Set(optionalMods(m.project).map((x) => x.id))
++  if (optional.size) {
++    for (const [id, sites] of uses) {
++      if (!optional.has(id)) continue
++      for (const s of sites) {
++        if (!s.node || !s.key.startsWith('quest:')) continue
++        const q = m.quests.find((x) => `quest:${x.id}` === s.key)
++        if (!q) continue
++        const g = nodeGuards(q, eff.get(s.key)?.eff).get(s.node)
++        if (g && guardsMod(g, id)) continue
++        out.push({ level: 'warning', area: 'Mods', message: `${s.label}, ${s.where}: uses ${name(id)}'s ${s.kind} ${s.id}, but ${name(id)} is optional and nothing guards this node. Put "Only with ${name(id)}" on the quest, or on the option or Branch case that leads here.`, ref: s.ref, key: `modunguarded:${q.id}:${s.node}:${s.id}` })
++      }
++    }
++  }
++
++  // ---- things used by conditional and by unconditional content keep no condition (the editor says which)
++  for (const x of sharedWithUnconditional(m, eff)) {
++    out.push({ level: 'info', area: 'Mods', message: `${x.key.replace(':', ' ')} is used by conditional content (${x.conditional.map((k) => k.replace(/^\w+:/, '')).slice(0, 3).join(', ')}) and by content without conditions (${x.plain.map((k) => k.replace(/^\w+:/, '')).slice(0, 3).join(', ')}), so it keeps no condition.`, key: `modshared:${x.key}` })
++  }
++
++  // ---- every combination of the optional mods
++  out.push(...combinationProblems(m, eff, name))
++
++  // ---- load order: a patch of another mod's faction wins for single values only after that mod
++  out.push(...loadOrderProblems(ctx))
++
++  // ---- Check mod only: the optional mods' own rule commands and text tokens
++  if (ctx.rules && optional.size) out.push(...ruleProblems(ctx, eff, optional, name))
++  return out
++}
++
++function gameLoaded(s: ModUseSite, n: string): Problem {
++  return { level: 'error', area: 'Mods', message: `${s.label}: ${s.where} use ${n}'s ${s.kind} ${s.id}, which the game loads every time, with or without ${n}. Make ${n} required, or remove it here${s.key.startsWith('faction:') ? ' (a SagaLib scripted change can add to a faction at runtime)' : ''}.`, ref: s.ref, key: `modgameloaded:${s.key}:${s.id}` }
++}
++
++/** The guard makes sure the mod counts (it is in "with", or every "any of" group is only it). */
++function guardsMod(g: EffConds, id: string): boolean {
++  return g.with.includes(id) || g.any.some((grp) => grp.length === 1 && grp[0] === id)
++}
++
++/**
++ * PLAN.md §10.2: plays every combination of the optional mods (2 mods = 4): a Dialog node that can
++ * be reached with no option left, a Branch (not random) with no case and no "otherwise".
++ */
++export function combinationProblems(m: ModModel, eff: Map<string, ItemConds>, name: (id: string) => string = (id) => id): Problem[] {
++  // #61: with Nexerelin in the list, a random sector is one more switch
++  const ids = [...optionalMods(m.project).map((x) => x.id), ...(nexListed(m.project) ? [RANDOM_SECTOR] : [])]
++  const out: Problem[] = []
++  const used = (q: QuestPlan) => q.nodes.some((n) => (n.type === 'dialog' && n.options.some((o) => !!o.mods)) || (n.type === 'branch' && n.cases.some((c) => !!c.mods)))
++  for (const q of m.quests) {
++    if (q.inactive || (!ids.length && !used(q))) continue
++    const qe = eff.get(`quest:${q.id}`)?.eff
++    const guards = nodeGuards(q, qe)
++    const combos = ids.length ? combinations(ids) : [new Set<string>()]
++    for (const on of combos) {
++      if (qe && !holds(qe, on)) continue
++      for (const n of q.nodes) {
++        const g = guards.get(n.id)
++        if (g && !holds(g, on)) continue
++        if (n.type === 'dialog' && n.options.length && !n.options.some((o) => holds(addCond(noConds(), o.mods), on))) {
++          out.push({ level: 'error', area: 'Mods', message: `"${n.title || n.id}" has no option left with ${comboText(on, name)}: every option is "Only with / without" mods. Add an option without conditions, or one for this combination.`, ref: { page: 'quests', id: q.id, sub: n.id }, key: `modcombo:${q.id}:${n.id}:${[...on].join('+')}` })
++        }
++        if (n.type === 'branch' && !n.random && n.cases.length && !q.edges.some((e) => e.from === n.id && e.handle === 'else') && !n.cases.some((c) => holds(addCond(noConds(), c.mods), on))) {
++          out.push({ level: 'error', area: 'Mods', message: `Branch "${n.title || n.id}" has no case with ${comboText(on, name)} and no "otherwise": the conversation stops there.`, ref: { page: 'quests', id: q.id, sub: n.id }, key: `modcombo:${q.id}:${n.id}:${[...on].join('+')}` })
++        }
++      }
++    }
++  }
++  // one message per node is enough: keep the first combination
++  const seen = new Set<string>()
++  return out.filter((p) => { const k = p.key!.split(':').slice(0, 3).join(':'); if (seen.has(k)) return false; seen.add(k); return true })
++}
++
++/** FORMATS.md "Load order": for merged JSON the last mod wins; a patch of another mod's faction should load after it. */
++export function loadOrderProblems(ctx: CheckContext): Problem[] {
++  const { model: m, index, loaded } = ctx
++  const out: Problem[] = []
++  const order = index.sources.map((s) => s.id)
++  const me = order.indexOf(loaded.sourceId)
++  if (me < 0) return out
++  for (const f of m.factions) {
++    if (f.kind !== 'override' || !Object.keys(f.patch.set ?? {}).length) continue
++    const info = index.factions.find((x) => x.id === f.id)
++    const owner = info?.definedBy.replace(/^code:/, '')
++    if (!owner || owner === CORE_ID || owner === loaded.sourceId) continue
++    const at = order.indexOf(owner)
++    if (at < 0 || at < me) continue
++    const src = index.sources[at]
++    const want = `${src.sortString || src.name} ~ ${loaded.modInfo.name}`
++    if (m.project.sortString === want) continue
++    out.push({
++      level: 'warning', area: 'Mods', message: `The change to faction "${f.id}" sets single values, but ${src.name} (which defines it) loads after this mod, so its values win. Give this mod a sortString that sorts after ${src.name}.`,
++      ref: { page: 'factions', id: f.id }, fixes: [{ label: `Set sortString "${want}"`, action: 'setSortString', arg: want }], key: `loadorder:${f.id}`
++    })
++  }
++  return out
++}
++
++/** Every rule command name and memory key set by each source's rules (Check mod's full rule set). */
++function ruleSources(rules: NonNullable<CheckContext['rules']>): { commands: Map<string, Set<string>>; keys: Map<string, Set<string>> } {
++  const commands = new Map<string, Set<string>>()
++  const keys = new Map<string, Set<string>>()
++  const add = (m: Map<string, Set<string>>, k: string, s: string) => { let x = m.get(k); if (!x) m.set(k, (x = new Set())); x.add(s) }
++  for (const r of rules) {
++    for (const l of r.conditions.split('\n')) { const c = l.trim() && parseCondition(l.trim()); if (c && c.kind === 'command') add(commands, c.name, r.sourceId) }
++    for (const l of r.script.split('\n')) {
++      if (!l.trim() || l.trim().startsWith('#')) continue
++      const s = parseScriptLine(l.trim())
++      if (s.kind === 'command') add(commands, s.name, r.sourceId)
++      if (s.kind === 'set' || s.kind === 'incr') add(keys, s.key, r.sourceId)
++    }
++  }
++  return { commands, keys }
++}
++
++/** Known rule command prefixes of frameworks (FORMATS.md, Other mods and frameworks). */
++const COMMAND_PREFIXES: [RegExp, string][] = [[/^Nex_/, 'nexerelin'], [/^MagicBounty/, 'MagicLib']]
++
++function ruleProblems(ctx: CheckContext, eff: Map<string, ItemConds>, optional: Set<string>, name: (id: string) => string): Problem[] {
++  const out: Problem[] = []
++  const { commands, keys } = ruleSources(ctx.rules!)
++  const ownerOfCommand = (cmd: string): string | null => {
++    for (const [re, mod] of COMMAND_PREFIXES) if (re.test(cmd) && optional.has(mod)) return mod
++    const srcs = commands.get(cmd)
++    if (!srcs || srcs.has(CORE_ID) || srcs.has(SAGALIB_ID) || srcs.has(ctx.loaded.sourceId)) return null
++    const opt = [...srcs].filter((s) => optional.has(s))
++    return opt.length === srcs.size ? opt[0] : null
++  }
++  const ownerOfKey = (key: string): string | null => {
++    const srcs = keys.get(key)
++    if (!srcs || srcs.has(CORE_ID) || srcs.has(ctx.loaded.sourceId)) return null
++    const opt = [...srcs].filter((s) => optional.has(s))
++    return opt.length ? opt[0] : null
++  }
++  for (const q of ctx.model.quests) {
++    if (q.inactive) continue
++    const guards = nodeGuards(q, eff.get(`quest:${q.id}`)?.eff)
++    const lines: { node: string; line: string; cond: boolean }[] = []
++    const s = q.start
++    if ('conditions' in s) for (const l of s.conditions) lines.push({ node: '', line: l, cond: true })
++    for (const n of q.nodes) {
++      if (n.type === 'dialog') {
++        for (const l of n.conditions) lines.push({ node: n.id, line: l, cond: true })
++        for (const l of n.script) lines.push({ node: n.id, line: l, cond: false })
++        for (const o of n.options) for (const l of [...(o.showIf ?? []), ...(o.disabledIf ?? [])]) lines.push({ node: n.id, line: l, cond: true })
++      }
++      if (n.type === 'branch') for (const c of n.cases) for (const l of c.conditions) lines.push({ node: n.id, line: l, cond: true })
++      if (n.type === 'action') for (const o of n.ops) if (o.op === 'line') lines.push({ node: n.id, line: o.line, cond: false })
++    }
++    for (const x of lines) {
++      const t = x.line.trim()
++      if (!t || t.startsWith('#')) continue
++      const c = x.cond ? parseCondition(t) : null
++      const nm = c ? (c.kind === 'command' ? c.name : null) : (() => { const sl = parseScriptLine(t); return sl.kind === 'command' ? sl.name : null })()
++      const mod = nm ? ownerOfCommand(nm) : null
++      if (nm && mod) out.push({ level: 'error', area: 'Mods', message: `${q.title}${x.node ? `, node "${x.node}"` : ''}: ${nm} is ${name(mod)}'s rule command. The game looks up every command of rules.csv when it loads and stops with "Command [${nm}] not found" without ${name(mod)}, even in a guarded rule. Make ${name(mod)} required, or use its memory keys instead.`, ref: { page: 'quests', id: q.id, sub: x.node || undefined }, key: `modcommand:${q.id}:${x.node}:${nm}` })
++    }
++    // text tokens set only by an optional mod's rules, in text no guard covers
++    for (const n of q.nodes) {
++      if (n.type !== 'dialog') continue
++      const g = guards.get(n.id) ?? noConds()
++      for (const tok of new Set((textOf(n).match(TOKEN_RE) ?? []).map((t) => t.replace(/\.+$/, '')))) {
++        const mod = ownerOfKey(tok)
++        if (!mod || guardsMod(g, mod)) continue
++        out.push({ level: 'warning', area: 'Mods', message: `${q.title}, node "${n.title || n.id}": the text uses ${tok}, which only ${name(mod)} sets. Without ${name(mod)} it shows as "${tok}". Guard the node with "Only with ${name(mod)}" (on the quest, or the option or case that leads here).`, ref: { page: 'quests', id: q.id, sub: n.id }, key: `modtoken:${q.id}:${n.id}:${tok}` })
++      }
++    }
++  }
++  return out
++}
++
++const textOf = (n: DialogNode) => [n.text, ...n.options.map((o) => o.text)].join('\n')
++
++/** "12 items use UAF": what removing a mod from the list, or marking it incompatible, affects. */
++export function usesSummary(m: ModModel, index: CheckContext['index'], loaded: CheckContext['loaded'], id: string): { count: number; items: string[] } {
++  const sites = modUses(m, index, loaded).get(id) ?? []
++  const items = [...new Set(sites.map((s) => s.label))]
++  return { count: items.length, items }
++}
++
++/** For the Saga › Mods table: what in the mod uses each mod (labels). */
++export function usedBy(m: ModModel, index: CheckContext['index'], loaded: CheckContext['loaded']): Map<string, string[]> {
++  const out = new Map<string, string[]>()
++  for (const [id, sites] of modUses(m, index, loaded)) out.set(id, [...new Set(sites.map((s) => s.label))])
++  return out
++}
++
++/** Every item's condition text for chips ("only with Nexerelin", greyed parts "from: …"). */
++export function chipText(c: ItemConds | undefined, name: (id: string) => string): { own: string; from: { text: string; why: string }[] } {
++  if (!c || isNone(c.eff)) return { own: '', from: [] }
++  return { own: condText(c.eff, name), from: c.from.map((f) => ({ text: condText(f.cond, name), why: f.why })) }
++}
++
++export { plural }
++export type { ModUse }
++
++/** The game index as it would be without these mods (their ids removed), for Check mod's second pass. */
++export function indexWithout(index: CheckContext['index'], ids: Set<string>): CheckContext['index'] {
++  const keep = <T extends { definedBy?: string }>(l: T[] | undefined): T[] => (l ?? []).filter((x) => !ids.has((x.definedBy ?? '').replace(/^code:/, '')))
++  return {
++    ...index,
++    sources: index.sources.filter((s) => !ids.has(s.id)),
++    factions: keep(index.factions), people: keep(index.people), markets: keep(index.markets), systems: keep(index.systems), items: keep(index.items),
++    industries: keep(index.industries), conditions: keep(index.conditions), submarkets: keep(index.submarkets), hulls: keep(index.hulls), wings: keep(index.wings),
++    weapons: keep(index.weapons), hullmods: keep(index.hullmods), variants: keep(index.variants), illustrations: keep(index.illustrations),
++    portraits: (index.portraits ?? []).filter((p) => !ids.has(p.sourceId)), customEntityTypes: keep(index.customEntityTypes), planetTypes: keep(index.planetTypes),
++    codeSystems: (index.codeSystems ?? []).filter((s) => !ids.has(s.sourceId))
++  }
++}
++
++/**
++ * PLAN.md §10.2: Check mod's second pass "without the optional mods": the checks run again with
++ * their ids removed; what is new there, outside content that is conditional on them, depends on
++ * them without a condition.
++ */
++export function withoutOptionalPass(ctx: CheckContext, first: Problem[], run: (c: CheckContext) => Problem[]): Problem[] {
++  const opt = optionalMods(ctx.model.project)
++  if (!opt.length) return []
++  const ids = new Set(opt.map((x) => x.id))
++  const eff = effectiveConds(ctx.model, ctx.index, ctx.loaded.sourceId)
++  const seen = new Set(first.map((p) => p.key ?? p.message))
++  const names = opt.map((x) => x.name).join(', ')
++  const gated = (p: Problem): boolean => {
++    const r = p.ref
++    if (!r?.id) return false
++    const key = r.page === 'quests' ? `quest:${r.id}` : r.page === 'people' ? `person:${r.id}` : r.page === 'encounters' ? `encounter:${r.id}` : r.page === 'locations' ? (r.sub ? `entity:${r.sub}` : `system:${r.id}`) : null
++    if (!key) return false
++    const e = eff.get(key)?.eff
++    if (!e) return false
++    if (e.with.some((id) => ids.has(id)) || e.any.some((g) => g.every((id) => ids.has(id)))) return true
++    // a node guarded by its option or case
++    if (r.page === 'quests' && r.sub) {
++      const q = ctx.model.quests.find((x) => x.id === r.id)
++      const g = q && nodeGuards(q, e).get(r.sub.split('/')[0])
++      if (g && (g.with.some((id) => ids.has(id)) || g.any.some((grp) => grp.every((id) => ids.has(id))))) return true
++    }
++    return false
++  }
++  const second = run({ ...ctx, index: indexWithout(ctx.index, ids), rules: ctx.rules?.filter((r) => !ids.has(r.sourceId)) ?? null })
++  return second
++    .filter((p) => p.area !== 'Mods' && (p.level === 'error' || p.level === 'warning') && !seen.has(p.key ?? p.message) && !gated(p))
++    .map((p) => ({ ...p, area: `Without ${names}`, message: `Without the optional mods (${names}): ${p.message}`, key: p.key ? `without:${p.key}` : undefined }))
++}
+--- a/tools/saga-forge/src/renderer/src/state/problems.svelte.ts
++++ b/tools/saga-forge/src/renderer/src/state/problems.svelte.ts
+@@ -11,6 +11,8 @@
+ import { project } from './project.svelte'
+ import { versions, versionInfo, chooseTarget, replacing } from './versions.svelte'
+ import { replaceRefs } from '../../../shared/versionrefs'
++import { setItemSector } from '../../../shared/checks/nexerelin'
++import { useRandomTarget } from '../../../shared/nexerelin'
+ import type { DiffCategory } from '../../../shared/versiondiff'
+ 
+ /** #47: the version comparison for the checks (two installs only). */
+@@ -105,7 +107,15 @@
+     return true
+   }
+   if (action === 'linkToMenu' || action === 'spawnAt') { project.change((m) => { applyPatternFix(m, action, arg) }); return true }
+-  // #61: Nexerelin's invasions
++  // #61: Nexerelin's sector and invasions
++  if (action === 'sectorSet') { const a = arg as { key: string; sector: 'handmade' | 'random' | 'any' }; project.change((m) => { setItemSector(m, a.key, a.sector) }); app.flash(a.sector === 'any' ? 'Kept: it runs in both sectors (where its places exist).' : 'It runs only in the hand-made sector.'); return true }
++  if (action === 'sectorRandomTarget') {
++    const a = arg as { quest: string; ids: string[] }
++    const made: string[] = []
++    project.change((m) => { for (const id of a.ids) { const v = useRandomTarget(m, a.quest, id, app.index); if (v) made.push(v) } })
++    app.flash(made.length ? `Added the random target${made.length === 1 ? '' : 's'} ${made.join(', ')} (a market like the one it replaces). Check its criteria in the quest's Variables.` : 'Nothing could be replaced.')
++    return true
++  }
+   if (action === 'protectInvasion') { project.change((m) => { for (const s of m.systems) for (const e of s.entities) if (e.id === arg && e.market) e.market.protectFromInvasion = true }); app.flash('The market is protected from invasion (Nexerelin never invades it).'); return true }
+   // #47: version problems
+   if (action === 'versionRemove') { const a = arg as { cat: DiffCategory; id: string }; let n = 0; project.change((m) => { n = replaceRefs(m, a.cat, a.id, null) }); app.flash(`Removed ${n} use${n === 1 ? '' : 's'} of ${a.id}.`); return true }
+--- a/tools/saga-forge/src/renderer/src/ui/ModsCond.svelte
++++ b/tools/saga-forge/src/renderer/src/ui/ModsCond.svelte
+@@ -1,70 +1,80 @@
+-<script lang="ts">
+-  /**
+-   * #60 (PLAN.md §10.2): "Only with" these mods / "Only without" these mods on one item. Offers
+-   * only the optional mods (a required mod is always there). Conditions the item gets from
+-   * elsewhere (it uses an optional mod's content, or only conditional content uses it) show greyed
+-   * with where they come from.
+-   */
+-  import type { ModsCondition } from '../../../shared/model'
+-  import { condText } from '../../../shared/modlist'
+-  import { mods } from '../state/mods.svelte'
+-  import { app } from '../state/app.svelte'
+-
+-  interface Props {
+-    value: ModsCondition | undefined
+-    /** The item's key in the effective conditions ("quest:<id>", "person:<id>", …), for the greyed parts. */
+-    itemKey?: string
+-    onChange: (v: ModsCondition | undefined) => void
+-    /** One line, for options and cases. */
+-    compact?: boolean
+-  }
+-  let { value, itemKey, onChange, compact = false }: Props = $props()
+-
+-  const opt = $derived(mods.optional())
+-  const withL = $derived(value?.with ?? [])
+-  const without = $derived(value?.without ?? [])
+-  const from = $derived(itemKey ? mods.effective.get(itemKey)?.from ?? [] : [])
+-
+-  function set(next: ModsCondition) {
+-    const clean: ModsCondition = { ...(next.with?.length ? { with: next.with } : {}), ...(next.without?.length ? { without: next.without } : {}), ...(next.anyOf && (next.with?.length ?? 0) > 1 ? { anyOf: true } : {}) }
+-    onChange(clean.with || clean.without ? clean : undefined)
+-  }
+-  const add = (list: 'with' | 'without', id: string) => { if (!id) return; const cur = value?.[list] ?? []; if (!cur.includes(id)) set({ ...value, [list]: [...cur, id] }) }
+-  const remove = (list: 'with' | 'without', id: string) => set({ ...value, [list]: (value?.[list] ?? []).filter((x) => x !== id) })
+-  const openMods = () => { app.selected.sagaOpen = 'mods'; app.selected.sagaTab = 'mods'; app.go('saga') }
+-</script>
+-
+-<div class="mc" class:compact>
+-  {#if !opt.length}
+-    {#if !compact}<span class="muted small">Add an optional mod in <button class="lnk" onclick={openMods}>Saga › Mods</button> to make this depend on it.</span>{/if}
+-  {:else}
+-    <span class="grp"><span class="lbl">Only with</span>
+-      {#each withL as id (id)}<span class="chip">{mods.name(id)}<button title="Remove" onclick={() => remove('with', id)}>✕</button></span>{/each}
+-      <select value="" title="Only when this mod counts (enabled when the game started, and still enabled)" onchange={(e) => { add('with', e.currentTarget.value); e.currentTarget.value = '' }}>
+-        <option value="">+</option>{#each opt.filter((o) => !withL.includes(o.id) && !without.includes(o.id)) as o (o.id)}<option value={o.id}>{o.name}</option>{/each}
+-      </select>
+-      {#if withL.length > 1}<label class="small" title="Any one of them is enough (SF_HasAnyMod), instead of all of them"><input type="checkbox" checked={!!value?.anyOf} onchange={(e) => set({ ...value, anyOf: e.currentTarget.checked })} /> any of</label>{/if}
+-    </span>
+-    <span class="grp"><span class="lbl">Only without</span>
+-      {#each without as id (id)}<span class="chip neg">{mods.name(id)}<button title="Remove" onclick={() => remove('without', id)}>✕</button></span>{/each}
+-      <select value="" title="Only when this mod doesn't count" onchange={(e) => { add('without', e.currentTarget.value); e.currentTarget.value = '' }}>
+-        <option value="">+</option>{#each opt.filter((o) => !withL.includes(o.id) && !without.includes(o.id)) as o (o.id)}<option value={o.id}>{o.name}</option>{/each}
+-      </select>
+-    </span>
+-  {/if}
+-  {#each from as f, i (i)}<span class="chip auto" title="Set automatically: {f.why}">{condText(f.cond, (id) => mods.name(id))} <i>({f.why})</i></span>{/each}
+-</div>
+-
+-<style>
+-  .mc { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: 12px; }
+-  .grp { display: inline-flex; gap: 3px; align-items: center; flex-wrap: wrap; }
+-  .lbl { color: var(--muted); font-size: 11px; }
+-  .chip { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--accent-2); color: var(--accent); border-radius: 10px; padding: 0 6px; font-size: 11px; white-space: nowrap; }
+-  .chip.neg { border-color: #8a5a2b; color: var(--warn); }
+-  .chip.auto { border-style: dashed; border-color: var(--border); color: var(--muted); }
+-  .chip button { border: none; background: none; padding: 0 0 0 2px; font-size: 10px; color: inherit; }
+-  .mc select { padding: 0 4px; font-size: 11px; width: auto !important; min-width: 40px; max-width: 120px; flex: 0 0 auto; }
+-  .small { font-size: 11px; }
+-  .lnk { border: none; background: none; padding: 0; color: var(--accent); font-size: inherit; }
+-  .compact .lbl { font-size: 10px; }
+-</style>
++<script lang="ts">
++  /**
++   * #60 (PLAN.md §10.2): "Only with" these mods / "Only without" these mods on one item. Offers
++   * only the optional mods (a required mod is always there). Conditions the item gets from
++   * elsewhere (it uses an optional mod's content, or only conditional content uses it) show greyed
++   * with where they come from.
++   */
++  import type { ModsCondition } from '../../../shared/model'
++  import { condText, nexListed } from '../../../shared/modlist'
++  import { project } from '../state/project.svelte'
++  import { mods } from '../state/mods.svelte'
++  import { app } from '../state/app.svelte'
++
++  interface Props {
++    value: ModsCondition | undefined
++    /** The item's key in the effective conditions ("quest:<id>", "person:<id>", …), for the greyed parts. */
++    itemKey?: string
++    onChange: (v: ModsCondition | undefined) => void
++    /** One line, for options and cases. */
++    compact?: boolean
++  }
++  let { value, itemKey, onChange, compact = false }: Props = $props()
++
++  const opt = $derived(mods.optional())
++  const withL = $derived(value?.with ?? [])
++  const without = $derived(value?.without ?? [])
++  const from = $derived(itemKey ? mods.effective.get(itemKey)?.from ?? [] : [])
++  // #61: Nexerelin's sector (when the mod lists Nexerelin, or it is set)
++  const nex = $derived(nexListed(project.m?.project) || !!value?.sector)
++
++  function set(next: ModsCondition) {
++    const clean: ModsCondition = { ...(next.with?.length ? { with: next.with } : {}), ...(next.without?.length ? { without: next.without } : {}), ...(next.anyOf && (next.with?.length ?? 0) > 1 ? { anyOf: true } : {}), ...(next.sector ? { sector: next.sector } : {}) }
++    onChange(clean.with || clean.without || clean.sector ? clean : undefined)
++  }
++  const add = (list: 'with' | 'without', id: string) => { if (!id) return; const cur = value?.[list] ?? []; if (!cur.includes(id)) set({ ...value, [list]: [...cur, id] }) }
++  const remove = (list: 'with' | 'without', id: string) => set({ ...value, [list]: (value?.[list] ?? []).filter((x) => x !== id) })
++  const openMods = () => { app.selected.sagaOpen = 'mods'; app.selected.sagaTab = 'mods'; app.go('saga') }
++</script>
++
++<div class="mc" class:compact>
++  {#if !opt.length}
++    {#if !compact && !nex}<span class="muted small">Add an optional mod in <button class="lnk" onclick={openMods}>Saga › Mods</button> to make this depend on it.</span>{/if}
++  {:else}
++    <span class="grp"><span class="lbl">Only with</span>
++      {#each withL as id (id)}<span class="chip">{mods.name(id)}<button title="Remove" onclick={() => remove('with', id)}>✕</button></span>{/each}
++      <select value="" title="Only when this mod counts (enabled when the game started, and still enabled)" onchange={(e) => { add('with', e.currentTarget.value); e.currentTarget.value = '' }}>
++        <option value="">+</option>{#each opt.filter((o) => !withL.includes(o.id) && !without.includes(o.id)) as o (o.id)}<option value={o.id}>{o.name}</option>{/each}
++      </select>
++      {#if withL.length > 1}<label class="small" title="Any one of them is enough (SF_HasAnyMod), instead of all of them"><input type="checkbox" checked={!!value?.anyOf} onchange={(e) => set({ ...value, anyOf: e.currentTarget.checked })} /> any of</label>{/if}
++    </span>
++    <span class="grp"><span class="lbl">Only without</span>
++      {#each without as id (id)}<span class="chip neg">{mods.name(id)}<button title="Remove" onclick={() => remove('without', id)}>✕</button></span>{/each}
++      <select value="" title="Only when this mod doesn't count" onchange={(e) => { add('without', e.currentTarget.value); e.currentTarget.value = '' }}>
++        <option value="">+</option>{#each opt.filter((o) => !withL.includes(o.id) && !without.includes(o.id)) as o (o.id)}<option value={o.id}>{o.name}</option>{/each}
++      </select>
++    </span>
++  {/if}
++  {#if nex}
++    <span class="grp"><span class="lbl">Sector</span>
++      <select value={value?.sector ?? ''} title="Nexerelin's random sector has none of vanilla's hand-made core worlds. Hand-made only: !$global.nex_randomSector (works without SagaLib); random only: $global.nex_randomSector." onchange={(e) => set({ ...value, sector: (e.currentTarget.value || undefined) as ModsCondition['sector'] })}>
++        <option value="">{compact ? 'any' : 'automatic'}</option><option value="handmade">hand-made only</option><option value="random">random only</option>{#if !compact}<option value="any">both (keep)</option>{/if}
++      </select>
++    </span>
++  {/if}
++  {#each from as f, i (i)}<span class="chip auto" title="Set automatically: {f.why}">{condText(f.cond, (id) => mods.name(id))} <i>({f.why})</i></span>{/each}
++</div>
++
++<style>
++  .mc { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: 12px; }
++  .grp { display: inline-flex; gap: 3px; align-items: center; flex-wrap: wrap; }
++  .lbl { color: var(--muted); font-size: 11px; }
++  .chip { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--accent-2); color: var(--accent); border-radius: 10px; padding: 0 6px; font-size: 11px; white-space: nowrap; }
++  .chip.neg { border-color: #8a5a2b; color: var(--warn); }
++  .chip.auto { border-style: dashed; border-color: var(--border); color: var(--muted); }
++  .chip button { border: none; background: none; padding: 0 0 0 2px; font-size: 10px; color: inherit; }
++  .mc select { padding: 0 4px; font-size: 11px; width: auto !important; min-width: 40px; max-width: 120px; flex: 0 0 auto; }
++  .small { font-size: 11px; }
++  .lnk { border: none; background: none; padding: 0; color: var(--accent); font-size: inherit; }
++  .compact .lbl { font-size: 10px; }
++</style>
+--- a/tools/saga-forge/src/renderer/src/state/mods.svelte.ts
++++ b/tools/saga-forge/src/renderer/src/state/mods.svelte.ts
+@@ -1,114 +1,116 @@
+-/**
+- * #60 (PLAN.md §10.1, §10.2): the active mod's list of other mods as the UI uses it: which sources
+- * the read-only lists and pickers show (vanilla + this mod + its required and optional mods), the
+- * "Show all installed mods" switch per list, the Add as optional / required question when
+- * something is picked from an unlisted mod, each item's effective conditions for the chips, and the
+- * optional mods' switches for Play mode and the Test context.
+- */
+-import { app } from './app.svelte'
+-import { project } from './project.svelte'
+-import { CORE_ID, SAGALIB_ID, isVisible, optionalMods, originSource, useOf, visibleSources } from '../../../shared/modlist'
+-import { effectiveConds, type ItemConds } from '../../../shared/moduses'
+-import type { ModUse } from '../../../shared/model'
+-
+-class ModsState {
+-  /** "Show all installed mods" per list (key = the list, e.g. "factions", "people:existing"). */
+-  showAll = $state<Record<string, boolean>>({})
+-  /** The Add as optional / required question (Shell draws it). */
+-  asking = $state<{ id: string; name: string; what: string; done: (use: ModUse['use'] | null) => void } | null>(null)
+-  /** Play mode and the Test context: which optional mods count (default: installed and enabled). */
+-  playOn = $state<Record<string, boolean>>({})
+-
+-  /** Vanilla, the active mod, its required and optional mods. */
+-  visible = $derived(visibleSources(project.m?.project, app.index?.activeSourceId ?? null))
+-
+-  /** Each item's effective "Only with / Only without" (own, automatic, inherited). */
+-  effective = $derived.by((): Map<string, ItemConds> => {
+-    const m = project.m
+-    if (!m || !app.index || !project.loaded) return new Map()
+-    return effectiveConds(m, app.index, project.loaded.sourceId, (id) => this.name(id))
+-  })
+-
+-  name(id: string): string {
+-    return project.m?.project.mods?.find((x) => x.id === id)?.name ?? app.index?.sources.find((s) => s.id === id)?.name ?? id
+-  }
+-
+-  optional(): ModUse[] { return project.m ? optionalMods(project.m.project) : [] }
+-
+-  /** True when the list shows everything (its switch is on, or there is no active mod). */
+-  all(list: string): boolean { return !project.m || !!this.showAll[list] }
+-
+-  /** A list filtered to the visible sources (unless its "Show all installed mods" switch is on). */
+-  filter<T>(list: string, items: T[], definedBy: (x: T) => string | undefined): T[] {
+-    if (this.all(list)) return items
+-    const v = this.visible
+-    return items.filter((x) => isVisible(definedBy(x), v))
+-  }
+-
+-  /** How many items the filter hides. */
+-  hidden<T>(list: string, items: T[], definedBy: (x: T) => string | undefined): number {
+-    return this.all(list) ? 0 : items.length - this.filter(list, items, definedBy).length
+-  }
+-
+-  /**
+-   * Something was picked from a mod (the definedBy of the id): if that mod isn't in the list, offer
+-   * Add as optional / Add as required right there, so the filter is never a dead end.
+-   */
+-  async picked(definedBy: string | undefined, what: string): Promise<void> {
+-    const m = project.m
+-    if (!m || !definedBy) return
+-    const src = originSource(definedBy)
+-    if (src === CORE_ID || src === project.loaded?.sourceId || src === SAGALIB_ID || src === 'plan') return
+-    if (useOf(m.project, src) !== 'none') return
+-    const name = this.name(src)
+-    const use = await new Promise<ModUse['use'] | null>((resolve) => {
+-      this.asking?.done(null)
+-      this.asking = { id: src, name, what, done: (u) => { this.asking = null; resolve(u) } }
+-    })
+-    if (!use) return
+-    project.change((mm) => { (mm.project.mods ??= []).push({ id: src, name, use }) })
+-    app.flash(`${name} is in the mod's list as ${use} (Saga › Mods).`)
+-  }
+-
+-  /** The source that defines an id in a list of index entries. */
+-  definedByOf(list: { id: string; definedBy?: string }[] | undefined, id: string): string | undefined {
+-    return list?.find((x) => x.id === id)?.definedBy
+-  }
+-
+-  /** Play mode / Test context: every mod that counts: the enabled installed mods and the required ones, with the optional mods as switched. */
+-  playEnabled(): Set<string> {
+-    const out = new Set<string>((app.index?.sources ?? []).filter((s) => s.enabled || s.isCore).map((s) => s.id))
+-    for (const x of project.m?.project.mods ?? []) if (x.use === 'required') out.add(x.id)
+-    const on = this.playMods()
+-    for (const x of this.optional()) { if (on.has(x.id)) out.add(x.id); else out.delete(x.id) }
+-    return out
+-  }
+-
+-  /** Play mode / Test context: the optional mods that count now. */
+-  playMods(): Set<string> {
+-    const out = new Set<string>()
+-    for (const x of this.optional()) {
+-      const dflt = !!app.index?.sources.find((s) => s.id === x.id)?.enabled
+-      if (this.playOn[x.id] ?? dflt) out.add(x.id)
+-    }
+-    return out
+-  }
+-}
+-
+-export const mods = new ModsState()
+-
+-/** Opens Saga › Mods (the header pill, Problems, the condition editors). */
+-export function openModsTab(): void {
+-  app.selected.sagaOpen = 'mods'
+-  app.selected.sagaTab = 'mods'
+-  app.go('saga')
+-}
+-
+-/** #60: an extension's tools show in this mod only when its mod is in the list (Settings › Extensions = app-wide availability). */
+-export function toolVisible(extId: string): boolean {
+-  const e = app.index?.extensions.find((x) => x.id === extId)
+-  if (!e?.on) return false
+-  if (!e.requiresMod) return true
+-  const u = project.m?.project.mods?.find((x) => x.id === e.requiresMod)?.use
+-  return u === 'required' || u === 'optional'
+-}
++/**
++ * #60 (PLAN.md §10.1, §10.2): the active mod's list of other mods as the UI uses it: which sources
++ * the read-only lists and pickers show (vanilla + this mod + its required and optional mods), the
++ * "Show all installed mods" switch per list, the Add as optional / required question when
++ * something is picked from an unlisted mod, each item's effective conditions for the chips, and the
++ * optional mods' switches for Play mode and the Test context.
++ */
++import { app } from './app.svelte'
++import { project } from './project.svelte'
++import { CORE_ID, SAGALIB_ID, isVisible, optionalMods, originSource, useOf, visibleSources } from '../../../shared/modlist'
++import { effectiveConds, type ItemConds } from '../../../shared/moduses'
++import type { ModUse } from '../../../shared/model'
++
++class ModsState {
++  /** "Show all installed mods" per list (key = the list, e.g. "factions", "people:existing"). */
++  showAll = $state<Record<string, boolean>>({})
++  /** The Add as optional / required question (Shell draws it). */
++  asking = $state<{ id: string; name: string; what: string; done: (use: ModUse['use'] | null) => void } | null>(null)
++  /** Play mode and the Test context: which optional mods count (default: installed and enabled). */
++  playOn = $state<Record<string, boolean>>({})
++  /** #61: Play mode and the Test context: the game has a Nexerelin random sector ($global.nex_randomSector). */
++  playRandomSector = $state(false)
++
++  /** Vanilla, the active mod, its required and optional mods. */
++  visible = $derived(visibleSources(project.m?.project, app.index?.activeSourceId ?? null))
++
++  /** Each item's effective "Only with / Only without" (own, automatic, inherited). */
++  effective = $derived.by((): Map<string, ItemConds> => {
++    const m = project.m
++    if (!m || !app.index || !project.loaded) return new Map()
++    return effectiveConds(m, app.index, project.loaded.sourceId, (id) => this.name(id))
++  })
++
++  name(id: string): string {
++    return project.m?.project.mods?.find((x) => x.id === id)?.name ?? app.index?.sources.find((s) => s.id === id)?.name ?? id
++  }
++
++  optional(): ModUse[] { return project.m ? optionalMods(project.m.project) : [] }
++
++  /** True when the list shows everything (its switch is on, or there is no active mod). */
++  all(list: string): boolean { return !project.m || !!this.showAll[list] }
++
++  /** A list filtered to the visible sources (unless its "Show all installed mods" switch is on). */
++  filter<T>(list: string, items: T[], definedBy: (x: T) => string | undefined): T[] {
++    if (this.all(list)) return items
++    const v = this.visible
++    return items.filter((x) => isVisible(definedBy(x), v))
++  }
++
++  /** How many items the filter hides. */
++  hidden<T>(list: string, items: T[], definedBy: (x: T) => string | undefined): number {
++    return this.all(list) ? 0 : items.length - this.filter(list, items, definedBy).length
++  }
++
++  /**
++   * Something was picked from a mod (the definedBy of the id): if that mod isn't in the list, offer
++   * Add as optional / Add as required right there, so the filter is never a dead end.
++   */
++  async picked(definedBy: string | undefined, what: string): Promise<void> {
++    const m = project.m
++    if (!m || !definedBy) return
++    const src = originSource(definedBy)
++    if (src === CORE_ID || src === project.loaded?.sourceId || src === SAGALIB_ID || src === 'plan') return
++    if (useOf(m.project, src) !== 'none') return
++    const name = this.name(src)
++    const use = await new Promise<ModUse['use'] | null>((resolve) => {
++      this.asking?.done(null)
++      this.asking = { id: src, name, what, done: (u) => { this.asking = null; resolve(u) } }
++    })
++    if (!use) return
++    project.change((mm) => { (mm.project.mods ??= []).push({ id: src, name, use }) })
++    app.flash(`${name} is in the mod's list as ${use} (Saga › Mods).`)
++  }
++
++  /** The source that defines an id in a list of index entries. */
++  definedByOf(list: { id: string; definedBy?: string }[] | undefined, id: string): string | undefined {
++    return list?.find((x) => x.id === id)?.definedBy
++  }
++
++  /** Play mode / Test context: every mod that counts: the enabled installed mods and the required ones, with the optional mods as switched. */
++  playEnabled(): Set<string> {
++    const out = new Set<string>((app.index?.sources ?? []).filter((s) => s.enabled || s.isCore).map((s) => s.id))
++    for (const x of project.m?.project.mods ?? []) if (x.use === 'required') out.add(x.id)
++    const on = this.playMods()
++    for (const x of this.optional()) { if (on.has(x.id)) out.add(x.id); else out.delete(x.id) }
++    return out
++  }
++
++  /** Play mode / Test context: the optional mods that count now. */
++  playMods(): Set<string> {
++    const out = new Set<string>()
++    for (const x of this.optional()) {
++      const dflt = !!app.index?.sources.find((s) => s.id === x.id)?.enabled
++      if (this.playOn[x.id] ?? dflt) out.add(x.id)
++    }
++    return out
++  }
++}
++
++export const mods = new ModsState()
++
++/** Opens Saga › Mods (the header pill, Problems, the condition editors). */
++export function openModsTab(): void {
++  app.selected.sagaOpen = 'mods'
++  app.selected.sagaTab = 'mods'
++  app.go('saga')
++}
++
++/** #60: an extension's tools show in this mod only when its mod is in the list (Settings › Extensions = app-wide availability). */
++export function toolVisible(extId: string): boolean {
++  const e = app.index?.extensions.find((x) => x.id === extId)
++  if (!e?.on) return false
++  if (!e.requiresMod) return true
++  const u = project.m?.project.mods?.find((x) => x.id === e.requiresMod)?.use
++  return u === 'required' || u === 'optional'
++}
+--- a/tools/saga-forge/src/renderer/src/state/testctx.svelte.ts
++++ b/tools/saga-forge/src/renderer/src/state/testctx.svelte.ts
+@@ -1,106 +1,109 @@
+-/** The Test context shared by the dialog previews and Play mode, plus lookups into the index and the mod. */
+-import { defaultTestContext, contextFrom, type Lookup, type TestContext } from '../../../shared/rules/context'
+-import { mods } from './mods.svelte'
+-import type { PlayContext } from '../../../shared/rules/engine'
+-import type { PersonLook } from '../dialog/DialogPreview.svelte'
+-import { app } from './app.svelte'
+-import { project } from './project.svelte'
+-import { resolveItem } from '../../../shared/itemversions'
+-import type { PersonDef } from '../../../shared/model'
+-
+-/** #64: a person of the mod in the version the optional mods' switches pick (Test context, Play mode). */
+-function ownPerson(id: string): PersonDef | undefined {
+-  const p = project.m?.people.find((x) => x.id === id)
+-  return p?.versions?.length ? resolveItem(p, [...mods.playMods()]).value : p
+-}
+-
+-const KEY = 'sf.testctx'
+-
+-function load(): TestContext {
+-  try { return { ...defaultTestContext(), ...JSON.parse(localStorage.getItem(KEY) ?? '{}') } } catch { return defaultTestContext() }
+-}
+-
+-export const testCtx = $state<TestContext>(load())
+-
+-export function saveTestCtx(): void {
+-  try { localStorage.setItem(KEY, JSON.stringify(testCtx)) } catch { /* ignore */ }
+-}
+-
+-const titleCase = (s: string) => s.replace(/[_-]+/g, ' ').replace(/\b([a-z])/g, (m) => m.toUpperCase())
+-
+-/** Faction display data from the mod's own factions first, then the index. */
+-export function factionLook(id: string): { name: string; withArticle: string; long: string; color?: number[]; crest?: string } | null {
+-  const own = project.m?.factions.find((f) => f.id === id && f.kind === 'addition')
+-  if (own && own.kind === 'addition') {
+-    const r = own.raw
+-    return { name: String(r.displayName ?? id), withArticle: String(r.displayNameWithArticle ?? ''), long: String(r.displayNameLong ?? ''), color: r.color as number[], crest: String(r.crest ?? '') }
+-  }
+-  const f = app.index?.factions.find((x) => x.id === id)
+-  return f ? { name: f.name, withArticle: `the ${f.name}`, long: f.name, color: f.color ?? undefined, crest: f.crest } : null
+-}
+-
+-export const lookup: Lookup = {
+-  person(id) {
+-    const p = ownPerson(id)
+-    if (p) {
+-      const rank = app.defs.ranks.find((r) => r.id === p.rank)?.name ?? p.rank
+-      const post = app.defs.posts.find((r) => r.id === p.post)?.name ?? p.post
+-      return { first: p.name.first, last: p.name.last, gender: p.gender, rank, post, faction: p.faction }
+-    }
+-    const ip = app.index?.people.find((x) => x.id === id)
+-    if (ip) {
+-      const [first, ...rest] = ip.name.split(' ')
+-      return { first, last: rest.join(' '), gender: 'ANY', rank: '', post: '', faction: ip.faction }
+-    }
+-    return null
+-  },
+-  faction: (id) => factionLook(id),
+-  market(id) {
+-    const m = app.index?.markets.find((x) => x.id === id)
+-    if (m) return { name: m.name, faction: m.faction }
+-    for (const s of project.m?.systems ?? []) for (const e of s.entities) if (e.market?.id === id || e.id === id) return { name: e.market?.name ?? e.name, faction: e.market?.faction ?? '' }
+-    return null
+-  }
+-}
+-
+-/** How a person looks on the visual panel. */
+-export function personLook(id: string): PersonLook | null {
+-  const realId = id === '$person' || id.startsWith('$') ? testCtx.person : id
+-  if (!realId) return { name: '(the person you talk to)', rank: '', faction: '', portrait: '' }
+-  const p = ownPerson(realId)
+-  const l = lookup.person(realId)
+-  if (!l) return { name: titleCase(realId), rank: '', faction: '', portrait: '' }
+-  const f = factionLook(l.faction)
+-  return {
+-    name: `${l.first} ${l.last}`.trim(),
+-    rank: [l.rank, l.post].filter(Boolean).join(' · '),
+-    faction: f?.name ?? l.faction,
+-    factionColor: f?.color,
+-    crest: f?.crest,
+-    portrait: p?.portrait ?? app.index?.people.find((x) => x.id === realId)?.portrait ?? ''
+-  }
+-}
+-
+-export function itemIcon(id: string): string | null {
+-  const own = project.m?.items.find((i) => i.id === id)
+-  if (own) return own.icon
+-  if (id === 'credits') return 'graphics/icons/cargo/credits.png'
+-  return app.index?.items.find((i) => i.id === id)?.icon ?? null
+-}
+-
+-export function illustrationPath(category: string, key: string): string | null {
+-  const own = project.m?.project.illustrations?.[key]
+-  if (own && category === 'illustrations') return own
+-  return app.index?.illustrations.find((i) => i.category === category && i.key === key)?.path ?? null
+-}
+-
+-export function itemName(id: string): string {
+-  return project.m?.items.find((i) => i.id === id)?.name ?? app.index?.items.find((i) => i.id === id)?.name ?? id
+-}
+-
+-export function makePlayContext(): PlayContext {
+-  const ctx = contextFrom($state.snapshot(testCtx) as TestContext, app.defs, lookup)
+-  // #60: the optional mods' switches (Test context, Play mode)
+-  ctx.mods = mods.playEnabled()
+-  return ctx
+-}
++/** The Test context shared by the dialog previews and Play mode, plus lookups into the index and the mod. */
++import { defaultTestContext, contextFrom, type Lookup, type TestContext } from '../../../shared/rules/context'
++import { nexListed, RANDOM_SECTOR_KEY } from '../../../shared/modlist'
++import { mods } from './mods.svelte'
++import type { PlayContext } from '../../../shared/rules/engine'
++import type { PersonLook } from '../dialog/DialogPreview.svelte'
++import { app } from './app.svelte'
++import { project } from './project.svelte'
++import { resolveItem } from '../../../shared/itemversions'
++import type { PersonDef } from '../../../shared/model'
++
++/** #64: a person of the mod in the version the optional mods' switches pick (Test context, Play mode). */
++function ownPerson(id: string): PersonDef | undefined {
++  const p = project.m?.people.find((x) => x.id === id)
++  return p?.versions?.length ? resolveItem(p, [...mods.playMods()]).value : p
++}
++
++const KEY = 'sf.testctx'
++
++function load(): TestContext {
++  try { return { ...defaultTestContext(), ...JSON.parse(localStorage.getItem(KEY) ?? '{}') } } catch { return defaultTestContext() }
++}
++
++export const testCtx = $state<TestContext>(load())
++
++export function saveTestCtx(): void {
++  try { localStorage.setItem(KEY, JSON.stringify(testCtx)) } catch { /* ignore */ }
++}
++
++const titleCase = (s: string) => s.replace(/[_-]+/g, ' ').replace(/\b([a-z])/g, (m) => m.toUpperCase())
++
++/** Faction display data from the mod's own factions first, then the index. */
++export function factionLook(id: string): { name: string; withArticle: string; long: string; color?: number[]; crest?: string } | null {
++  const own = project.m?.factions.find((f) => f.id === id && f.kind === 'addition')
++  if (own && own.kind === 'addition') {
++    const r = own.raw
++    return { name: String(r.displayName ?? id), withArticle: String(r.displayNameWithArticle ?? ''), long: String(r.displayNameLong ?? ''), color: r.color as number[], crest: String(r.crest ?? '') }
++  }
++  const f = app.index?.factions.find((x) => x.id === id)
++  return f ? { name: f.name, withArticle: `the ${f.name}`, long: f.name, color: f.color ?? undefined, crest: f.crest } : null
++}
++
++export const lookup: Lookup = {
++  person(id) {
++    const p = ownPerson(id)
++    if (p) {
++      const rank = app.defs.ranks.find((r) => r.id === p.rank)?.name ?? p.rank
++      const post = app.defs.posts.find((r) => r.id === p.post)?.name ?? p.post
++      return { first: p.name.first, last: p.name.last, gender: p.gender, rank, post, faction: p.faction }
++    }
++    const ip = app.index?.people.find((x) => x.id === id)
++    if (ip) {
++      const [first, ...rest] = ip.name.split(' ')
++      return { first, last: rest.join(' '), gender: 'ANY', rank: '', post: '', faction: ip.faction }
++    }
++    return null
++  },
++  faction: (id) => factionLook(id),
++  market(id) {
++    const m = app.index?.markets.find((x) => x.id === id)
++    if (m) return { name: m.name, faction: m.faction }
++    for (const s of project.m?.systems ?? []) for (const e of s.entities) if (e.market?.id === id || e.id === id) return { name: e.market?.name ?? e.name, faction: e.market?.faction ?? '' }
++    return null
++  }
++}
++
++/** How a person looks on the visual panel. */
++export function personLook(id: string): PersonLook | null {
++  const realId = id === '$person' || id.startsWith('$') ? testCtx.person : id
++  if (!realId) return { name: '(the person you talk to)', rank: '', faction: '', portrait: '' }
++  const p = ownPerson(realId)
++  const l = lookup.person(realId)
++  if (!l) return { name: titleCase(realId), rank: '', faction: '', portrait: '' }
++  const f = factionLook(l.faction)
++  return {
++    name: `${l.first} ${l.last}`.trim(),
++    rank: [l.rank, l.post].filter(Boolean).join(' · '),
++    faction: f?.name ?? l.faction,
++    factionColor: f?.color,
++    crest: f?.crest,
++    portrait: p?.portrait ?? app.index?.people.find((x) => x.id === realId)?.portrait ?? ''
++  }
++}
++
++export function itemIcon(id: string): string | null {
++  const own = project.m?.items.find((i) => i.id === id)
++  if (own) return own.icon
++  if (id === 'credits') return 'graphics/icons/cargo/credits.png'
++  return app.index?.items.find((i) => i.id === id)?.icon ?? null
++}
++
++export function illustrationPath(category: string, key: string): string | null {
++  const own = project.m?.project.illustrations?.[key]
++  if (own && category === 'illustrations') return own
++  return app.index?.illustrations.find((i) => i.category === category && i.key === key)?.path ?? null
++}
++
++export function itemName(id: string): string {
++  return project.m?.items.find((i) => i.id === id)?.name ?? app.index?.items.find((i) => i.id === id)?.name ?? id
++}
++
++export function makePlayContext(): PlayContext {
++  const ctx = contextFrom($state.snapshot(testCtx) as TestContext, app.defs, lookup)
++  // #60: the optional mods' switches (Test context, Play mode)
++  ctx.mods = mods.playEnabled()
++  // #61: Nexerelin's random sector (switch in the Test context and Play mode)
++  if (mods.playRandomSector && nexListed(project.m?.project)) ctx.memory.set(RANDOM_SECTOR_KEY, true)
++  return ctx
++}
+--- a/tools/saga-forge/src/renderer/src/dialog/TestContextPanel.svelte
++++ b/tools/saga-forge/src/renderer/src/dialog/TestContextPanel.svelte
+@@ -1,83 +1,89 @@
+-<script lang="ts">
+-  /** The Test context form: sample values the previews and Play mode fill tokens and conditions from. */
+-  import { app } from '../state/app.svelte'
+-  import { project } from '../state/project.svelte'
+-  import { testCtx, saveTestCtx } from '../state/testctx.svelte'
+-  import IdInput from '../ui/IdInput.svelte'
+-  import { mods } from '../state/mods.svelte'
+-  import { PLACE_PRESETS, type PlacePreset } from '../../../shared/rules/context'
+-
+-  interface Props {
+-    /** Condition commands the current rule(s) use that the editor can't evaluate. */
+-    unknownConditions?: string[]
+-    /** Memory keys the current rule(s) read. */
+-    memoryKeys?: string[]
+-  }
+-  let { unknownConditions = [], memoryKeys = [] }: Props = $props()
+-
+-  const people = $derived([...(project.m?.people.map((p) => ({ id: p.id, name: `${p.name.first} ${p.name.last}` })) ?? []), ...(app.index?.people ?? [])])
+-  const factions = $derived([...(project.m?.factions.filter((f) => f.kind === 'addition').map((f) => ({ id: f.id, name: String((f as { raw: Record<string, unknown> }).raw.displayName ?? f.id) })) ?? []), ...(app.index?.factions ?? [])])
+-  const markets = $derived(app.index?.markets ?? [])
+-  const places = $derived((project.m?.systems ?? []).flatMap((x) => x.entities.map((e) => ({ id: e.id, name: e.name }))))
+-  const preset = $derived(PLACE_PRESETS.find((p) => p.id === (testCtx.place ?? 'none')) ?? PLACE_PRESETS[0])
+-  const upd = (fn: () => void) => { fn(); saveTestCtx() }
+-</script>
+-
+-<div class="ctx">
+-  <div class="h">Test context</div>
+-  <div class="f-help top">Sample values the preview fills tokens ($playerName, $credits…) and conditions with: who the player is, who they talk to, and where. Editor only; nothing here is exported.</div>
+-  <div class="g">
+-    <label for="tc-pf">Player</label>
+-    <span class="row"><input id="tc-pf" type="text" value={testCtx.playerFirst} onchange={(e) => upd(() => (testCtx.playerFirst = e.currentTarget.value))} /><input type="text" value={testCtx.playerLast} aria-label="Player last name" onchange={(e) => upd(() => (testCtx.playerLast = e.currentTarget.value))} /></span>
+-    <label for="tc-g">Player is</label>
+-    <select id="tc-g" value={testCtx.playerGender} onchange={(e) => upd(() => (testCtx.playerGender = e.currentTarget.value as 'MALE' | 'FEMALE'))}><option value="FEMALE">female (her / she)</option><option value="MALE">male (him / he)</option></select>
+-    <span class="lbl">Speaker</span><IdInput value={testCtx.person} options={people} onCommit={(v) => upd(() => (testCtx.person = v))} placeholder="person id" />
+-    <span class="lbl">Faction</span><IdInput value={testCtx.faction} options={factions} onCommit={(v) => upd(() => (testCtx.faction = v))} placeholder="(the speaker's)" />
+-    <label for="tc-pl">Place</label>
+-    <select id="tc-pl" value={testCtx.place ?? 'none'} onchange={(e) => upd(() => (testCtx.place = e.currentTarget.value as PlacePreset))}>{#each PLACE_PRESETS as p (p.id)}<option value={p.id}>{p.label}</option>{/each}</select>
+-    <span></span><span class="f-help">{preset.help}{Object.keys(preset.memory).length ? ` Sets ${Object.keys(preset.memory).join(', ')}.` : ''}</span>
+-    <span class="lbl">Place id</span><IdInput value={testCtx.entity ?? ''} options={places} onCommit={(v) => upd(() => (testCtx.entity = v || undefined))} placeholder="($id when no speaker)" />
+-    <span class="lbl">Market</span><IdInput value={testCtx.market} options={markets} onCommit={(v) => upd(() => (testCtx.market = v))} placeholder="market id" />
+-    <label for="tc-cr">Credits</label><input id="tc-cr" type="number" value={testCtx.credits} onchange={(e) => upd(() => (testCtx.credits = Number(e.currentTarget.value)))} />
+-    <label for="tc-sp">Story points</label><input id="tc-sp" type="number" value={testCtx.storyPoints} onchange={(e) => upd(() => (testCtx.storyPoints = Number(e.currentTarget.value)))} />
+-    <span class="lbl">Commission</span><IdInput value={testCtx.commission} options={factions} onCommit={(v) => upd(() => (testCtx.commission = v))} placeholder="(none)" />
+-  </div>
+-  {#if mods.optional().length}
+-    <!-- #60: a switch per optional mod (Saga › Mods); default: whether it is enabled in your game -->
+-    <div class="h2">Optional mods and versions</div>
+-    <div class="f-help">Which of the mod's optional mods count here (in game: enabled when the save started, and still enabled). Content outside this setting is skipped, as SagaLib skips it, and every item with versions shows the version for these mods (names, portraits, places; Play mode uses it too).</div>
+-    {#each mods.optional() as x (x.id)}
+-      <label class="chk"><input type="checkbox" checked={mods.playMods().has(x.id)} onchange={(e) => (mods.playOn[x.id] = e.currentTarget.checked)} /> {x.name} <span class="mono muted">{x.id}</span></label>
+-    {/each}
+-  {/if}
+-  {#if memoryKeys.length}
+-    <div class="h2">Memory read here</div>
+-    <div class="f-help">Memory keys this text's conditions test; set them to see each case.</div>
+-    <div class="g">
+-      {#each memoryKeys as k (k)}
+-        <span class="lbl mono" title={k}>{k}</span>
+-        <input type="text" class="mono" value={testCtx.memory[k] ?? ''} placeholder="(not set)" onchange={(e) => { const v = e.currentTarget.value; upd(() => { if (v === '') delete testCtx.memory[k]; else testCtx.memory[k] = v }) }} />
+-      {/each}
+-    </div>
+-  {/if}
+-  {#if unknownConditions.length}
+-    <div class="h2">Conditions the editor can't evaluate</div>
+-    {#each unknownConditions as c (c)}
+-      <label class="chk"><input type="checkbox" checked={testCtx.assume[c] ?? true} onchange={(e) => { const v = e.currentTarget.checked; upd(() => (testCtx.assume[c] = v)) }} /> <span class="mono">{c}</span></label>
+-    {/each}
+-  {/if}
+-  <p class="muted small">Tokens the preview can't fill are shown as <span class="mono">[$token]</span>, never hidden.</p>
+-</div>
+-
+-<style>
+-  .ctx { padding: 8px 10px; overflow: auto; height: 100%; font-size: 12px; background: var(--panel); }
+-  .h { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
+-  .h2 { font-size: 11px; color: var(--muted); margin: 10px 0 4px; }
+-  .top { margin-bottom: 6px; }
+-  .g { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 4px 8px; align-items: center; }
+-  .g label, .lbl { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+-  .g input, .g select { width: 100%; padding: 3px 6px; }
+-  .row { display: flex; gap: 4px; }
+-  .chk { display: flex; gap: 6px; align-items: center; margin: 2px 0; }
+-  .small { font-size: 11px; }
+-</style>
++<script lang="ts">
++  /** The Test context form: sample values the previews and Play mode fill tokens and conditions from. */
++  import { app } from '../state/app.svelte'
++  import { project } from '../state/project.svelte'
++  import { testCtx, saveTestCtx } from '../state/testctx.svelte'
++  import IdInput from '../ui/IdInput.svelte'
++  import { mods } from '../state/mods.svelte'
++  import { nexListed } from '../../../shared/modlist'
++  import { PLACE_PRESETS, type PlacePreset } from '../../../shared/rules/context'
++
++  interface Props {
++    /** Condition commands the current rule(s) use that the editor can't evaluate. */
++    unknownConditions?: string[]
++    /** Memory keys the current rule(s) read. */
++    memoryKeys?: string[]
++  }
++  let { unknownConditions = [], memoryKeys = [] }: Props = $props()
++
++  const people = $derived([...(project.m?.people.map((p) => ({ id: p.id, name: `${p.name.first} ${p.name.last}` })) ?? []), ...(app.index?.people ?? [])])
++  const factions = $derived([...(project.m?.factions.filter((f) => f.kind === 'addition').map((f) => ({ id: f.id, name: String((f as { raw: Record<string, unknown> }).raw.displayName ?? f.id) })) ?? []), ...(app.index?.factions ?? [])])
++  const markets = $derived(app.index?.markets ?? [])
++  const places = $derived((project.m?.systems ?? []).flatMap((x) => x.entities.map((e) => ({ id: e.id, name: e.name }))))
++  const preset = $derived(PLACE_PRESETS.find((p) => p.id === (testCtx.place ?? 'none')) ?? PLACE_PRESETS[0])
++  const upd = (fn: () => void) => { fn(); saveTestCtx() }
++</script>
++
++<div class="ctx">
++  <div class="h">Test context</div>
++  <div class="f-help top">Sample values the preview fills tokens ($playerName, $credits…) and conditions with: who the player is, who they talk to, and where. Editor only; nothing here is exported.</div>
++  <div class="g">
++    <label for="tc-pf">Player</label>
++    <span class="row"><input id="tc-pf" type="text" value={testCtx.playerFirst} onchange={(e) => upd(() => (testCtx.playerFirst = e.currentTarget.value))} /><input type="text" value={testCtx.playerLast} aria-label="Player last name" onchange={(e) => upd(() => (testCtx.playerLast = e.currentTarget.value))} /></span>
++    <label for="tc-g">Player is</label>
++    <select id="tc-g" value={testCtx.playerGender} onchange={(e) => upd(() => (testCtx.playerGender = e.currentTarget.value as 'MALE' | 'FEMALE'))}><option value="FEMALE">female (her / she)</option><option value="MALE">male (him / he)</option></select>
++    <span class="lbl">Speaker</span><IdInput value={testCtx.person} options={people} onCommit={(v) => upd(() => (testCtx.person = v))} placeholder="person id" />
++    <span class="lbl">Faction</span><IdInput value={testCtx.faction} options={factions} onCommit={(v) => upd(() => (testCtx.faction = v))} placeholder="(the speaker's)" />
++    <label for="tc-pl">Place</label>
++    <select id="tc-pl" value={testCtx.place ?? 'none'} onchange={(e) => upd(() => (testCtx.place = e.currentTarget.value as PlacePreset))}>{#each PLACE_PRESETS as p (p.id)}<option value={p.id}>{p.label}</option>{/each}</select>
++    <span></span><span class="f-help">{preset.help}{Object.keys(preset.memory).length ? ` Sets ${Object.keys(preset.memory).join(', ')}.` : ''}</span>
++    <span class="lbl">Place id</span><IdInput value={testCtx.entity ?? ''} options={places} onCommit={(v) => upd(() => (testCtx.entity = v || undefined))} placeholder="($id when no speaker)" />
++    <span class="lbl">Market</span><IdInput value={testCtx.market} options={markets} onCommit={(v) => upd(() => (testCtx.market = v))} placeholder="market id" />
++    <label for="tc-cr">Credits</label><input id="tc-cr" type="number" value={testCtx.credits} onchange={(e) => upd(() => (testCtx.credits = Number(e.currentTarget.value)))} />
++    <label for="tc-sp">Story points</label><input id="tc-sp" type="number" value={testCtx.storyPoints} onchange={(e) => upd(() => (testCtx.storyPoints = Number(e.currentTarget.value)))} />
++    <span class="lbl">Commission</span><IdInput value={testCtx.commission} options={factions} onCommit={(v) => upd(() => (testCtx.commission = v))} placeholder="(none)" />
++  </div>
++  {#if mods.optional().length}
++    <!-- #60: a switch per optional mod (Saga › Mods); default: whether it is enabled in your game -->
++    <div class="h2">Optional mods and versions</div>
++    <div class="f-help">Which of the mod's optional mods count here (in game: enabled when the save started, and still enabled). Content outside this setting is skipped, as SagaLib skips it, and every item with versions shows the version for these mods (names, portraits, places; Play mode uses it too).</div>
++    {#each mods.optional() as x (x.id)}
++      <label class="chk"><input type="checkbox" checked={mods.playMods().has(x.id)} onchange={(e) => (mods.playOn[x.id] = e.currentTarget.checked)} /> {x.name} <span class="mono muted">{x.id}</span></label>
++    {/each}
++  {/if}
++  {#if nexListed(project.m?.project)}
++    <!-- #61: Nexerelin's sector -->
++    <div class="h2">Sector</div>
++    <label class="chk" title="$global.nex_randomSector = true: content only for the hand-made sector is skipped"><input type="checkbox" checked={mods.playRandomSector} onchange={(e) => (mods.playRandomSector = e.currentTarget.checked)} /> Nexerelin random sector</label>
++  {/if}
++  {#if memoryKeys.length}
++    <div class="h2">Memory read here</div>
++    <div class="f-help">Memory keys this text's conditions test; set them to see each case.</div>
++    <div class="g">
++      {#each memoryKeys as k (k)}
++        <span class="lbl mono" title={k}>{k}</span>
++        <input type="text" class="mono" value={testCtx.memory[k] ?? ''} placeholder="(not set)" onchange={(e) => { const v = e.currentTarget.value; upd(() => { if (v === '') delete testCtx.memory[k]; else testCtx.memory[k] = v }) }} />
++      {/each}
++    </div>
++  {/if}
++  {#if unknownConditions.length}
++    <div class="h2">Conditions the editor can't evaluate</div>
++    {#each unknownConditions as c (c)}
++      <label class="chk"><input type="checkbox" checked={testCtx.assume[c] ?? true} onchange={(e) => { const v = e.currentTarget.checked; upd(() => (testCtx.assume[c] = v)) }} /> <span class="mono">{c}</span></label>
++    {/each}
++  {/if}
++  <p class="muted small">Tokens the preview can't fill are shown as <span class="mono">[$token]</span>, never hidden.</p>
++</div>
++
++<style>
++  .ctx { padding: 8px 10px; overflow: auto; height: 100%; font-size: 12px; background: var(--panel); }
++  .h { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
++  .h2 { font-size: 11px; color: var(--muted); margin: 10px 0 4px; }
++  .top { margin-bottom: 6px; }
++  .g { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 4px 8px; align-items: center; }
++  .g label, .lbl { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
++  .g input, .g select { width: 100%; padding: 3px 6px; }
++  .row { display: flex; gap: 4px; }
++  .chk { display: flex; gap: 6px; align-items: center; margin: 2px 0; }
++  .small { font-size: 11px; }
++</style>
+--- a/tools/saga-forge/src/renderer/src/quests/play.svelte.ts
++++ b/tools/saga-forge/src/renderer/src/quests/play.svelte.ts
+@@ -23,6 +23,7 @@
+ import { bountyKey, bountyState, endBounty, type BountyState } from '../../../shared/play'
+ import { checkOwners, type RuntimeQuestJson, type SimPlaces } from '../../../shared/play'
+ import { marketOf, ownerChangeJson } from '../../../shared/nexerelin'
++import { RANDOM_SECTOR_KEY, nexListed } from '../../../shared/modlist'
+ 
+ interface Snapshot { memory: [string, Value][]; player: PlayerState; view: DialogView; sim: SimState; logLen: number; path: string[]; day: number }
+ 
+@@ -128,8 +129,12 @@
+       const on = mods.optional().filter((x) => w.mods!.enabled.has(x.id)).map((x) => x.name)
+       this.engine.log.push({ kind: 'info', text: `Optional mods: ${on.length ? on.join(', ') : 'none'} (Play mode switches)` })
+     }
+-    // #61: fresh owners for the "changes owner" event
++    // #61: Nexerelin's sector (Play mode switch) and fresh owners
+     for (const k of Object.keys(playOwners)) delete playOwners[k]
++    if (project.m && nexListed(project.m.project)) {
++      if (mods.playRandomSector) ctx.memory.set(RANDOM_SECTOR_KEY, true)
++      this.engine.log.push({ kind: 'info', text: mods.playRandomSector ? 'Sector: random (Nexerelin; $global.nex_randomSector = true): hand-made-only content is skipped' : 'Sector: hand-made (Play mode switch)' })
++    }
+     this.history = []
+     this.path = []
+     this.active = true
+--- a/tools/saga-forge/src/renderer/src/pages/QuestsPage.svelte
++++ b/tools/saga-forge/src/renderer/src/pages/QuestsPage.svelte
+@@ -1,4 +1,5 @@
+ <script lang="ts">
++  import { nexListed } from '../../../shared/modlist'
+   /** Quest planner (PLAN.md §5, mock-up quest.html): flow chart, inspector, dialog preview, Play mode, Rules view. */
+   import ModsChip from '../ui/ModsChip.svelte'
+   import { mods } from '../state/mods.svelte'
+@@ -469,6 +470,8 @@
+         <button onclick={() => quest && node && play.start(quest, node.id)} disabled={!node}>Play from selected</button>
+         <select value={play.profileId} onchange={(e) => (play.profileId = e.currentTarget.value)} title="Test profile applied when Play starts"><option value="">no test profile</option>{#each m?.testProfiles ?? [] as p (p.id)}<option value={p.id}>{p.name}</option>{/each}</select>
+         <!-- #60: a switch per optional mod (Saga › Mods): the combination this playthrough started with; switching restarts -->
++        <!-- #61: Nexerelin's sector (when the mod lists Nexerelin) -->
++        {#if m && nexListed(m.project)}<label class="modsw" title="Play as a Nexerelin random sector ($global.nex_randomSector = true): content only for the hand-made sector is skipped (switching restarts Play)"><input type="checkbox" checked={mods.playRandomSector} onchange={(e) => { mods.playRandomSector = e.currentTarget.checked; if (quest) play.start(quest) }} /> random sector</label>{/if}
+         {#each mods.optional() as x (x.id)}
+           <label class="modsw" title="Play as if {x.name} was enabled when the game started (switching restarts Play)"><input type="checkbox" checked={mods.playMods().has(x.id)} onchange={(e) => { mods.playOn[x.id] = e.currentTarget.checked; if (quest) play.start(quest) }} /> {x.name}</label>
+         {/each}
+--- a/tools/saga-forge/test/nexerelin61.test.ts
++++ b/tools/saga-forge/test/nexerelin61.test.ts
+@@ -1,12 +1,15 @@
+ /**
+- * Task #61 (PLAN.md §10.3): markets changing owner and Nexerelin's invasions, without a bridge.
+- * The owner-change export, the contact-post warning and invasion protection. The shared golden
+- * case places.json (SagaLib) covers the runtime (missing places, the daily owner check). The
+- * random-sector part is on hold (its own task).
++ * Task #61 (PLAN.md §10.3): Nexerelin's random sector and markets changing owner, without a bridge.
++ * The sector condition as rules and SagaLib JSON, the automatic "needs the hand-made sector", the
++ * three choices, the random-target fix, the owner-change export, the contact-post warning and
++ * invasion protection. The shared golden case places.json (SagaLib) covers the runtime.
+  */
+ import { describe, expect, it } from 'vitest'
+-import { nexerelinProblems } from '../src/shared/checks/nexerelin'
+-import { questWatch } from '../src/shared/nexerelin'
++import { addCond, combinations, comboText, condLines, effLines, gateJson, holds, noConds, RANDOM_SECTOR } from '../src/shared/modlist'
++import { effectiveConds, lowerModConds } from '../src/shared/moduses'
++import { nexerelinProblems, setItemSector } from '../src/shared/checks/nexerelin'
++import { combinationProblems } from '../src/shared/checks/mods'
++import { questWatch, randomTargetScope, useRandomTarget } from '../src/shared/nexerelin'
+ import { compileQuest } from '../src/shared/export/questrules'
+ import { testModFiles, testModState } from './fixtures/testmod'
+ import { SIXTYONE_A, SIXTYONE_INDEX } from './fixtures/sixtyone'
+@@ -14,12 +17,109 @@
+ import { defsFor } from '../src/shared/defs'
+ import type { GameIndex } from '../src/shared/api'
+ import type { CheckContext } from '../src/shared/checks'
++import type { BranchNode } from '../src/shared/model'
+ 
+ const idx = (): GameIndex => ({ factions: [], items: [], people: [], ...SIXTYONE_INDEX, activeSourceId: 'sixtyone_a' } as unknown as GameIndex)
+ function ctx(m = SIXTYONE_A.model()): CheckContext {
+   return { model: m, index: idx(), defs: defsFor('0.98a-RC8'), loaded: testModState(SIXTYONE_A, m, planTexts(m)), rules: null, styleChecks: false }
+ }
+ 
++describe('the sector condition (PLAN.md §10.3)', () => {
++  it('is a plain memory key in rules (no SagaLib) and "sector" in SagaLib JSON', () => {
++    expect(condLines({ sector: 'handmade' })).toEqual(['!$global.nex_randomSector'])
++    expect(condLines({ sector: 'random', with: ['A'] })).toEqual(['SF_HasMod A', '$global.nex_randomSector'])
++    expect(condLines({ sector: 'any' })).toEqual([])
++    const e = addCond(noConds(), { sector: 'handmade' })
++    expect(effLines(e)).toEqual(['!$global.nex_randomSector'])
++    expect(gateJson(e)).toEqual({ sector: 'handmade' })
++    expect(holds(e, new Set())).toBe(true)
++    expect(holds(e, new Set([RANDOM_SECTOR]))).toBe(false)
++    expect(holds({ sector: 'random' }, new Set([RANDOM_SECTOR]))).toBe(true)
++    expect(comboText(new Set(['HMI', RANDOM_SECTOR]))).toBe('HMI, in a random sector')
++  })
++})
++
++describe('"needs the hand-made sector", found automatically', () => {
++  it('marks content naming vanilla\'s hand-made places and people, and what only uses it', () => {
++    const m = SIXTYONE_A.model()
++    const eff = effectiveConds(m, idx(), 'sixtyone_a')
++    const sec = (k: string) => eff.get(k)?.eff.sector
++    expect(sec('quest:soa_handmade')).toBe('handmade')
++    expect(eff.get('quest:soa_handmade')?.from[0].why).toMatch(/vanilla's jangala/)
++    expect(sec('person:soa_clerk')).toBe('handmade')
++    expect(sec('system:corvus')).toBe('handmade')
++    expect(sec('entity:soa_corvus_buoy')).toBe('handmade')
++    // the random-target version and the "keep" one have none; the mod's own system neither
++    expect(sec('quest:soa_randomized')).toBeUndefined()
++    expect(sec('quest:soa_kept')).toBeUndefined()
++    expect(sec('system:soa_range')).toBeUndefined()
++    expect(sec('quest:soa_keep')).toBeUndefined()
++  })
++
++  it('only when the mod lists Nexerelin', () => {
++    const m = SIXTYONE_A.model()
++    m.project.mods = []
++    expect(effectiveConds(m, idx(), 'sixtyone_a').get('quest:soa_handmade')?.eff.sector).toBeUndefined()
++    expect(nexerelinProblems(ctx(m))).toEqual([])
++  })
++
++  it('spreads from a hand-made-only person to the quest whose contact they are', () => {
++    const m = SIXTYONE_A.model()
++    const q = m.quests.find((x) => x.id === 'soa_keep')!
++    q.start = { kind: 'contact', person: 'soa_clerk', freq: 10 }
++    expect(effectiveConds(m, idx(), 'sixtyone_a').get('quest:soa_keep')?.eff.sector).toBe('handmade')
++  })
++
++  it('leaves out a node only the hand-made sector reaches', () => {
++    const m = SIXTYONE_A.model()
++    const q = m.quests.find((x) => x.id === 'soa_keep')!
++    q.nodes.push({ id: 'br', type: 'branch', x: 0, y: 0, cases: [{ id: 'h', label: 'hand-made', conditions: [], mods: { sector: 'handmade' } }] } as BranchNode,
++      { id: 'jw', type: 'wait', x: 0, y: 0, mode: 'arrive', entity: 'jangala' })
++    q.edges.push({ id: 'x1', from: 'there', handle: 'next', to: 'br' }, { id: 'x2', from: 'br', handle: 'h', to: 'jw' })
++    expect(effectiveConds(m, idx(), 'sixtyone_a').get('quest:soa_keep')?.eff.sector).toBeUndefined()
++  })
++})
++
++describe('the three choices in Problems', () => {
++  it('offers only hand-made (default), a random target where it can, or keep', () => {
++    const probs = nexerelinProblems(ctx())
++    const q = probs.find((p) => p.key === 'nexhandmade:quest:soa_handmade')!
++    expect(q.level).toBe('info')
++    expect(q.fixes!.map((f) => f.action)).toEqual(['sectorSet', 'sectorRandomTarget', 'sectorSet'])
++    const person = probs.find((p) => p.key === 'nexhandmade:person:soa_clerk')!
++    expect(person.fixes!.map((f) => f.label)).toEqual(['Only in the hand-made sector', 'Keep (runs in both)'])
++    // a chosen item is no longer listed
++    const m = SIXTYONE_A.model()
++    expect(setItemSector(m, 'quest:soa_handmade', 'handmade')).toBe(true)
++    expect(nexerelinProblems(ctx(m)).some((p) => p.key === 'nexhandmade:quest:soa_handmade')).toBe(false)
++    expect(m.quests.find((x) => x.id === 'soa_handmade')!.mods).toEqual({ sector: 'handmade' })
++  })
++
++  it('"Use a random target" points every replaceable use at a market target like the place', () => {
++    const m = SIXTYONE_A.model()
++    const q = m.quests.find((x) => x.id === 'soa_handmade')!
++    expect(randomTargetScope(q, 'jangala', m)).toEqual({ replace: ['stage "Go there" marker', 'Arrive "there"'], cannot: [] })
++    const v = useRandomTarget(m, 'soa_handmade', 'jangala', idx())
++    expect(v).toBe('t_jangala')
++    expect(q.stages[0].marker).toBe('target:t_jangala')
++    expect((q.nodes.find((n) => n.id === 'there') as { entity: string }).entity).toBe('target:t_jangala')
++    const t = q.variables.find((x) => x.name === 't_jangala')!.target!
++    expect(t.pick).toBe('market')
++    expect(t.prefer).toEqual([{ id: 'mkFaction', args: [['hegemony']] }, { id: 'mkSizeAtLeast', args: [5] }])
++    expect(effectiveConds(m, idx(), 'sixtyone_a').get('quest:soa_handmade')?.eff.sector).toBeUndefined()
++  })
++
++  it('a random sector is one more combination in the check', () => {
++    const m = SIXTYONE_A.model()
++    const q = m.quests.find((x) => x.id === 'soa_keep')!
++    q.nodes.push({ id: 'br', type: 'branch', x: 0, y: 0, cases: [{ id: 'h', label: 'hand-made', conditions: [], mods: { sector: 'handmade' } }] } as BranchNode)
++    q.edges.push({ id: 'x1', from: 'there', handle: 'next', to: 'br' })
++    const probs = combinationProblems(m, effectiveConds(m, idx(), 'sixtyone_a'))
++    expect(probs.some((p) => p.key?.startsWith('modcombo:soa_keep:br') && /random sector/.test(p.message))).toBe(true)
++    expect(combinations(['nexerelin', RANDOM_SECTOR])).toHaveLength(4)
++  })
++})
++
+ describe('markets changing owner (PLAN.md §10.3)', () => {
+   it('watches the quest\'s markets and exports what to do', () => {
+     const m = SIXTYONE_A.model()
+@@ -29,45 +129,42 @@
+     const j = JSON.parse(files['data/sagaforge/quests/soa_stage.json'])
+     expect(j.ownerChange).toEqual({ do: 'stage', stage: 'lost', trigger: 'soa_stage_ownerChanged', markets: ['soa_outpost', 'soa_station'] })
+     expect(JSON.parse(files['data/sagaforge/quests/soa_fail.json']).ownerChange).toEqual({ do: 'fail', markets: ['soa_outpost', 'soa_station'] })
+-    expect(JSON.parse(files['data/sagaforge/quests/soa_keep.json']).ownerChange).toEqual({ do: 'keep', markets: ['soa_outpost', 'soa_station'] })
++    expect(JSON.parse(files['data/sagaforge/quests/soa_handmade.json']).ownerChange).toBeUndefined()
+     // the trigger's rule runs what follows the Stage node
+     const c = compileQuest(st, { sagalib: true, phrases: [] })
+     const r = c.rows.find((x) => x.id === 'soa_stage_ownerChanged')!
+     expect(r.trigger).toBe('soa_stage_ownerChanged')
+     expect(r.script).toContain('FireBest soa_stage_news')
++    // a target market is watched by its key
++    const q = m.quests.find((x) => x.id === 'soa_randomized')!
++    q.ownerChange = { do: 'keep' }
++    expect(questWatch(q, m, idx())).toEqual(['$global.soa_randomized_t_jangala'])
+   })
+ 
+-  it('watches a vanilla market by the index, a market target by its key, and nothing without a setting', () => {
+-    const m = SIXTYONE_A.model()
+-    const q = m.quests.find((x) => x.id === 'soa_keep')!
+-    q.stages[0].marker = 'jangala'
+-    q.variables.push({ name: 't', type: 'target', scope: 'quest', initial: '', target: { pick: 'market', require: [], prefer: [] } })
+-    expect(questWatch(q, m, idx())).toEqual(['jangala', 'soa_station', '$global.soa_keep_t'])
+-    delete q.ownerChange
+-    expect(nexerelinProblems(ctx(m)).some((p) => p.key === 'nexwatch:soa_keep')).toBe(false)
+-  })
+-
+-  it('a missing stage is an error; a quest that watches nothing gets an info line', () => {
++  it('a missing stage is an error', () => {
+     const m = SIXTYONE_A.model()
+     const st = m.quests.find((x) => x.id === 'soa_stage')!
+     st.ownerChange = { do: 'stage', stage: 'nope' }
+     expect(compileQuest(st, { sagalib: true, phrases: [] }).problems.some((p) => p.key === 'ownerstage:soa_stage')).toBe(true)
+-    const k = m.quests.find((x) => x.id === 'soa_keep')!
+-    k.stages[0].marker = ''
+-    k.nodes = k.nodes.filter((n) => n.type !== 'wait')
+-    expect(nexerelinProblems(ctx(m)).find((p) => p.key === 'nexwatch:soa_keep')?.level).toBe('info')
+   })
+ 
+-  it('the Stage node it goes to counts as reached, and its keys as set', () => {
+-    const files = testModFiles(SIXTYONE_A)
+-    expect(files['data/campaign/rules.csv']).toContain('soa_stage_ownerChanged,soa_stage_ownerChanged,')
+-  })
+-
+-  it('exports invasion protection on the market', () => {
++  it('exports the sector and protection, and the rules test the flag without SagaLib', () => {
+     const files = testModFiles(SIXTYONE_A)
++    expect(JSON.parse(files['data/sagaforge/quests/soa_handmade.json']).sector).toBe('handmade')
++    expect(JSON.parse(files['data/sagaforge/quests/soa_kept.json']).sector).toBeUndefined()
++    const people = JSON.parse(files['data/sagaforge/people/sixtyone_a_people.json']).people as { id: string; sector?: string }[]
++    expect(people.find((p) => p.id === 'soa_clerk')!.sector).toBe('handmade')
++    expect(people.find((p) => p.id === 'soa_boss')!.sector).toBeUndefined()
+     const sys = JSON.parse(files['data/sagaforge/systems/soa_range.json'])
+     expect(sys.entities.find((e: { id: string }) => e.id === 'soa_bastion').market.protectFromInvasion).toBe(true)
+-    expect(sys.entities.find((e: { id: string }) => e.id === 'soa_outpost').market.protectFromInvasion).toBeUndefined()
++    expect(JSON.parse(files['data/sagaforge/systems/corvus.json']).sector).toBe('handmade')
++    const rules = files['data/campaign/rules.csv']
++    expect(rules).toMatch(/soa_handmade_start,PopulateOptions,"\$id == soa_station\r?\n!\$global\.nex_randomSector"/)
++    expect(rules).not.toMatch(/soa_kept_start,PopulateOptions,"\$id == soa_station\r?\n!\$global/)
++    // lowered for Play: the option's start conditions carry the line
++    const m = SIXTYONE_A.model()
++    const low = lowerModConds(m, effectiveConds(m, idx(), 'sixtyone_a'))
++    expect((low.quests.find((q) => q.id === 'soa_handmade')!.start as { conditions: string[] }).conditions).toContain('!$global.nex_randomSector')
+   })
+ })
+ 
+@@ -87,12 +184,4 @@
+     m.people.find((p) => p.id === 'soa_pm')!.post = 'agent'
+     expect(nexerelinProblems(ctx(m)).some((p) => p.key === 'nexpost:soa_keep:soa_pm')).toBe(false)
+   })
+-
+-  it('only when the mod lists Nexerelin', () => {
+-    const m = SIXTYONE_A.model()
+-    m.people.push({ id: 'soa_pm', name: { first: 'Ade', last: 'Moro' }, gender: 'MALE', faction: 'independent', rank: 'citizen', post: 'portmaster', portrait: '', placement: { at: 'market', market: 'soa_station', inCommDirectory: true }, tags: [], phrases: [] })
+-    m.quests.find((x) => x.id === 'soa_keep')!.start = { kind: 'contact', person: 'soa_pm', freq: 10 }
+-    m.project.mods = []
+-    expect(nexerelinProblems(ctx(m)).some((p) => p.key?.startsWith('nexpost:'))).toBe(false)
+-  })
+ })
+--- a/tools/saga-forge/test/fixtures/sixtyone.ts
++++ b/tools/saga-forge/test/fixtures/sixtyone.ts
+@@ -1,10 +1,18 @@
+ /**
+- * Test mod for task #61 (markets changing owner, protection from Nexerelin's invasions; PLAN.md
+- * §10.3; the random sector is on hold): mods\sixtyone_a (prefix soa_), for the 0.98a install where
+- * Nexerelin 0.12.2d is. Nexerelin is optional. Near "Test Range 61":
++ * Test mod for task #61 (Nexerelin random sector and markets changing owner; PLAN.md §10.3):
++ * mods\sixtyone_a (prefix soa_), for the 0.98a install where Nexerelin 0.12.2d is. Nexerelin is
++ * optional. Near "Test Range 61" (a new system, built in both sectors):
+  *   soa_station       Range Control 61 (independent): the test quests are options there
+  *   soa_outpost       Outpost 61 (pirates): watched by the owner-change quests; invade it
+  *   soa_bastion       Bastion 61 (pirates), protected from invasion: never an invasion target
++ *   soa_handmade      a quest whose marker and Arrive are vanilla's Jangala: only in the hand-made
++ *                     sector (automatic); skipped in a random sector with a log line
++ *   soa_randomized    the same quest after "Use a random target": a market like Jangala, offered
++ *                     in both sectors
++ *   soa_kept          the same quest set to "keep": offered in both, but in a random sector SagaLib
++ *                     refuses to start it (Jangala doesn't exist) with a log line
++ *   soa_clerk         a person at Jangala (automatic: only in the hand-made sector)
++ *   additions to Corvus (a buoy): only in the hand-made sector (automatic)
+  *   soa_keep / soa_fail / soa_stage   "If a market of this quest changes owner": keep going, fail,
+  *                     go to stage "lost" (a dialog follows it)
+  * In dev mode, Ctrl+F9 › "61: go to Test Range 61"; the dev menu's "Change a market's owner" stands
+@@ -13,17 +21,20 @@
+ import { emptyModel } from '../../src/shared/serialize'
+ import { newSystem, newEntity, newMarket } from '../../src/shared/locations'
+ import { newQuest } from '../../src/shared/quest'
++import { useRandomTarget } from '../../src/shared/nexerelin'
+ import type { DialogNode, PersonDef, QuestPlan } from '../../src/shared/model'
++import type { GameIndex } from '../../src/shared/api'
+ import { dlg, type TestModDef } from './testmod'
+ 
+ export const SIXTYONE_GAME = '0.98a-RC8'
+ 
+ const AT = ['$id == soa_station']
+ 
+-/** What the game index knows (when built without the game). */
++/** What the game index knows of vanilla's hand-made sector (so the automatic condition applies when built without the game). */
+ export const SIXTYONE_INDEX = {
+   sources: [{ id: 'starsector-core', name: 'Starsector', isCore: true }, { id: 'nexerelin', name: 'Nexerelin' }],
+-  markets: [{ id: 'jangala', name: 'Jangala', entities: ['jangala'], faction: 'hegemony', size: 6, system: 'corvus', definedBy: 'starsector-core', changedBy: [], conditions: [], industries: [], submarkets: [] }]
++  markets: [{ id: 'jangala', name: 'Jangala', entities: ['jangala'], faction: 'hegemony', size: 6, system: 'corvus', definedBy: 'starsector-core', changedBy: [], conditions: [], industries: [], submarkets: [] }],
++  codeSystems: [{ id: 'corvus', name: 'Corvus', sourceId: 'starsector-core', bodies: [{ id: 'jangala' }, { id: 'asharu' }] }]
+ }
+ 
+ /** An option quest at Range Control: offer, accept → stage (marker) → Arrive → end (success), with credits. */
+@@ -52,19 +63,19 @@
+ /** A quest that watches Outpost 61 and Range Control 61 (its marker and its Arrive). */
+ function ownerQuest(id: string, title: string, how: string): QuestPlan {
+   return optionQuest(id, `Test 61 - ${title}`, `Test 61, owner change - ${title}`,
+-    `"Keep an eye on Outpost 61 for us, then report back." (Test 61 (a): if Outpost 61 or Range Control 61 changes owner, this quest ${how}.)`,
+-    'soa_outpost', 'soa_station', `Test 61 (a): you report back. Changed owner: "$global.${id}_ownerChanged", new owner: "$global.${id}_newOwner" (unset tokens show as they are when nothing changed).`)
++    `"Keep an eye on Outpost 61 for us, then report back." (Test 61 (c): if Outpost 61 or Range Control 61 changes owner, this quest ${how}.)`,
++    'soa_outpost', 'soa_station', `Test 61 (c): you report back. Changed owner: "$global.${id}_ownerChanged", new owner: "$global.${id}_newOwner" (unset tokens show as they are when nothing changed).`)
+ }
+ 
+ export const SIXTYONE_A: TestModDef = {
+-  id: 'sixtyone_a', name: 'Saga Forge test #61: markets changing owner', prefix: 'soa_', version: '1.0.0', gameVersion: SIXTYONE_GAME,
++  id: 'sixtyone_a', name: 'Saga Forge test #61: Nexerelin sector and owners', prefix: 'soa_', version: '1.0.0', gameVersion: SIXTYONE_GAME,
+   indexStub: SIXTYONE_INDEX,
+-  description: 'Throwaway test mod for Saga Forge task #61: quests reacting to a market changing owner, a market protected from invasion. Nexerelin optional. Dev mode: Ctrl+F9, profile 61.',
++  description: 'Throwaway test mod for Saga Forge task #61: content for the hand-made sector, a random-target version, quests reacting to a market changing owner, a market protected from invasion. Nexerelin optional. Dev mode: Ctrl+F9, profile 61.',
+   model() {
+     const m = emptyModel('soa_')
+     m.project.mods = [{ id: 'nexerelin', name: 'Nexerelin', use: 'optional' }]
+ 
+-    // ---- Test Range 61
++    // ---- Test Range 61 (a new system: built in both sectors)
+     const sys = newSystem('soa_range', 'Test Range 61', -15000, 18000)
+     sys.addToExistingSaves = true
+     const station = newEntity('station', 'soa_station', 'Range Control 61', 'star', 2000, 0)
+@@ -76,14 +87,28 @@
+     sys.entities.push(station, outpost, bastion, newEntity('jumpPoint', 'soa_jp', 'Test Range 61 Jump-point', 'star', 4500, 60))
+     m.systems.push(sys)
+ 
+-    // ---- the outpost's administrator (Nexerelin re-flags the post when it captures the outpost)
++    // ---- additions to vanilla's Corvus: only in the hand-made sector (automatic)
++    m.systems.push({ format: sys.format, id: 'corvus', name: 'Corvus', kind: 'existing', entities: [newEntity('navBuoy', 'soa_corvus_buoy', 'Test Buoy 61', 'star', 9000, 45)], addToExistingSaves: true, tags: [] })
++
++    // ---- people: a clerk at vanilla's Jangala (automatic: hand-made only); the outpost's administrator (Nexerelin re-flags the post)
+     const person = (id: string, first: string, last: string, faction: string, post: string, market: string): PersonDef => ({
+       id, name: { first, last }, gender: 'FEMALE', faction, rank: 'citizen', post, portrait: 'graphics/portraits/portrait_corporate01.png',
+       placement: { at: 'market', market, inCommDirectory: true }, tags: [], phrases: []
+     })
+-    m.people.push(person('soa_boss', 'Rook', 'Dalla', 'pirates', 'administrator', 'soa_outpost'))
++    m.people.push(person('soa_clerk', 'Ines', 'Calder', 'hegemony', 'agent', 'jangala'), person('soa_boss', 'Rook', 'Dalla', 'pirates', 'administrator', 'soa_outpost'))
++
++    // ---- (a)/(b) the hand-made sector: three versions of one quest to Jangala
++    const hand = optionQuest('soa_handmade', 'Test 61 - Jangala (hand-made only)', 'Test 61, Jangala (only in the hand-made sector)',
++      '"Take this to Jangala." (Test 61 (a)/(b): names vanilla\'s Jangala, so it is only in the hand-made sector; in a random sector neither this option nor the quest exists.)', 'jangala', 'jangala', 'Test 61 (b): you are at Jangala. Done.')
++    const randomized = optionQuest('soa_randomized', 'Test 61 - a market like Jangala', 'Test 61, a market like Jangala (random target)',
++      '"Take this to a market like Jangala; the journal marks it." (Test 61 (a): the same quest after "Use a random target": offered in both sectors. The target is picked when you accept.)', 'jangala', 'jangala', 'Test 61 (a): you are at the random target, $global.soa_randomized_t_jangala_name in $global.soa_randomized_t_jangala_system. Done.')
++    const kept = optionQuest('soa_kept', 'Test 61 - Jangala (kept)', 'Test 61, Jangala (kept, refused when missing)',
++      '"Take this to Jangala." (Test 61 (a): set to "keep", so the option shows in both sectors; in a random sector SagaLib refuses to start it because Jangala doesn\'t exist.)', 'jangala', 'jangala', 'Test 61: you are at Jangala. Done.')
++    kept.mods = { sector: 'any' }
++    m.quests.push(hand, randomized, kept)
++    useRandomTarget(m, 'soa_randomized', 'jangala', SIXTYONE_INDEX as unknown as GameIndex)
+ 
+-    // ---- (a) markets changing owner: keep going, fail, go to a stage
++    // ---- (c) markets changing owner: keep going, fail, go to a stage
+     const keep = ownerQuest('soa_keep', 'keep going', 'keeps going (the report shows the keys)')
+     keep.ownerChange = { do: 'keep' }
+     const fail = ownerQuest('soa_fail', 'fail', 'fails')
+@@ -93,7 +118,7 @@
+     stage.ownerChange = { do: 'stage', stage: 'lost' }
+     stage.nodes.push(
+       { id: 'lost', type: 'stage', x: 520, y: 360, stage: 'lost' },
+-      dlg('news', 660, 360, 'Test 61 (a): news reaches you: $global.soa_stage_ownerChanged now belongs to $global.soa_stage_newOwner. The quest moved to stage "The outpost changed hands" (what follows its Stage node runs).', [{ id: 'ok', text: 'Close' }]),
++      dlg('news', 660, 360, 'Test 61 (c): news reaches you: $global.soa_stage_ownerChanged now belongs to $global.soa_stage_newOwner. The quest moved to stage "The outpost changed hands" (what follows its Stage node runs).', [{ id: 'ok', text: 'Close' }]),
+       { id: 'close', type: 'link', x: 820, y: 360, mode: 'menu', target: '' }
+     )
+     stage.edges.push({ id: 'l1', from: 'lost', handle: 'next', to: 'news' }, { id: 'l2', from: 'news', handle: 'ok', to: 'close' })
+--- a/mods/SagaLib/src/lastai/sagalib/core/ModGate.java
++++ b/mods/SagaLib/src/lastai/sagalib/core/ModGate.java
+@@ -1,97 +1,109 @@
+-package lastai.sagalib.core;
+-
+-import org.json.JSONArray;
+-import org.json.JSONObject;
+-
+-import java.util.ArrayList;
+-import java.util.Collections;
+-import java.util.List;
+-
+-/**
+- * SagaLib 1.3 (Saga Forge PLAN.md §10.2): "Only with / Only without" these mods on a content item
+- * (docs/FORMAT.md, "Mod conditions"):
+- * <pre>
+- *   "modsWith":    ["a", "b"]        every one of them counts
+- *   "modsWithout": ["c"]             none of them counts
+- *   "modsAny":     [["d", "e"]]      in each group, at least one counts
+- * </pre>
+- * Whether a mod counts is {@link Mods#counts}: enabled when this game started, and still enabled.
+- * The owner is the mod that ships the item (its start record decides).
+- */
+-public final class ModGate {
+-    public static final ModGate NONE = new ModGate(null, Collections.<String>emptyList(), Collections.<String>emptyList(), Collections.<List<String>>emptyList());
+-
+-    public final String owner;
+-    public final List<String> with;
+-    public final List<String> without;
+-    public final List<List<String>> any;
+-
+-    public ModGate(String owner, List<String> with, List<String> without, List<List<String>> any) {
+-        this.owner = owner;
+-        this.with = with;
+-        this.without = without;
+-        this.any = any;
+-    }
+-
+-    public boolean isEmpty() { return with.isEmpty() && without.isEmpty() && any.isEmpty(); }
+-
+-    /** Reads modsWith / modsWithout / modsAny of {@code o} (missing = no condition); the owner is the reader's mod. */
+-    public static ModGate parse(JSONObject o, String path, JsonReader r) {
+-        if (o == null || (!o.has("modsWith") && !o.has("modsWithout") && !o.has("modsAny"))) return NONE.ownedBy(r.mod);
+-        List<String> with = ids(o, "modsWith", path, r);
+-        List<String> without = ids(o, "modsWithout", path, r);
+-        List<List<String>> any = new ArrayList<List<String>>();
+-        JSONArray a = o.optJSONArray("modsAny");
+-        if (o.has("modsAny") && a == null) r.error(JsonReader.at(path, "modsAny"), "should be a list of lists of mod ids");
+-        for (int i = 0; a != null && i < a.length(); i++) {
+-            JSONArray g = a.optJSONArray(i);
+-            if (g == null) {
+-                r.error(JsonReader.at(JsonReader.at(path, "modsAny"), i), "should be a list of mod ids");
+-                continue;
+-            }
+-            List<String> group = new ArrayList<String>();
+-            for (int j = 0; j < g.length(); j++) {
+-                String s = g.optString(j, "").trim();
+-                if (!s.isEmpty()) group.add(s);
+-            }
+-            if (!group.isEmpty()) any.add(Collections.unmodifiableList(group));
+-        }
+-        return new ModGate(r.mod, with, without, Collections.unmodifiableList(any));
+-    }
+-
+-    private static List<String> ids(JSONObject o, String key, String path, JsonReader r) {
+-        if (!o.has(key)) return Collections.emptyList();
+-        JSONArray a = o.optJSONArray(key);
+-        if (a == null) {
+-            r.error(JsonReader.at(path, key), "should be a list of mod ids");
+-            return Collections.emptyList();
+-        }
+-        List<String> out = new ArrayList<String>();
+-        for (int i = 0; i < a.length(); i++) {
+-            String s = a.optString(i, "").trim();
+-            if (!s.isEmpty()) out.add(s);
+-        }
+-        return Collections.unmodifiableList(out);
+-    }
+-
+-    /** The same conditions owned by {@code mod}. */
+-    public ModGate ownedBy(String mod) {
+-        if (mod == null ? owner == null : mod.equals(owner)) return this;
+-        return new ModGate(mod, with, without, any);
+-    }
+-
+-    /** "only with a, b; only without c; with any of d, e". */
+-    public String describe() {
+-        StringBuilder b = new StringBuilder();
+-        if (!with.isEmpty()) b.append("only with ").append(join(with));
+-        if (!without.isEmpty()) b.append(b.length() > 0 ? "; " : "").append("only without ").append(join(without));
+-        for (List<String> g : any) b.append(b.length() > 0 ? "; " : "").append("with any of ").append(join(g));
+-        return b.length() == 0 ? "no mod conditions" : b.toString();
+-    }
+-
+-    static String join(List<String> l) {
+-        StringBuilder b = new StringBuilder();
+-        for (String s : l) b.append(b.length() > 0 ? ", " : "").append(s);
+-        return b.toString();
+-    }
+-}
++package lastai.sagalib.core;
++
++import org.json.JSONArray;
++import org.json.JSONObject;
++
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.List;
++
++/**
++ * SagaLib 1.3 (Saga Forge PLAN.md §10.2): "Only with / Only without" these mods on a content item
++ * (docs/FORMAT.md, "Mod conditions"):
++ * <pre>
++ *   "modsWith":    ["a", "b"]        every one of them counts
++ *   "modsWithout": ["c"]             none of them counts
++ *   "modsAny":     [["d", "e"]]      in each group, at least one counts
++ *   "sector":      "handmade"        only with vanilla's hand-made core worlds ("random": only in a
++ *                                    Nexerelin random sector; $global.nex_randomSector)
++ * </pre>
++ * Whether a mod counts is {@link Mods#counts}: enabled when this game started, and still enabled.
++ * The owner is the mod that ships the item (its start record decides).
++ */
++public final class ModGate {
++    public static final ModGate NONE = new ModGate(null, Collections.<String>emptyList(), Collections.<String>emptyList(), Collections.<List<String>>emptyList(), null);
++
++    public final String owner;
++    public final List<String> with;
++    public final List<String> without;
++    public final List<List<String>> any;
++    /** SagaLib 1.3 (task #61): "handmade", "random" or null (either). */
++    public final String sector;
++
++    public ModGate(String owner, List<String> with, List<String> without, List<List<String>> any, String sector) {
++        this.owner = owner;
++        this.with = with;
++        this.without = without;
++        this.any = any;
++        this.sector = sector;
++    }
++
++    public boolean isEmpty() { return with.isEmpty() && without.isEmpty() && any.isEmpty() && sector == null; }
++
++    /** Reads modsWith / modsWithout / modsAny of {@code o} (missing = no condition); the owner is the reader's mod. */
++    public static ModGate parse(JSONObject o, String path, JsonReader r) {
++        if (o == null || (!o.has("modsWith") && !o.has("modsWithout") && !o.has("modsAny") && !o.has("sector"))) return NONE.ownedBy(r.mod);
++        List<String> with = ids(o, "modsWith", path, r);
++        List<String> without = ids(o, "modsWithout", path, r);
++        List<List<String>> any = new ArrayList<List<String>>();
++        JSONArray a = o.optJSONArray("modsAny");
++        if (o.has("modsAny") && a == null) r.error(JsonReader.at(path, "modsAny"), "should be a list of lists of mod ids");
++        for (int i = 0; a != null && i < a.length(); i++) {
++            JSONArray g = a.optJSONArray(i);
++            if (g == null) {
++                r.error(JsonReader.at(JsonReader.at(path, "modsAny"), i), "should be a list of mod ids");
++                continue;
++            }
++            List<String> group = new ArrayList<String>();
++            for (int j = 0; j < g.length(); j++) {
++                String s = g.optString(j, "").trim();
++                if (!s.isEmpty()) group.add(s);
++            }
++            if (!group.isEmpty()) any.add(Collections.unmodifiableList(group));
++        }
++        String sector = null;
++        if (o.has("sector")) {
++            String s = o.optString("sector", "").trim();
++            if ("handmade".equals(s) || "random".equals(s)) sector = s;
++            else if (!s.isEmpty() && !"any".equals(s)) r.error(JsonReader.at(path, "sector"), "should be handmade or random, not \"" + s + "\"");
++        }
++        return new ModGate(r.mod, with, without, Collections.unmodifiableList(any), sector);
++    }
++
++    private static List<String> ids(JSONObject o, String key, String path, JsonReader r) {
++        if (!o.has(key)) return Collections.emptyList();
++        JSONArray a = o.optJSONArray(key);
++        if (a == null) {
++            r.error(JsonReader.at(path, key), "should be a list of mod ids");
++            return Collections.emptyList();
++        }
++        List<String> out = new ArrayList<String>();
++        for (int i = 0; i < a.length(); i++) {
++            String s = a.optString(i, "").trim();
++            if (!s.isEmpty()) out.add(s);
++        }
++        return Collections.unmodifiableList(out);
++    }
++
++    /** The same conditions owned by {@code mod}. */
++    public ModGate ownedBy(String mod) {
++        if (mod == null ? owner == null : mod.equals(owner)) return this;
++        return new ModGate(mod, with, without, any, sector);
++    }
++
++    /** "only with a, b; only without c; with any of d, e". */
++    public String describe() {
++        StringBuilder b = new StringBuilder();
++        if (!with.isEmpty()) b.append("only with ").append(join(with));
++        if (!without.isEmpty()) b.append(b.length() > 0 ? "; " : "").append("only without ").append(join(without));
++        for (List<String> g : any) b.append(b.length() > 0 ? "; " : "").append("with any of ").append(join(g));
++        if (sector != null) b.append(b.length() > 0 ? "; " : "").append("handmade".equals(sector) ? "only in the hand-made sector" : "only in a random sector");
++        return b.length() == 0 ? "no mod conditions" : b.toString();
++    }
++
++    static String join(List<String> l) {
++        StringBuilder b = new StringBuilder();
++        for (String s : l) b.append(b.length() > 0 ? ", " : "").append(s);
++        return b.toString();
++    }
++}
+--- a/mods/SagaLib/src/lastai/sagalib/core/Mods.java
++++ b/mods/SagaLib/src/lastai/sagalib/core/Mods.java
+@@ -223,12 +223,19 @@
+     /** null if the item's conditions hold; else why not ("needs X", "not with Y"). */
+     public static String blocked(Memory m, ModGate g) {
+         if (g == null || g.isEmpty()) return null;
++        // SagaLib 1.3 (task #61): Nexerelin's sector flag (sector memory $nex_randomSector; unset = hand-made)
++        if (g.sector != null && ("random".equals(g.sector) != randomSector(m))) return "handmade".equals(g.sector) ? "only in the hand-made sector (this is a Nexerelin random sector)" : "only in a random sector";
+         for (String id : g.with) if (!counts(m, g.owner, id)) return "needs " + id + why(m, g.owner, id);
+         for (String id : g.without) if (counts(m, g.owner, id)) return "only without " + id;
+         for (List<String> group : g.any) if (!hasAny(m, g.owner, group)) return "needs one of " + ModGate.join(group);
+         return null;
+     }
+ 
++    /** Nexerelin's flag, set at new game: true in a random sector, false (or unset, without Nexerelin) with the hand-made core worlds. */
++    public static final String RANDOM_SECTOR_KEY = "$global.nex_randomSector";
++
++    public static boolean randomSector(Memory m) { return Values.truthy(m.get(RANDOM_SECTOR_KEY)); }
++
+     private static String why(Memory m, String owner, String id) {
+         if (!enabled.isEnabled(id)) return " (not enabled)";
+         return " (not enabled when this game started)";
+--- a/mods/SagaLib/src/lastai/sagalib/game/SectorPlaces.java
++++ b/mods/SagaLib/src/lastai/sagalib/game/SectorPlaces.java
+@@ -5,6 +5,7 @@
+ import com.fs.starfarer.api.campaign.SectorEntityToken;
+ import com.fs.starfarer.api.campaign.StarSystemAPI;
+ import com.fs.starfarer.api.campaign.econ.MarketAPI;
++import lastai.sagalib.SagaLog;
+ import lastai.sagalib.core.Places;
+ 
+ /**
+@@ -46,4 +47,10 @@
+         MarketAPI m = market(id);
+         return m == null ? null : m.getFactionId();
+     }
++
++    /** One log line at new game: which sector this is (Nexerelin sets its flag before any mod's onNewGame). */
++    public static void logSector() {
++        boolean random = lastai.sagalib.core.Mods.randomSector(GameMemory.global());
++        SagaLog.info(random ? "Nexerelin random sector: content that needs vanilla's hand-made sector is skipped" : "sector: hand-made core worlds");
++    }
+ }
+--- a/mods/SagaLib/src/lastai/sagalib/SagaLibModPlugin.java
++++ b/mods/SagaLib/src/lastai/sagalib/SagaLibModPlugin.java
+@@ -33,7 +33,7 @@
+     @Override
+     public void onNewGame() {
+         // SagaLib 1.3: record which optional and incompatible mods this game starts with, before anything uses them
+-        step("mods", new Runnable() { public void run() { lastai.sagalib.core.Mods.resetSkipped(); lastai.sagalib.game.ModNotices.run(false); } });
++        step("mods", new Runnable() { public void run() { lastai.sagalib.core.Mods.resetSkipped(); lastai.sagalib.game.ModNotices.run(false); lastai.sagalib.game.SectorPlaces.logSector(); } });
+         // SagaLib 1.3: each item's version by installed mods, chosen from the record before systems are built
+         step("versions", new Runnable() { public void run() { lastai.sagalib.game.ItemVersions.run(); } });
+         // like a SectorGeneratorPlugin: new systems (with their markets) and additions to existing ones
+--- a/mods/SagaLib/src/lastai/sagalib/dev/DevMenu.java
++++ b/mods/SagaLib/src/lastai/sagalib/dev/DevMenu.java
+@@ -89,6 +89,8 @@
+     /** SagaLib 1.3: each content mod's optional and incompatible mods (start record, now) and what was skipped. */
+     private void mods(TextPanelAPI text) {
+         GameMemory mem = GameMemory.global();
++        // SagaLib 1.3 (task #61): Nexerelin's sector
++        text.addPara("Sector: " + (lastai.sagalib.core.Mods.randomSector(mem) ? "Nexerelin random sector ($global.nex_randomSector): hand-made-only content is skipped" : "hand-made core worlds"));
+         // SagaLib 1.3 (task #59): the guarded MagicLib bridge
+         String bridge = lastai.sagalib.game.MagicBounties.status();
+         text.addPara("MagicLib bounties: " + (bridge.isEmpty() ? "bridge ready (quests can start and check MagicLib bounties)" : bridge + " (quests see every bounty as unavailable)"));
+--- a/mods/SagaLib/test/golden/places.json
++++ b/mods/SagaLib/test/golden/places.json
+@@ -1,5 +1,5 @@
+ {
+-  "name": "SagaLib 1.3 (task #61): refusing an offer when a place or person is missing, and markets changing owner (keep, fail, go to a stage)",
++  "name": "SagaLib 1.3 (task #61): the sector flag, refusing an offer when a place or person is missing, and markets changing owner (keep, fail, go to a stage)",
+   "quests": [
+     {
+       "format": 1, "id": "sfp_contact", "title": "Contact at Jangala", "kind": "quest",
+@@ -14,6 +14,14 @@
+       "variables": []
+     },
+     {
++      "format": 1, "id": "sfp_hand", "title": "Hand-made only", "kind": "quest", "sector": "handmade",
++      "start": { "kind": "manual" }, "stages": [], "variables": []
++    },
++    {
++      "format": 1, "id": "sfp_random", "title": "Random only", "kind": "quest", "sector": "random",
++      "start": { "kind": "manual" }, "stages": [], "variables": []
++    },
++    {
+       "format": 1, "id": "sfp_keep", "title": "Keeps going", "kind": "quest",
+       "start": { "kind": "manual" }, "stages": [ { "id": "go", "title": "Go", "marker": "jangala", "kind": "normal" } ], "variables": [],
+       "ownerChange": { "do": "keep", "markets": ["jangala"] }
+@@ -39,11 +47,22 @@
+     { "needs": "sfp_option", "is": { "places": ["asharu"], "people": [] } },
+     { "offer": "sfp_contact", "is": true },
+     { "offer": "sfp_option", "is": true },
++    { "offer": "sfp_hand", "is": true },
++    { "offer": "sfp_random", "is": false },
++    { "gate": { "sector": "handmade" }, "is": true },
++    { "check": "!$global.nex_randomSector", "is": true },
+ 
+-    { "world": { "places": ["sfp_station", "corvus"], "people": [], "owners": { "sfp_station": "independent" } }, "note": "a sector without Jangala, Asharu or Reyes (a removed mod, a deleted place)" },
++    { "do": "$global.nex_randomSector = true" },
++    { "world": { "places": ["sfp_station", "nex_random_1"], "people": [], "owners": { "sfp_station": "independent" } } },
++    { "offer": "sfp_hand", "is": false },
++    { "offer": "sfp_random", "is": true },
++    { "gate": { "sector": "handmade" }, "is": false },
++    { "gate": { "sector": "random" }, "is": true },
+     { "offer": "sfp_contact", "is": false, "missing": "person sfp_reyes" },
+     { "offer": "sfp_option", "is": false, "missing": "place asharu" },
++    { "check": "$global.nex_randomSector", "is": true },
+ 
++    { "do": "unset $global.nex_randomSector" },
+     { "world": { "places": ["jangala", "asharu", "corvus", "sfp_station", "sfp_target"], "people": ["sfp_reyes"], "owners": { "jangala": "hegemony", "sfp_station": "independent", "sfp_target": "tritachyon" } } },
+     { "do": "SF_Start sfp_keep\n$global.sfp_fail_t = sfp_target\nSF_Start sfp_fail\nSF_Start sfp_stage\nSF_Step sfp_stage go" },
+     { "offer": "sfp_keep", "is": false },

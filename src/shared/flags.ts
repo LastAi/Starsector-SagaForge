@@ -12,6 +12,7 @@ import { compileQuest } from './export/questrules'
 import { parseConditions, parseScript, TOKEN_RE } from './rules/parse'
 import { prereqConditions } from './export/questrules'
 import { targetKeys } from './targets'
+import { defaultOf, settingKey, TYPE_LABEL, valueSettings } from './settings'
 
 export interface FlagUse { where: string; quest?: string; node?: string; detail: string }
 export interface FlagEntry {
@@ -22,6 +23,8 @@ export interface FlagEntry {
   generated: boolean
   /** Set by vanilla or another mod (known from their rules), not by this mod. */
   external: string | null
+  /** #62: one of the mod's settings (Saga › Settings): its label. SagaLib sets it on every load. */
+  setting?: string
 }
 
 /** Keys worth tracking: $global.*, and quest/mod-prefixed local keys. Engine-provided keys ($option, $id, ...) are skipped. */
@@ -33,7 +36,7 @@ function typeOf(v: string): 'bool' | 'number' | 'string' {
   return 'string'
 }
 
-export function buildRegistry(m: ModModel, handRules: RuleRow[], externalRules: RuleRow[] = []): Map<string, FlagEntry> {
+export function buildRegistry(m: ModModel, handRules: RuleRow[], externalRules: RuleRow[] = [], otherQuests: { id: string; definedBy: string }[] = []): Map<string, FlagEntry> {
   const reg = new Map<string, FlagEntry>()
   const entry = (key: string): FlagEntry => {
     let e = reg.get(key)
@@ -48,6 +51,12 @@ export function buildRegistry(m: ModModel, handRules: RuleRow[], externalRules: 
         if (c.value !== undefined && !c.value.startsWith('$')) e.types.add(typeOf(c.value))
       } else if (c.kind === 'command' && (c.name === 'SF_AtStep' || c.name === 'SF_QuestDone' || c.name === 'SF_QuestState')) {
         entry(`$global.${c.args[0]}_${c.name === 'SF_AtStep' ? 'step' : 'state'}`).readBy.push({ ...use, detail: c.raw })
+      } else if (c.kind === 'command' && c.name === 'SF_BountyState' && c.args[0]) {
+        // #59: MagicLib's own key of the bounty (its job_memKey; "$" + id unless a hand-written bounty
+        // says otherwise), set by MagicLib for any mod's bounty, the mod's own or not
+        const be = entry(`$global.${c.args[0]}`)
+        be.readBy.push({ ...use, detail: c.raw })
+        be.external ??= 'MagicLib'
       }
     }
     for (const s of parseScript(r.script)) {
@@ -57,7 +66,9 @@ export function buildRegistry(m: ModModel, handRules: RuleRow[], externalRules: 
         if (s.kind === 'set' && !s.value.startsWith('$')) e.types.add(typeOf(s.value))
         if (s.kind === 'incr') e.types.add('number')
       } else if (s.kind === 'command' && (s.name === 'SF_Step' || s.name === 'SF_Start' || s.name === 'SF_End')) {
-        entry(`$global.${s.args[0]}_${s.name === 'SF_Step' ? 'step' : 'state'}`).setBy.push({ ...use, detail: s.raw })
+        // SF_Step also starts the quest (its state) when it isn't running yet
+        if (s.name === 'SF_Step') entry(`$global.${s.args[0]}_step`).setBy.push({ ...use, detail: s.raw })
+        entry(`$global.${s.args[0]}_state`).setBy.push({ ...use, detail: s.raw })
       } else if (s.kind === 'command' && s.name === 'SF_RollPool') {
         // Phase 7a: the pick, for the rules that follow, and the pool's last pick
         entry('$sagaforge_pick').setBy.push({ ...use, detail: s.raw })
@@ -70,6 +81,19 @@ export function buildRegistry(m: ModModel, handRules: RuleRow[], externalRules: 
     }
   }
   const phrases = [...m.phrases, ...m.people.flatMap((p) => p.phrases)]
+  // #62: the mod's settings: SagaLib sets $global.<id> on every load (the default, or the player's value with LunaLib)
+  for (const s of valueSettings(m)) {
+    if (!s.id) continue
+    const e = entry(settingKey(s.id))
+    e.setting = s.label || s.id
+    e.setBy.push({ where: `Setting "${s.label || s.id}"`, detail: `mod setting (${TYPE_LABEL[s.type].toLowerCase()}, default ${s.default || '(empty)'}): set by SagaLib on every load; the player changes it in LunaLib's menu` })
+    const d = defaultOf(s)
+    if (d !== undefined) e.types.add(typeof d === 'boolean' ? 'bool' : typeof d === 'number' ? 'number' : 'string')
+  }
+  for (const q of m.quests) for (const r of q.rewards) if (r.creditsScale?.setting) entry(settingKey(r.creditsScale.setting)).readBy.push({ where: `${q.title} (reward ${r.id})`, quest: q.id, detail: 'scales the credits' })
+  for (const en of m.encounters) if (en.fleet.sizeScale?.setting) entry(settingKey(en.fleet.sizeScale.setting)).readBy.push({ where: `encounter ${en.name || en.id}`, detail: 'scales the fleet size' })
+  // #70: SagaLib sets the away flag of a person with a presence rule (daily and on load)
+  for (const p of m.people) if (p.presence) entry(`$global.sagaforge_away_${p.id}`).setBy.push({ where: `${p.name.first} ${p.name.last}`.trim() || p.id, detail: 'set by SagaLib: true while their market\'s owner doesn\'t get on with their faction (People › Presence)' })
   for (const q of m.quests) {
     let c
     try { c = compileQuest(q, { sagalib: true, phrases }) } catch { continue }
@@ -77,12 +101,34 @@ export function buildRegistry(m: ModModel, handRules: RuleRow[], externalRules: 
     for (const g of c.generatedFlags) entry(g.key).generated = true
     // prerequisites read keys too
     for (const l of prereqConditions(q)) scanRow({ id: '', trigger: '', conditions: l, script: '', text: '', options: '', notes: '', sourceId: '', file: '', line: 0 }, { where: `${q.title} (prerequisite)`, quest: q.id, node: 'start' })
+    // #71: SagaLib keeps a quest's state (active when it starts, success or fail when it ends, also by
+    // its time limit or a market changing owner); the start rule of an option or trigger start reads it
+    if (q.kind === 'quest') entry(`$global.${q.id}_state`).setBy.push({ where: q.title, quest: q.id, detail: 'set by SagaLib: active when the quest starts, success or fail when it ends' })
+    // #65: vanilla's completed key (setCompletedKey), set on success (also by a Nexerelin quest skip)
+    if (q.kind === 'quest') entry(`$global.${q.id}_missionCompleted`).setBy.push({ where: q.title, quest: q.id, detail: 'set by the game (vanilla\'s completed key) when the quest ends in success' })
+    // #61: SagaLib sets these when a watched market changes owner
+    if (q.ownerChange) for (const [k, d] of [[`$global.${q.id}_ownerChanged`, 'the market that changed owner'], [`$global.${q.id}_newOwner`, 'its new owner (faction id)']]) entry(k).setBy.push({ where: q.title, quest: q.id, detail: `set by SagaLib: ${d}` })
     // quest variables are set by SagaLib when the quest starts
     for (const v of q.variables) {
       if (v.type !== 'target') { entry(`$global.${q.id}_${v.name}`).setBy.push({ where: q.title, quest: q.id, detail: `variable (initial ${v.initial})` }); continue }
       // Phase 7c: SagaLib's search sets the pick and its facts when the quest is offered
       entry(`$global.${q.id}_${v.name}`).setBy.push({ where: q.title, quest: q.id, detail: `random target (${v.target?.pick ?? '?'})` })
       for (const k of targetKeys(q.id, v.name).slice(1)) entry(k).setBy.push({ where: q.title, quest: q.id, detail: `random target ${v.name}: ${k.slice(`$global.${q.id}_${v.name}_`.length)}` })
+    }
+  }
+  // #65: a quest skipped on Nexerelin's new-game screen: SagaLib marks it, Nexerelin sets the "More keys"
+  for (const c of m.project.questSkip ?? []) for (const x of c.quests) {
+    const q = m.quests.find((y) => y.id === x.quest)
+    if (!q) continue
+    entry(`$global.sagaforge_skipped_${q.id}`).setBy.push({ where: `${q.title} (quest skip)`, quest: q.id, detail: 'set by SagaLib: true when the player skipped the quest on Nexerelin\'s new-game screen (Saga › Quest skip)' })
+    for (const k of x.extra ?? []) if (k.key.trim()) entry(k.key.trim()).setBy.push({ where: `${q.title} (quest skip)`, quest: q.id, detail: `set by Nexerelin when the quest is skipped: ${k.value}` })
+  }
+  // #27: MagicLib sets a bounty's memory key on accept and its outcome keys when it ends (FORMATS.md)
+  for (const b of m.bounties ?? []) {
+    for (const [suffix, when] of [['', 'false on accept, true when it ends'], ['_succeeded', 'when it succeeds'], ['_failed', 'when the flagship was salvaged'], ['_expired', 'when it expires']] as const) {
+      const e = entry(`$global.${b.id}${suffix}`)
+      e.setBy.push({ where: `MagicLib bounty ${b.id}`, detail: `set by MagicLib ${when}` })
+      e.types.add('bool')
     }
   }
   for (const p of phrases) for (const cs of p.cases) for (const l of cs.when) scanRow({ id: '', trigger: '', conditions: l, script: '', text: '', options: '', notes: '', sourceId: '', file: '', line: 0 }, { where: `phrase ${p.token}` })
@@ -106,6 +152,8 @@ export function buildRegistry(m: ModModel, handRules: RuleRow[], externalRules: 
   // SagaLib's own keys (Phase 7e: decivilised colonies, scatter; pools; days): set by the library at runtime
   for (const e of reg.values()) if (!e.setBy.length && e.key.startsWith('$global.sagaforge_')) e.external = 'SagaLib'
   // keys set by vanilla or other mods
+  // #64: other Saga Forge mods' quests: SagaLib keeps their state and step ("after Mod1's quest X")
+  for (const q of otherQuests) for (const k of [`$global.${q.id}_state`, `$global.${q.id}_step`]) { const e = reg.get(k); if (e && !e.setBy.length) e.external = q.definedBy }
   if (externalRules.length) {
     const ext = new Map<string, string>()
     for (const r of externalRules) for (const s of parseScript(r.script)) if (s.kind === 'set' || s.kind === 'incr') if (!ext.has(s.key)) ext.set(s.key, r.sourceId)

@@ -1,5 +1,7 @@
 <script lang="ts">
   /** Quest planner (PLAN.md §5, mock-up quest.html): flow chart, inspector, dialog preview, Play mode, Rules view. */
+  import ModsChip from '../ui/ModsChip.svelte'
+  import { mods } from '../state/mods.svelte'
   import { SvelteFlow, Background, Controls, MiniMap, type Node, type Edge, type Connection } from '@xyflow/svelte'
   import '@xyflow/svelte/dist/style.css'
   import type { NodeType, QNode, QuestPlan, DialogNode } from '../../../shared/model'
@@ -11,13 +13,15 @@
   import { compileQuest, nodeRuleId, phraseCombos } from '../../../shared/export/questrules'
   import { lockedEntityIds } from '../../../shared/patterns'
   import { compileRules, Engine, emptyView, type DialogView } from '../../../shared/rules/engine'
-  import { newSimState, sagaHooks, applyMockTargets } from '../../../shared/play'
+  import { newSimState, sagaHooks, applyMockTargets, createdUpFront } from '../../../shared/play'
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
   import { problems, applyProblemFix } from '../state/problems.svelte'
   import { personLook, itemIcon, illustrationPath, makePlayContext, testCtx } from '../state/testctx.svelte'
   import { editQuest } from '../quests/edit'
-  import { play, world, allPhrases } from '../quests/play.svelte'
+  import { itemVer } from '../state/itemver.svelte'
+  import VersionStrip from '../ui/VersionStrip.svelte'
+  import { play, world, allPhrases, playModel } from '../quests/play.svelte'
   import QNodeView from '../graph/QNodeView.svelte'
   import FlowApi, { type FlowHandle } from '../graph/FlowApi.svelte'
   import { autoLayout } from '../graph/layout'
@@ -36,10 +40,19 @@
   import { lastRelease, renameStage } from '../../../shared/release'
   import { dropTodoElement } from '../../../shared/todo'
   import { inactiveQuests } from '../../../shared/inactive'
+  import BountyEditor from '../quests/BountyEditor.svelte'
+  import { newBounty, existingBounties, bountyOnlySources, bountyIdsOf } from '../../../shared/bounties'
+
+  // #27: MagicLib bounties: the open one, and the mod's hand-written ones (in its files, not made here)
+  let bountyOpen = $state<string | null>(app.selected.bounty ?? (app.smokeModal?.startsWith('bounty=') ? app.smokeModal.slice(7) : null))
+  $effect(() => { if (app.selected.bounty) { bountyOpen = app.selected.bounty; app.selected.bounty = null } })
+  const bountyOnlyQ = $derived(project.m ? bountyOnlySources(project.m).quests : new Set<string>())
+  const handBounties = $derived(project.loaded ? existingBounties(project.loaded.files, (project.m?.project.exported.bounties ?? '').split(',').filter(Boolean)).filter((x) => !x.own && !(project.m?.bounties ?? []).some((b) => b.id === x.id)) : [])
 
   const m = $derived(project.m)
   const qid = $derived(app.selected.quests ?? m?.quests[0]?.id ?? null)
-  const quest = $derived(m?.quests.find((q) => q.id === qid) ?? null)
+  // #64: the quest as in the open version (the versions strip)
+  const quest = $derived(itemVer.view('quest', qid, m?.quests.find((q) => q.id === qid) ?? null))
   const selNode = $derived(app.selected.questNode ?? null)
   const node = $derived(quest?.nodes.find((n) => n.id === selNode) ?? null)
   let center = $state<'chart' | 'script' | 'rules'>(app.smokeModal === 'script' || app.smokeModal === 'rules' ? app.smokeModal : 'chart')
@@ -49,7 +62,8 @@
   let rightEl = $state<HTMLElement>()
   $effect(() => { void app.selected.questNode; void app.selected.quests; if (rightEl) rightEl.scrollTop = 0 })
   const phrases = $derived([...(m?.phrases ?? []), ...(m?.people.flatMap((p) => p.phrases) ?? [])])
-  const compiled = $derived(quest ? compileQuest(quest, { sagalib: true, phrases, itemKind: itemKindLookup(m?.items ?? [], app.index?.items ?? []), lockedEntities: lockedEntityIds(m?.quests ?? []) }) : null)
+  // #60: the Rules view shows the rules as exported (mod conditions folded in)
+  const compiled = $derived(quest ? compileQuest(playModel()?.quests.find((x) => x.id === quest.id) ?? quest, { sagalib: true, phrases, itemKind: itemKindLookup(m?.items ?? [], app.index?.items ?? []), lockedEntities: lockedEntityIds(m?.quests ?? []) }) : null)
   const SEVERITY = ['error', 'todo', 'warning', 'save', 'style', 'info']
   const qProblems = $derived(problems.live.filter((p) => p.ref?.page === 'quests' && p.ref.id === qid).map((p, i) => ({ p, i }))
     .sort((a, b) => SEVERITY.indexOf(a.p.level) - SEVERITY.indexOf(b.p.level) || a.i - b.i).map((x) => x.p))
@@ -61,7 +75,9 @@
     ...(quest ? targetPlaces(quest) : []),
     ...(m?.systems.flatMap((s) => s.entities.flatMap((e) => [{ id: e.id, name: `${e.name} (${s.name})` }, ...(e.market && e.market.id !== e.id ? [{ id: e.market.id, name: `${e.market.name} market` }] : [])])) ?? []),
     ...(m?.people.map((p) => ({ id: p.id, name: `${p.name.first} ${p.name.last}` })) ?? []),
-    ...(app.index?.markets.flatMap((x) => [{ id: x.id, name: `${x.name} market` }, ...x.entities.map((id) => ({ id, name: x.name }))]) ?? [])
+    ...(app.index?.markets.flatMap((x) => [{ id: x.id, name: `${x.name} market` }, ...x.entities.map((id) => ({ id, name: x.name }))]) ?? []),
+    // #64: other Saga Forge mods' places and what a sector snapshot saw
+    ...(app.index?.places ?? []).map((x) => ({ id: x.id, name: x.name }))
   ])
   const nodeLabel = (n: QNode) => (n.type === 'dialog' || n.type === 'branch' || n.type === 'action' || n.type === 'raid' ? n.title ?? '' : n.type === 'stage' ? quest?.stages.find((s) => s.id === n.stage)?.id ?? '' : '')
 
@@ -124,10 +140,12 @@
 
   // ---- new node menu (double-click the canvas, or drop a connection on empty space)
   let menu = $state<{ x: number; y: number; fx: number; fy: number; from?: { node: string; handle: string } } | null>(null)
-  const TYPES: { type: NodeType; label: string }[] = [
+  // key: the type, or "wait:bounty" for a Wait node made for a MagicLib bounty (SagaLib 1.3)
+  const NODE_MENU: { type: NodeType; label: string; key?: string }[] = [
     { type: 'dialog', label: 'Dialog' }, { type: 'branch', label: 'Branch' }, { type: 'action', label: 'Action' }, { type: 'stage', label: 'Stage' },
-    { type: 'encounter', label: 'Encounter' }, { type: 'wait', label: 'Wait / Arrive' }, { type: 'raid', label: 'Raid (ground raid)' }, { type: 'end', label: 'End' }, { type: 'link', label: 'Link (into existing dialog)' }, { type: 'note', label: 'Note' }
+    { type: 'encounter', label: 'Encounter' }, { type: 'wait', label: 'Wait / Arrive' }, { type: 'wait', key: 'wait:bounty', label: 'Wait for a MagicLib bounty' }, { type: 'raid', label: 'Raid (ground raid)' }, { type: 'end', label: 'End' }, { type: 'link', label: 'Link (into existing dialog)' }, { type: 'note', label: 'Note' }
   ]
+  const TYPES = NODE_MENU.map((t) => ({ ...t, key: t.key ?? t.type }))
   function openMenu(ev: MouseEvent, from?: { node: string; handle: string }) {
     if (!flow || play.active) return
     const p = flow.toFlow(ev.clientX, ev.clientY)
@@ -147,13 +165,16 @@
     }
     return undefined
   }
-  function addNode(type: NodeType) {
+  function addNode(key: string) {
     const mn = menu
     menu = null
+    const type = (key.split(':')[0]) as NodeType
     if (!qid || !mn || !quest) return
     const id = uniqueId(type === 'dialog' ? 'dialog' : type, quest.nodes.map((n) => n.id))
     editQuest(qid, (q) => {
       const n = newNode(type, id, Math.round(mn.fx), Math.round(mn.fy))
+      // SagaLib 1.3: a Wait for a MagicLib bounty, on the bounty the quest already starts or tests
+      if (n.type === 'wait' && key === 'wait:bounty') { n.mode = 'bounty'; n.bounty = bountyIdsOf(q)[0] }
       // walk W4: a new Stage node takes the first stage no Stage node uses yet (not always the first one)
       if (n.type === 'stage') n.stage = q.stages.find((s) => !q.nodes.some((x) => x.type === 'stage' && x.stage === s.id))?.id ?? ''
       // …and a new Arrive waits at the map marker of the stage before it
@@ -286,8 +307,12 @@
       const hooks = sagaHooks(w, sim)
       const base = hooks.token!
       const e = new Engine(rs, makePlayContext(), { ...hooks, token: (en, tok) => (force?.has(tok) ? force.get(tok) : base(en, tok)) })
-      for (const v of quest.variables) if (v.type !== 'target') e.set(`$global.${quest.id}_${v.name}`, v.type === 'number' ? Number(v.initial) || 0 : v.initial)
-      applyMockTargets(e, quest)
+      // #71: a text before the quest starts shows its variables' and targets' tokens raw (as in game),
+      // unless a contact or bar event creates the mission with the offer
+      if (createdUpFront(e, quest, node.id)) {
+        for (const v of quest.variables) if (v.type !== 'target') e.set(`$global.${quest.id}_${v.name}`, v.type === 'number' ? Number(v.initial) || 0 : v.initial)
+        applyMockTargets(e, quest)
+      }
       if (rule.option) e.set('$option', rule.option)
       e.apply(rule)
       const optTrig = `${quest.id}_${node.id}_options`
@@ -373,9 +398,22 @@
     <div class="sect">Quests <span class="sectr"><label class="chk" title="Show quests that are inactive (planned, not exported)"><input type="checkbox" bind:checked={showInactive} /> inactive</label><button disabled={!m} onclick={() => (showNew = true)}>+ New quest</button></span></div>
     <ul class="list">
       {#each (m?.quests ?? []).filter((q) => showInactive || !offQuests.has(q.id)) as q (q.id)}
-        <li class:on={q.id === qid} class:inactive={offQuests.has(q.id)}><button class="li" onclick={() => { app.selected.quests = q.id; app.selected.questNode = null; play.stop() }}><span>{q.title}{#if offQuests.has(q.id)} <span class="muted" title={offQuests.get(q.id) === 'contact' ? 'Its contact is inactive' : 'Marked inactive'}>[Inactive]</span>{/if}</span><span class="sub mono">{q.kind === 'dialog' ? 'dialog only' : q.id}</span></button></li>
+        <li class:on={q.id === qid} class:inactive={offQuests.has(q.id)}><button class="li" onclick={() => { app.selected.quests = q.id; app.selected.questNode = null; play.stop() }}><span>{q.title}{#if offQuests.has(q.id)} <span class="muted" title={offQuests.get(q.id) === 'contact' ? 'Its contact is inactive' : 'Marked inactive'}>[Inactive]</span>{/if}{#if bountyOnlyQ.has(q.id)} <span class="muted" title="Exported only as a MagicLib bounty (not for SagaLib)">[Bounty]</span>{/if}<ModsChip itemKey={`quest:${q.id}`} /></span><span class="sub mono">{q.kind === 'dialog' ? 'dialog only' : q.id}</span></button></li>
       {:else}<li class="muted small pad">{m ? 'No quests yet.' : 'Pick an active mod first.'}</li>{/each}
     </ul>
+    {#if m}
+      <!-- #27: the mod's MagicLib bounties (made here) and the ones already in its files (read only) -->
+      <div class="sect">MagicLib bounties <span class="sectr">{#if quest && quest.kind === 'quest'}<button title="Make a MagicLib bounty from this quest (its encounter is the target)" onclick={() => { const nb = newBounty(m, { quest: quest.id }); project.change((mm) => { (mm.bounties ??= []).push(nb) }); bountyOpen = nb.id }}>+ From this quest</button>{/if}</span></div>
+      <ul class="list">
+        {#each m.bounties ?? [] as bt (bt.id)}
+          <li><button class="li" onclick={() => (bountyOpen = bt.id)}><span>{bt.name || m.quests.find((x) => x.id === bt.quest)?.title || m.encounters.find((x) => x.id === bt.encounter)?.name || bt.id}</span><span class="sub mono">{bt.id}{bt.quest ? ` · from ${bt.quest}` : bt.encounter ? ` · from ${bt.encounter}` : ''}</span></button></li>
+        {/each}
+        {#each handBounties as hb (hb.file + hb.id)}
+          <li class="inactive" title={`Hand-written in ${hb.file}: Saga Forge keeps it as it is.`}><span class="li"><span>{hb.name}</span><span class="sub mono">{hb.id} · hand-written{hb.file.endsWith('.csv') ? ' (vayraBounties)' : ''}</span></span></li>
+        {/each}
+        {#if !(m.bounties?.length) && !handBounties.length}<li class="muted small pad">None. A bounty is made from a quest (here) or an encounter (Encounters); only MagicLib reads it.</li>{/if}
+      </ul>
+    {/if}
     {#if quest}
       <div class="sect">Stages (journal) <button title="Add a stage (its form opens below)" onclick={() => { const id = uniqueId('stage', quest.stages.map((s) => s.id)); edQ((q) => { q.stages.push({ id, title: 'New stage', journal: '', kind: 'normal', renamedFrom: [] }) }); openStage = id }}>+</button></div>
       <div class="outline">
@@ -431,6 +469,7 @@
   <Splitter axis="x" value={layout.left} min={200} max={() => 520} label="Resize list" onChange={(v) => (layout.left = v)} onDone={saveLayout} onReset={() => { layout.left = 280; saveLayout() }} />
 
   <section class="main" style="grid-template-rows:auto minmax(0,1fr) 1px {layout.dock}px">
+    <div class="tophead">
     <div class="toolbar">
       <div class="seg"><button class:on={!play.active} onclick={() => play.stop()}>Plan</button><button class:on={play.active} disabled={!quest} onclick={() => quest && play.start(quest)}>Play ▶</button></div>
       {#if play.active}
@@ -438,9 +477,13 @@
         <button onclick={() => play.back()} disabled={!play.canBack}>Step back</button>
         <button onclick={() => quest && node && play.start(quest, node.id)} disabled={!node}>Play from selected</button>
         <select value={play.profileId} onchange={(e) => (play.profileId = e.currentTarget.value)} title="Test profile applied when Play starts"><option value="">no test profile</option>{#each m?.testProfiles ?? [] as p (p.id)}<option value={p.id}>{p.name}</option>{/each}</select>
+        <!-- #60: a switch per optional mod (Saga › Mods): the combination this playthrough started with; switching restarts -->
+        {#each mods.optional() as x (x.id)}
+          <label class="modsw" title="Play as if {x.name} was enabled when the game started (switching restarts Play)"><input type="checkbox" checked={mods.playMods().has(x.id)} onchange={(e) => { mods.playOn[x.id] = e.currentTarget.checked; if (quest) play.start(quest) }} /> {x.name}</label>
+        {/each}
       {:else}
-        <select value="" disabled={!quest} onchange={(e) => { const v = e.currentTarget.value as NodeType; e.currentTarget.value = ''; if (v && flow) { const el = document.querySelector('.qcanvas')!.getBoundingClientRect(); menu = { x: 0, y: 0, ...(() => { const p = flow!.toFlow(el.left + el.width / 2, el.top + el.height / 2); return { fx: p.x, fy: p.y } })() }; addNode(v) } }}>
-          <option value="">+ Node</option>{#each TYPES as t (t.type)}<option value={t.type}>{t.label}</option>{/each}
+        <select value="" disabled={!quest} onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; if (v && flow) { const el = document.querySelector('.qcanvas')!.getBoundingClientRect(); menu = { x: 0, y: 0, ...(() => { const p = flow!.toFlow(el.left + el.width / 2, el.top + el.height / 2); return { fx: p.x, fy: p.y } })() }; addNode(v) } }}>
+          <option value="">+ Node</option>{#each TYPES as t (t.key)}<option value={t.key}>{t.label}</option>{/each}
         </select>
         <button onclick={doLayout} disabled={!quest}>Auto-layout</button>
         <button onclick={() => (showFind = !showFind)} disabled={!quest}>Find Ctrl+F</button>
@@ -449,6 +492,9 @@
       <span class="spacer"></span>
       <div class="seg"><button class:on={center === 'chart'} onclick={() => (center = 'chart')}>Chart</button><button class:on={center === 'script'} onclick={() => (center = 'script')} title="The whole quest as a screenplay">Script</button><button class:on={center === 'rules'} onclick={() => (center = 'rules')}>Rules ({compiled?.rows.length ?? 0})</button></div>
       {#if quest}<button class="mini danger" onclick={deleteQuest}>Delete quest</button>{/if}
+    </div>
+    <!-- #64: the versions strip (Play mode uses the optional mods' switches instead) -->
+    {#if quest && !play.active}<VersionStrip kind="quest" id={quest.id} what={quest.kind === 'dialog' ? 'this conversation' : 'this quest'} />{/if}
     </div>
     <div class="qcanvas">
       {#if !quest}
@@ -513,8 +559,23 @@
           {#if play.active}
             <div class="playbar">
               {#each play.pendingEncounters as pe (pe.node)}<span>Fleet <b>{pe.encounter}</b>:</span><button class="mini" onclick={() => play.outcome(pe.node, 'defeated')}>Defeated</button><button class="mini" onclick={() => play.outcome(pe.node, 'avoided')}>Avoided</button>{/each}
+              <!-- #59: MagicLib bounties the quest starts or tests: the buttons stand in for MagicLib -->
+              {#each play.bounties as pb (pb.id)}
+                {#if pb.state === 'active'}<span title="MagicLib runs it: pick how it ends">Bounty <b>{pb.id}</b>:</span><button class="mini" onclick={() => play.bountyOutcome(pb.id, 'succeeded')}>Succeeded</button><button class="mini" onclick={() => play.bountyOutcome(pb.id, 'failed')} title="The flagship was salvaged">Failed</button><button class="mini" onclick={() => play.bountyOutcome(pb.id, 'expired')} title="Its time ran out, or someone else got the target">Expired</button><button class="mini" onclick={() => play.bountyOutcome(pb.id, 'dismissed')} title="Dismissed on MagicLib's old bar board (switched off in MagicLib 1.5.6, so rare)">Dismissed</button>
+                {:else if pb.state === 'offered' && pb.board}<span>Bounty <b>{pb.id}</b>:</span><button class="mini" onclick={() => play.bountyOutcome(pb.id, 'taken')} title="The player accepts it on MagicLib's bounty board">Taken on the board</button>
+                {:else}<span class="muted small" title={pb.state === 'unavailable' ? 'MagicLib is off (Play mode switches), or MagicLib skips this bounty' : ''}>Bounty {pb.id}: {pb.state}</span>{/if}
+              {/each}
+              <!-- #61: a watched market changes owner (an invasion, a rebellion, SagaLib's dev menu) -->
+              {#each play.watched as wm (wm.id)}<span class="small" title="SagaLib checks the owners of the quest's markets once a day">{wm.id} ({wm.owner}):</span><select class="mini" value="" onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; play.changeOwner(wm.id, v) }}><option value="">changes owner to…</option>{#each (app.index?.factions ?? []).filter((f) => f.id !== wm.owner) as f (f.id)}<option value={f.id}>{f.name || f.id}</option>{/each}</select>{/each}
+              <!-- #70: a person with a presence rule leaves or comes back (their market's owner, a war, peace) -->
+              {#each play.presence as pp (pp.id)}<label class="small chk" title="SagaLib's $global.sagaforge_away_{pp.id}: while away they're hidden from the comm directory and their quests aren't offered"><input type="checkbox" checked={pp.away} onchange={(e) => play.setAway(pp.id, e.currentTarget.checked)} /> {pp.name} is away</label>{/each}
+              <!-- #62: the mod's settings as in LunaLib's menu: a change applies at once (quests read it at the next offer or Branch) -->
+              {#each play.settings as ps (ps.id)}<label class="small chk" title="Setting $global.{ps.id}: as if the player changed it in LunaLib's menu (shared by every save)">⚙ {ps.label}
+                {#if ps.type === 'Boolean'}<input type="checkbox" checked={ps.value === 'true'} onchange={(e) => play.setSetting(ps.id, String(e.currentTarget.checked))} />
+                {:else if ps.type === 'Radio'}<select class="mini" value={ps.value} onchange={(e) => play.setSetting(ps.id, e.currentTarget.value)}>{#each ps.choices as c (c)}<option value={c}>{c}</option>{/each}</select>
+                {:else}<input type={ps.type === 'String' ? 'text' : 'number'} class="setv" value={ps.value} onchange={(e) => play.setSetting(ps.id, e.currentTarget.value)} />{/if}</label>{/each}
               {#each quest?.nodes.filter((n) => n.type === 'wait') ?? [] as w (w.id)}
-                {#if w.type === 'wait' && w.mode === 'arrive'}<button class="mini" onclick={() => play.arrive(w.entity ?? '')}>Arrive at {w.entity || '?'}</button>{:else if w.type === 'wait'}<button class="mini" onclick={() => play.waitDays(w.id, w.days ?? 7)}>Wait {w.days ?? 7} days</button>{/if}
+                {#if w.type === 'wait' && w.mode === 'arrive'}<button class="mini" onclick={() => play.arrive(w.entity ?? '')}>Arrive at {w.entity || '?'}</button>{:else if w.type === 'wait' && w.mode !== 'bounty'}<button class="mini" onclick={() => play.waitDays(w.id, w.days ?? 7)}>Wait {w.days ?? 7} days</button>{/if}
               {/each}
               <span class="spacer"></span><span class="muted small">day {play.day} · {play.credits.toLocaleString('en-US')} credits · {play.storyPoints} SP</span>
             </div>
@@ -569,7 +630,7 @@
 
 {#if menu && menu.x}
   <div class="menu" style="left:{menu.x}px;top:{menu.y}px">
-    {#each TYPES as t (t.type)}<button onclick={() => addNode(t.type)}>{t.label}</button>{/each}
+    {#each TYPES as t (t.key)}<button onclick={() => addNode(t.key)}>{t.label}</button>{/each}
     <button class="muted" onclick={() => (menu = null)}>Cancel</button>
   </div>
 {/if}
@@ -618,6 +679,13 @@
   </Modal>
 {/if}
 
+{#if bountyOpen}
+  <Modal title={`MagicLib bounty: ${bountyOpen}`} width={820} onClose={() => (bountyOpen = null)}>
+    <BountyEditor id={bountyOpen} onDelete={() => { const id = bountyOpen; project.change((mm) => { mm.bounties = (mm.bounties ?? []).filter((x) => x.id !== id) }); bountyOpen = null }} />
+    {#snippet actions()}<button class="primary" onclick={() => (bountyOpen = null)}>Done</button>{/snippet}
+  </Modal>
+{/if}
+
 {#if showSaveTemplate}
   <Modal title="Save as template" onClose={() => (showSaveTemplate = false)}>
     <p>A copy of this quest is kept in Saga Forge's own data folder. New quest › Start from offers it in every mod; the quest id is replaced, and the to-dos and the inactive mark are dropped.</p>
@@ -635,6 +703,7 @@
 {/if}
 
 <style>
+  .modsw { font-size: 11px; display: inline-flex; gap: 3px; align-items: center; white-space: nowrap; color: var(--muted); }
   .page { display: grid; height: 100%; min-height: 0; }
   .left, .right { background: var(--panel); min-height: 0; overflow: auto; }
   .right { padding: 10px 12px; }
@@ -699,6 +768,7 @@
   .tabs button { padding: 2px 10px; font-size: 12px; border-radius: 4px 4px 0 0; border-bottom: none; }
   .tabs button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
   .playbar { display: flex; gap: 6px; align-items: center; padding: 3px 8px; background: #13261a; border-bottom: 1px solid #2f6b38; font-size: 12px; flex-wrap: wrap; }
+  .playbar .chk { display: flex; gap: 4px; align-items: center; }
   .variants { display: flex; gap: 6px; overflow: auto; height: 100%; }
   .variant { flex: 1; min-width: 320px; display: flex; flex-direction: column; }
   .plist { overflow: auto; padding: 4px 8px; flex: 1; }
@@ -725,4 +795,5 @@
   :global(.svelte-flow__node-q) { padding: 0; border: none; background: transparent; }
   :global(.svelte-flow__node-frame) { padding: 0; border: none; background: transparent; pointer-events: none !important; }
   :global(.svelte-flow__handle) { width: 10px; height: 10px; background: var(--accent); border: 2px solid var(--panel); }
+  .setv { width: 64px; padding: 0 4px; }
 </style>

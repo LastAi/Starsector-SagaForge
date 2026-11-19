@@ -1,15 +1,17 @@
 # Saga
 
 The Saga tab looks at the mod as a whole: how its quests hang together, which flags they share,
-saved test situations, and the things that belong to no single quest (mod-wide phrases, random
-pools, objects scattered over the sector, world events and progress bars).
+saved test situations, the things that belong to no single quest (mod-wide phrases, random
+pools, objects scattered over the sector, world events and progress bars), the other mods
+your mod works with, and the settings page players see in LunaLib's menu.
 
 ## How it works
 
-The Saga tab has nine sub-tabs in the bar under the header: **Board**, **Timeline**, **Flags
-registry**, **Test profiles**, **Mod-wide phrases**, **Pools**, **Scatter**, **Events** and
-**Progress**. The number after a name is how many the mod has (Flags registry also shows an orange
-count when some flags look wrong).
+The Saga tab has eleven sub-tabs in the bar under the header: **Board**, **Timeline**, **Flags
+registry**, **Test profiles**, **Mod-wide phrases**, **Pools**, **Scatter**, **Events**,
+**Progress**, **Mods** and **Settings**, and two more for other mods once your mod lists them in
+[Mods](#mods): **Achievements** (MagicLib) and **Quest skip** (Nexerelin). The number after a name
+is how many the mod has (Flags registry also shows an orange count when some flags look wrong).
 
 Board, Timeline and Flags registry only show what the mod already has: they write nothing into the
 mod except where you placed the cards on the board (kept in `sagaforge/project.json`). The other
@@ -180,6 +182,235 @@ in a blockade.
 
 ![Progress: Pirate pressure on Kestrel, with its factors and first stage](../img/saga-progress.png)
 
+### Mods
+
+**Mods** is the list of other mods your mod has content for, and how it uses each one. The game
+itself only knows "required" (a dependency in `mod_info.json`), so Saga Forge keeps the rest the
+way installed mods do it: data only that mod reads, plus checks in game. The table offers every
+installed mod, enabled or not, except your own mod, SagaLib, translation mods and the libraries
+the listed mods need (**Show libraries** lists those). Its columns:
+
+| Column | What it shows |
+|---|---|
+| **Mod** | name, id and version; "off in your game" when it isn't enabled in your launcher (you can still write for it) |
+| **Use** | **Required**, **Optional**, **Incompatible** or **Not used** |
+| **Min version** | the lowest version of that mod yours needs (a required mod's dependency gets it) |
+| **Used by** | what in your mod refers to it: a character of its faction, a relation, a market of it, a patch of its faction, its framework files |
+| **Unlocks** | what appears in your mod when it is listed: its content in lists and pickers, "Only with / Only without" conditions and a Play mode switch for optional mods, and tools made for that mod |
+| **Reason** | for an incompatible mod: why (players see it) |
+
+What each choice does:
+
+- **Required**: the export asks to add it to `mod_info.json` dependencies, so the launcher won't
+  enable your mod without it. Your content may use it freely.
+- **Optional**: never added to the dependencies. Your mod must load and play without it, so
+  everything that uses it is conditional (**Only with** / **Only without**, below). Play mode and
+  the Test context get a switch for it. The release notes list it under "Works with".
+- **Incompatible**: the game can't stop players from enabling both. SagaLib writes a warning in
+  the log on every load and tells the player once per game, with your reason. Referring to its
+  content is an error. The release notes list it under "Known conflicts".
+- **Not used**: nothing. If your content refers to it anyway, Problems says so, with **Add as
+  required** and **Add as optional**.
+
+**Only with / Only without.** Every quest, conversation, character, star system and object,
+encounter, world event, event scheduler, progress event, pool, scatter, starting relation and
+scripted faction change, and every dialog option, Branch case and phrase case, has a **Mods**
+field: **Only with** these mods and **Only without** these mods (only the optional mods are
+offered). Everything listed must hold; **any of** makes the "with" list "at least one of them".
+The setting shows as a chip ("only with Hazard Mining Incorporated") on the item and in lists.
+
+Some conditions are set for you and show greyed, with where they come from:
+
+- an item that refers to an optional mod's content (a character of its faction, a relation with
+  its faction, an object orbiting its planet) gets "Only with" that mod (*uses …*);
+- a quest that needs a conditional quest, and a quest whose contact is conditional, get its
+  condition (*from: …*);
+- characters, places, encounters and progress events that only conditional content uses get the
+  conditions all their users share. Things also used by content without conditions keep none;
+  Problems says which.
+
+How it is exported: SagaLib content gets `modsWith` / `modsWithout` (SagaLib skips it otherwise
+and writes one line to the log); dialog gets the rule conditions `SF_HasMod` / `!SF_HasMod`
+(**any of**: `SF_HasAnyMod`), and an option with conditions becomes a small rule of its own. The
+export also writes `data/sagaforge/mods.json` for SagaLib, and the mod then needs SagaLib 1.3.
+
+**A save keeps the mods it started with.** The first time SagaLib sees your mod in a save, it
+records which of its optional and incompatible mods are enabled. Every condition uses that record:
+a mod counts only if it was enabled when the game started and still is. A mod added to a running
+game changes nothing (and the player is told once); a removed small mod (a utility, a few rules)
+stops what depends on it. A mod with its own factions, items or markets usually can't be removed
+from a save at all: the game itself refuses to load it. So players should add or remove optional
+mods only before a new game; the release notes say so.
+
+Some things can't be conditional, because the game loads them every time: a new faction's known
+ships, weapons or portraits from an optional mod, an item using its icon. Problems marks them as
+errors: make the mod required, or leave them out. Dialog can't use an optional mod's own rule
+commands either (the game stops loading without them); Check mod finds those too.
+
+![Mods: Hazard Mining Incorporated optional, Crew Replacer incompatible](../img/saga-mods.png)
+
+**Versions by installed mods.** "Only with / Only without" makes an item exist or not. A
+**version** keeps one item (one id) and changes some of its fields when optional mods are
+installed: a character who lives at another mod's market when that mod is there, a different
+last name and portrait with a second mod, and swapped dialog when both are there. With optional
+mods in the list, these editors get a **Versions** strip at the top: characters, quests and
+conversations (their settings, places, texts, rewards, time limits and every node), encounters,
+your own star systems and their markets, event schedulers, pools, starting relations and scripted
+faction changes, items (name, description, icon and base price) and descriptions. The strip has
+one cell per combination of the optional mods (two mods: **Base**, **Mod1**, **Mod2**, **Mod1 +
+Mod2**).
+
+- Pick a cell to see the item as it will be in that combination. A field you change there is
+  stored for that version only; every other field is inherited, field by field: the most specific
+  version wins (Mod1 + Mod2, then Mod1 or Mod2, then Base). The cell lists its own fields, each
+  with **Revert** (it inherits again).
+- If Mod1 and Mod2 change the same field differently, the combined cell asks which value to use
+  (or change the field there). Problems shows it as an error until you decide.
+- In game, SagaLib picks each item's version **once per save**, from the mods the game started
+  with, and keeps it: adding or removing a mod later never switches a character mid-story. Items
+  and descriptions are the exception: the game loads them before any save, so they follow the
+  mods installed now.
+- A quest's place that several parts use (its start, stage markers, Arrive nodes, pictures) can be
+  a **named place** (the quest's **Places** list): use "named place …" in the pickers, or
+  `place:<id>` in a condition (`$id == place:home`). Change it once, also in a version.
+- Write a character's name in dialog with their name tokens, `$<id>_name`, `$<id>_firstName` and
+  `$<id>_lastName`, so each version's name shows. Problems warns when a text spells out a name
+  that differs between versions.
+- On export, SagaLib's files get a `versions` list, and each dialog node a version changes gets one
+  more rule that tests the version picked for the save. The mod then needs SagaLib 1.3.
+- Play mode and the Test context show the version of the optional mods' switches.
+
+Some things can't have versions, because the game loads them at startup with no way to change them
+later: a faction or item that exists only with a mod, a faction's main color, ranks and music,
+items' tags, stack size and cargo space. Other mods' own characters and factions stay read-only;
+dialog around them can have versions.
+
+**Other mods' content.** To offer another mod's market or character, Saga Forge has to know them:
+
+- **Mods made with Saga Forge**: their star systems, markets, places, characters, quests,
+  encounters and pools are read from their files (the ones their `content.csv` lists). Their
+  quests can be prerequisites (**after Mod1's quest X**, in a quest's Prerequisites), which makes
+  the quest "Only with" that mod by itself. Their dialog shows with its real texts.
+- **Mods that build their sector in Java code**: their systems, markets and people aren't in any
+  file Saga Forge reads, so their ids show as "not checked". Take a **sector snapshot**: start a
+  game with the mod (dev mode on), open SagaLib's dev menu (Ctrl+F9) and pick **Write sector
+  snapshot**; then in **Saga › Mods**, under **Seen in game**, click **Import from the game**. What
+  the snapshot saw becomes pickable and checked, tied to the mod it belongs to (by its faction or
+  its id prefix). Things it can't tie to a mod, such as vanilla's random systems, are left out.
+
+### Settings
+
+**Settings** is your mod's own page in **LunaLib**'s settings menu: options the player changes,
+such as "Enable the pirate questline" or a difficulty. Many installed mods ship such a page
+without needing LunaLib; players without it simply get the defaults. The list on the left is the
+page from top to bottom (**▲ ▼** move a row); **+ Add…** adds a row after the selected one. Each
+row has:
+
+| Field | What it is |
+|---|---|
+| **Type** | **On/off**, **Whole number** or **Number** (a slider), **Choice** (a few words, such as Easy, Normal, Hard), **Text value**, or, for layout only, a **Header** or a **Text line** |
+| **Label** | what the player sees (a Header's heading, a Text line's text) |
+| **Id** | starts with your prefix and follows the label until something uses it; the value is in memory as `$global.<id>`. Don't change it after a release: LunaLib keeps the player's values by id |
+| **Description** | printed by LunaLib under the label |
+| **Choices** | for a Choice: the words, separated by commas |
+| **Default** | the value until the player changes it, and always without LunaLib |
+| **Range** | for numbers: the slider's minimum and maximum |
+| **Tab** | a tab of your page (empty: the main tab) |
+
+The panel also shows whether LunaLib is **optional** (the default: it is never added to
+`mod_info.json`) or **required** (list it as Required in [Mods](#mods)), the mod's **icon** in
+LunaLib's menu (**Choose…**; square, 40×40 shows unscaled), what reads each setting (**Read by**),
+and a rough preview of the page.
+
+How it works in game: the export writes `data/config/LunaSettings.csv` (and
+`data/config/LunaSettingsConfig.json` for the icon). LunaLib reads it and shows the page. SagaLib
+reads the same file itself, so it needs no LunaLib, and sets every value as `$global.<id>` each
+time a game loads: the player's value when LunaLib is there, the default when it isn't. When the
+player changes a setting in LunaLib's menu during a game, SagaLib applies it at once.
+
+**Settings are shared by every save.** LunaLib keeps the player's values outside the saves
+(`saves/common`), so a change counts for every playthrough. Quests read a setting when they decide
+(when a quest is offered, at a Branch), so changing one doesn't break a quest that is already
+running.
+
+Where you can use a setting:
+
+- **Conditions** everywhere: the condition pickers of Branch cases, phrases, option conditions
+  and start conditions list each setting ("Setting Difficulty is Hard", "Setting Enable the
+  courier job is on").
+- **A switch for a quest and the quests after it**: a quest's **Prerequisites › A setting** (see
+  [Switch a questline on or off](#switch-a-questline-on-or-off)).
+- **Multipliers**: a reward's credits (**Scaled by**, in the quest's Rewards) and an encounter's
+  fleet points (**Size scaled by**). A whole-number setting is a percent (100 = as made), a number
+  is times (1 = as made), and an on/off or a choice gets a factor for each value.
+- **In text**, `$global.<id>` shows the value, but the game prints a whole number with a decimal
+  ("100.0"), so Problems warns. Say it in words, or use a Branch or phrase on the value.
+
+The flags registry marks each setting's key with a green **setting** badge. Play mode's toolbar
+and the Test context have a control for each setting. A mod that reads its settings needs
+SagaLib 1.3.
+
+### Achievements
+
+**Achievements** are your mod's entries in **MagicLib**'s achievement list (Intel › Achievements):
+a reward for reaching a quest's ending. The tab is there once the mod lists MagicLib in
+[Mods](#mods) (optional is enough). The list on the left has your achievements (**+ Add**); each one
+has:
+
+| Field | What it is |
+|---|---|
+| **Name** | shown in the list and in MagicLib's notice when unlocked |
+| **Id** | starts with your prefix and follows the name until a quest unlocks it. MagicLib keeps every mod's achievements in one list by id; never change it after a release (players lose what they unlocked) |
+| **Description** | under the name; MagicLib asks for the past tense, "Found the lost convoy." |
+| **Tooltip** | optional, a longer text on hover |
+| **Shown** | **visible**, **listed, details hidden** (a spoiler: for endings players reach anyway) or **hidden until unlocked** (for rare endings) |
+| **Rarity** | common to legendary: the frame and the default image |
+| **Image** | shown once unlocked (48×48); empty uses MagicLib's image for the rarity |
+
+**Unlocked by** lists the quests that unlock it. A quest unlocks one at an **End node** (its
+**Achievement** field) or anywhere with the action **Unlock a MagicLib achievement** (see
+[Quests](quests.md)).
+
+How it works in game: the export writes `data/config/magic_achievements.csv`, which MagicLib reads,
+and lists the images in the mod's `data/config/settings.json` so the game loads them. When a quest
+reaches the ending, SagaLib unlocks the achievement through MagicLib, and MagicLib's notice shows in
+the dialog. Without MagicLib your mod loads and nothing happens. **Achievements are kept outside the
+saves** (`saves/common`): one unlocked stays unlocked in every playthrough. Needs SagaLib 1.3.
+
+### Quest skip
+
+**Quest skip** puts your questlines on **Nexerelin**'s new-game **Skip story** screen ("Set
+completed quests"), where a player who already played a story can start after it. The tab is there
+once the mod lists Nexerelin in [Mods](#mods). On the left are your **quest chains** (**+ Add**): a
+chain is one row on that screen, usually one questline, with a **Name**, an **Image** (Nexerelin
+needs one; a mission icon fits), a **Sort key** (Nexerelin's own rows start with `AAAA_`, so a key
+from B on puts yours after them) and a **Tooltip**.
+
+Under the chain are its quests, one button each, in the order they are played. **+ Add a quest…**
+also adds the quests it needs first. Click a button to set that quest:
+
+| Field | What it is |
+|---|---|
+| **On the button** | a short name (Nexerelin's buttons fit about 18 characters); empty uses the quest's title |
+| **Tooltip** | what the player is taken to have done ("The player found the convoy and kept the cargo.") |
+| **A skip means** | the ending the player is taken to have reached: one of the quest's End nodes, or a Stage node of a success or fail stage |
+| **Rewards** | give the rewards on the way to that ending when the game starts (on by default) |
+
+Below, the panel shows what that ending leaves in memory, worked out along the shortest path from
+the Start node: the quest's state and last stage, the game's "completed" key, its variables and
+every **Set** on the way. Untick a key to leave it out; **More keys** adds keys the path doesn't set
+(`$global.` or `$player.`). **What a skip gives** lists the rewards; **People to show** puts people
+in their market's comm directory; **What a skip doesn't do** lists what is left out (another quest
+started, an encounter, an achievement, keys only the dialog has). Checking a button on Nexerelin's
+screen also checks the quests of the chain it needs, and unchecking it unchecks the ones that need
+it; Saga Forge works that out from the prerequisites.
+
+How it works in game: the export writes `data/config/exerelin/questSkip.json`, which only Nexerelin
+reads. Each chain names SagaLib's plugin: Nexerelin sets a skip's keys only through one, and the
+plugin also gives the rewards at the start. Later quests then see the skipped quest as finished,
+the same as if it was played (their prerequisites hold, its offer is gone). Without Nexerelin the
+file does nothing. Needs SagaLib 1.3.
+
 ## How to set up the basics
 
 ### Arrange quests on the board
@@ -324,6 +555,11 @@ item in the rare tech finds):
 Then the pool is no longer a group of its own: places and rewards roll the group you add to, so
 your entries turn up wherever vanilla rolls it.
 
+If vanilla or another installed mod already adds the same item to that group, Problems warns:
+the two rows don't add up, only one weight counts (which one depends on the load order). The same
+goes for rows you wrote by hand in the mod's `drop_groups.csv`. Use another item, or a group of
+your own.
+
 ### Add random encounters
 
 Fleets that may lie in wait at vanilla's encounter points: in slipstreams in hyperspace, and just
@@ -410,3 +646,114 @@ place on the map; its actions run quietly in the background.
 
 In game (SagaLib 1.2), the bar appears in the intel screen under Major events (and the extra
 **Intel tab**, if you set one), with a marker per stage and the factors listed under it.
+
+### Work with another mod
+
+1. Click the **Works with** pill in the header (or open **Saga › Mods**).
+2. Find the mod (type in **Filter mods…**) and set its **Use**:
+   - **Optional** when your mod should also run without it (most mods, and frameworks used only
+     through their own files, such as a LunaLib settings page);
+   - **Required** when your story can't do without it; set a **Min version** if you need one;
+   - **Incompatible** when the two shouldn't run together; write the **Reason** players will see.
+3. **Save**. Lists and pickers now also show that mod's factions, characters, places, ships and
+   images, and the pill names it.
+4. When you export, tick **Add the required mods to mod_info.json dependencies** if it is listed.
+
+If you pick something from a mod that isn't in the list (with a list's **Show all installed mods**
+switch, or the **+N** button in a picker), Saga Forge asks right there: **Add as optional** or
+**Add as required**. Removing a mod that your content uses, or marking it incompatible, asks
+first and lists what uses it.
+
+### Make content only with or without a mod
+
+1. Make the mod **Optional** (see [Work with another mod](#work-with-another-mod)).
+2. Open the item and find its **Mods** field: a quest's settings, a character's or an object's
+   form, an encounter, an event; for a dialog option, its **⋯** settings; for a Branch case or a
+   phrase case, the line above its conditions.
+3. Pick the mod under **Only with** (or **Only without**). For a scene in two versions, give one
+   option **Only with** and the other **Only without** the same mod.
+4. Test both: in Play mode, the toolbar has a switch per optional mod (see
+   [Quests › Test a quest in Play mode](quests.md#test-a-quest-in-play-mode)). Problems reports a
+   node that would be left without options, or a Branch without a case, in any combination of the
+   optional mods.
+
+For a whole questline, set it once on the first quest: the quests that need it and what only they
+use follow, greyed. A new faction that only matters with the mod can't be left out (the game
+always loads it), so on its **Relations & changes** tab set **Hidden from the intel tab** to
+**Only without** that mod.
+
+### Give a character a version for another mod
+
+1. Make the other mod **Optional** (see [Work with another mod](#work-with-another-mod)). If it
+   builds its sector in Java code, import a sector snapshot first (see "Other mods' content" above),
+   so its markets can be picked.
+2. Open the character on the **People** tab. In the **Versions** strip, click the cell of that mod.
+3. Change what differs with it, for example **Market** (pick the other mod's market). Only that
+   field is stored for the version; the cell lists it, with **Revert**.
+4. With two optional mods, click the combined cell to check what it inherits, and change what only
+   that combination needs (for example a node's text in the conversation's own strip on the
+   **Quests** tab). If it says two versions disagree, pick one value there.
+5. In Play mode, switch the optional mods in the toolbar to see each version.
+
+In game, the character's version is picked once, when a game starts, from the mods installed then.
+
+### Add a settings page
+
+1. Open **Saga › Settings** and pick **+ Add… › Header (layout)**. Type the heading, for example
+   your mod's name.
+2. Add the options: **+ Add… › On/off**, **Choice** or **Whole number**. Give each a **Label**, a
+   **Description** and a **Default**; for a choice, type the **Choices** ("Easy, Normal, Hard").
+3. Optional: **Choose…** an icon for LunaLib's menu.
+4. Use the settings (the next two recipes), then export.
+
+In game with LunaLib, the page is in LunaLib's settings menu under your mod's name. Without
+LunaLib your mod loads as usual and the defaults apply.
+
+### Switch a questline on or off
+
+1. Add an **On/off** setting, for example "Enable the pirate questline", default on (see
+   [Add a settings page](#add-a-settings-page)).
+2. Open the first quest of the line on the **Quests** tab. Under **Prerequisites**, pick
+   **+ add… › "Enable the pirate questline" is on**.
+3. The quests that need this one won't start either while it's off. For a single option in a
+   conversation, put the line from the condition picker (**Setting … is on**) in the option's
+   conditions instead.
+4. Test it: in Play mode, untick the setting in the toolbar and press **Restart**.
+
+In game, turning it off in LunaLib's menu takes the quest's offer away at once; a quest already
+running goes on.
+
+### Add an achievement for a quest ending
+
+1. List MagicLib in **Saga › Mods** as optional (or **Add as optional** in Problems).
+2. Open **Saga › Achievements**, click **+ Add**, and give it a **Name** and a **Description** in the
+   past tense. Pick **Shown** and **Rarity**; optional: **Choose…** an image.
+3. Open the quest on the **Quests** tab, select its success **End node**, and pick the achievement
+   in **Achievement**. (Elsewhere in a quest: an Action with **Unlock a MagicLib achievement**.)
+4. Test it in Play mode: reaching the end shows "(MagicLib) Achievement unlocked: …".
+
+### Let players skip your quests (Nexerelin)
+
+1. List Nexerelin in **Saga › Mods** as optional.
+2. Open **Saga › Quest skip**, click **+ Add**, and name the chain after the questline. Check its
+   **Image**.
+3. **+ Add a quest…**: pick the last quest of the line; the quests it needs are added before it.
+4. For each quest, give it a short name **On the button** and a **Tooltip**, and pick the ending
+   **A skip means** (usually the success). Read **What a skip sets**: if a later quest reads a key
+   the path doesn't set, add it under **More keys**.
+5. Export. In game with Nexerelin: New game › **Skip story** shows your row.
+
+### Scale fleets and rewards with a difficulty setting
+
+1. Add a **Choice** setting "Difficulty" with the choices Easy, Normal, Hard and the default
+   Normal (or a **Whole number** setting in percent, default 100).
+2. On the **Encounters** tab, open an encounter whose fleet comes from the faction's doctrine
+   (fleet points). In **Size scaled by**, pick Difficulty and set a factor per choice, for example
+   Easy 0.5, Normal 1, Hard 2.
+3. In the quest's **Rewards**, pick the setting the same way in a reward's **Scaled by**.
+4. Test it: in Play mode, change the setting in the toolbar; the log shows the fleet points and
+   the credits after the scale.
+
+A text that names the amount ("I'll pay 10,000 credits") isn't changed; say "good pay" instead,
+or use a Branch on the setting.
+

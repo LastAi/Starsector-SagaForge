@@ -135,7 +135,7 @@ looked up by id after loading.
 | 10 | Keeping translations current | Fingerprints: stale lines listed, kept, and ignored in game until checked. |
 | 11 | The editor's own checks | The Translation page has no spellcheck (the app's spellchecker is English). The colon rule doesn't apply to translated labels (tokens are filled after the game split the options line). |
 | 12 | **New: `$` and `\` in texts** | The game uses token values as regex replacements (FORMATS.md); SagaLib quotes them now, for phrases too (a bug before). |
-| 13 | **New: other mods' dialog in the editor** | The Dialog page shows another Saga Forge mod's rules with tokens. Later: fill them from its text.json. |
+| 13 | **New: other mods' dialog in the editor** | The Dialog page shows another Saga Forge mod's rules with tokens. Later: fill them from its text.json (moved to task #64 by #31, PLAN.md §10.7). |
 | 14 | **New: Play mode** | Plays the original language only. |
 
 ## 8c: translation, the parts most likely to be a problem (first list)

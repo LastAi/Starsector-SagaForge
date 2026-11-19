@@ -11,6 +11,7 @@
   import { app, PAGES, cleanError, type PageId } from './state/app.svelte'
   import { project } from './state/project.svelte'
   import { problems } from './state/problems.svelte'
+  import { savedByNewer } from '../../shared/checks/appversions'
   import SagaPage from './pages/SagaPage.svelte'
   import FactionsPage from './pages/FactionsPage.svelte'
   import PeoplePage from './pages/PeoplePage.svelte'
@@ -30,6 +31,7 @@
   import VersionReplace from './ui/VersionReplace.svelte'
   import MigrationDialog from './export/MigrationDialog.svelte'
   import { needsMigration } from '../../shared/migration'
+  import { mods, openModsTab } from './state/mods.svelte'
 
   interface Props { onChangeFolder: () => void }
   let { onChangeFolder }: Props = $props()
@@ -48,6 +50,8 @@
   // #47: the target pill, only with two installs (D7)
   const vinfo = $derived(versionInfo(app.versions))
   let showMigration = $state(app.smokeModal === 'migration')
+  // made with a newer Saga Forge: say so above every page (Problems has it too)
+  const newerApp = $derived(project.m ? savedByNewer(project.m) : null)
   const migrate = $derived(!!project.loaded && needsMigration(project.loaded.modInfo.gameVersion, index?.install.gameVersion))
   // R29: the mod's word list goes to the spellchecker; "Add to the mod's word list" adds to it
   $effect(() => { const w = project.m?.project.words; if (w?.length) window.api.addSpellWords([...w]) })
@@ -176,6 +180,12 @@
         <option value={vinfo.olderSlot}>{app.versions[vinfo.olderSlot]?.version}</option>
       </select>
     {/if}
+    {#if project.m && !trMod}
+      <!-- #60 (PLAN.md §10.1, §10.7 q2): the mod's list of other mods; opens Saga › Mods -->
+      {@const listed = (project.m.project.mods ?? []).filter((x) => x.use !== 'incompatible')}
+      {@const bad = (project.m.project.mods ?? []).filter((x) => x.use === 'incompatible')}
+      <button class="pill" onclick={openModsTab} title={['The other mods this mod has content for (Saga › Mods). Lists and pickers show vanilla, this mod and these.', ...((project.m.project.mods ?? []).map((x) => `${x.name}: ${x.use}`)), ...(project.m.project.mods?.length ? [] : ['None yet.'])].join('\n')}>Works with: {listed.length ? listed.map((x) => x.name + (x.use === 'required' ? ' (req.)' : '')).join(', ') : 'vanilla only'}{#if bad.length}<span class="pill-bad"> · {bad.length} conflict{bad.length === 1 ? '' : 's'}</span>{/if}</button>
+    {/if}
     <span class="sep"></span>
     <button onclick={() => project.save()} disabled={!project.dirty || project.saving} title="Save plans and faction files (Ctrl+S)">{project.dirty ? '● ' : ''}Save</button>
     <button onclick={() => problems.checkMod()} disabled={!project.m} title="Compare the whole mod with the game and every installed mod">Check mod</button>
@@ -185,6 +195,9 @@
 
   <!-- #47 §7.1: a mod made for an older game version than the target -->
   <div class="bannerslot">
+    {#if newerApp}
+      <div class="banner">This mod was made with a newer Saga Forge ({newerApp}). Update Saga Forge before you change it: saving with this version could drop what the newer one added.</div>
+    {/if}
     {#if migrate}
       <div class="banner">This mod was made for Starsector {project.loaded?.modInfo.gameVersion}; it now targets {index?.install.gameVersion}. <button class="mini" onclick={() => (showMigration = true)}>Open migration</button></div>
     {/if}
@@ -262,6 +275,16 @@
   <VersionReplace />
 {/if}
 
+{#if mods.asking}
+  {@const a = mods.asking}
+  <!-- #60: picked from a mod that isn't in the list (PLAN.md §10.1: the filter is never a dead end) -->
+  <Modal title="{a.name} isn't in this mod's list" onClose={() => a.done(null)}>
+    <p>{a.what} comes from <b>{a.name}</b> (<span class="mono">{a.id}</span>). Content that uses another mod needs that mod in Saga › Mods:</p>
+    <ul class="small"><li><b>Optional</b>: this mod still loads and plays without it; what uses it gets "Only with {a.name}".</li><li><b>Required</b>: added to <span class="mono">mod_info.json</span> dependencies on export; players must have it.</li></ul>
+    {#snippet actions()}<button onclick={() => a.done(null)}>Not now</button><button onclick={() => a.done('required')}>Add as required</button><button class="primary" onclick={() => a.done('optional')}>Add as optional</button>{/snippet}
+  </Modal>
+{/if}
+
 {#if showExport && project.m}
   <ExportDialog onClose={() => (showExport = false)} />
 {/if}
@@ -295,6 +318,8 @@
   .activemod button { flex-shrink: 0; }
   .target { padding: 3px 8px; border-radius: 12px; border-color: var(--accent-2); color: var(--accent); font-size: 12px; max-width: 200px; flex: 0 0 auto; }
   .target.older { border-color: #6b4a1f; color: var(--warn); }
+  .pill { padding: 3px 10px; border-radius: 12px; border-color: var(--accent-2); color: var(--accent); font-size: 12px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 4 auto; min-width: 120px; }
+  .pill-bad { color: var(--bad); }
   .sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
   main { min-height: 0; min-width: 0; overflow: hidden; }
   footer { display: flex; align-items: center; gap: 14px; padding: 0 12px; background: var(--panel); border-top: 1px solid var(--border); font-size: 12px; white-space: nowrap; overflow: hidden; }

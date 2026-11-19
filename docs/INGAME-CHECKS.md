@@ -637,6 +637,917 @@ against what it covered; anything it missed still needs its own check.
   bases over time; Posts no bounties keeps system bounties off its markets; punitive expeditions
   arrive against a player colony for a switched-on reason (slow to see; dev mode helps).
 
+- **Task #60: optional and required mods, conditional content, test mod `sixty_a`** (SagaLib 1.3,
+  **0.98a** install `D:\Starsector`, where the other mods are; dev mode). Build it with
+  `npx jiti scripts/build-test-mod.ts sixty_a` and link `D:\ModTools\mods\sixty_a` into
+  `D:\Starsector\mods` (the game folder is read-only for Saga Forge: link it yourself). It lists
+  **Hazard Mining Incorporated** (`HMI`, needs LazyLib and MagicLib) as optional and **Crew
+  Replacer** (`aaacrew_replacer`) as incompatible. SagaLib 1.3 is the workspace build (the jar in
+  `mods\SagaLib`). Throwaway saves only. Near "Test Range 60" (Ctrl+F9 › "60: go to Test Range
+  60"), at Range Control 60:
+  - only with HMI: the HMI Beacon 60 (nav buoy), Mara Voss (HMI's faction, in the comm directory;
+    automatic), the options "Test 60, HMI contract" and, after it, "Test 60, HMI follow-up"
+    (inherited), the relation of the mod's faction "Test 60 Friends" with HMI (automatic);
+  - only without HMI: the Quiet Beacon 60, "Test 60 Friends" hidden from the intel tab;
+  - "Test 60, which mods count?": a phrase (with / otherwise), an option only with and one only
+    without HMI, and a Branch test (case with HMI / otherwise);
+  - a patch of HMI's own faction (`hmi.faction` adds the vanilla Hound to its known ships).
+  - **(a) with HMI enabled at new game**: start a new game with HMI, LazyLib, MagicLib, SagaLib and
+    sixty_a (Crew Replacer off). The HMI beacon is there, the quiet one isn't; Mara Voss is in the
+    comm directory; both quest options show (the follow-up after finishing the contract); "which
+    mods count?" says "HMI counts…", offers "Ask about Hazard Mining" (not the quiet-sector one),
+    and the Branch test takes the case with HMI. Intel › factions lists "Test 60 Friends", welcoming
+    to H.M.I. Ctrl+F9 › **Mods**: HMI optional, at start on, now on, counts; Crew Replacer
+    incompatible, at start off. starsector.log: no SagaLib errors.
+  - **(b) with HMI disabled**: a new game without HMI (and its libraries if nothing else needs
+    them). sixty_a loads cleanly (no errors from it or SagaLib); the quiet beacon is there, the HMI
+    beacon and Mara Voss aren't; no HMI quest options; "which mods count?" says "HMI does not
+    count…", offers the quiet-sector option, and the Branch takes "otherwise"; "Test 60 Friends" is
+    not in the intel tab. The log has one info line per skipped item ("skipped object
+    sxa_hmi_beacon of sixty_a: needs HMI (not enabled)", person, relation …), and Ctrl+F9 › Mods
+    lists them with why.
+  - **(c) HMI added to a running save**: save the game from (b), enable HMI, load. A dialog says once
+    "Saga Forge test #60: optional mods was set up for the mods this game started with. Hazard
+    Mining Incorporated was added since, …"; nothing of sixty_a's HMI content appears (no beacon,
+    no Mara Voss, no options; the conversation still says "does not count"). Save, load again: no
+    dialog (the log repeats the warning on every load). Ctrl+F9 › Mods: HMI at start off, now on,
+    doesn't count.
+  - **(d) the incompatible mod**: enable Crew Replacer with sixty_a (new game or a running save).
+    The log has "[SagaLib] mods: Saga Forge test #60: optional mods: the author marks Crew Replacer
+    as possibly conflicting: Test #60: a made-up conflict, to see the warning", and a dialog shows it
+    once per save (not again after save/load).
+  - **(e) the patch of HMI's faction without HMI**: in (b) the game loaded without an error about
+    `hmi.faction` (the game loads a .faction only through a factions.csv row, and sixty_a has none
+    for HMI). With HMI (a), H.M.I.'s known ships include the Hound (dev console, or HMI fleets with
+    Hounds over time). Record the result in FORMATS.md, "Other mods and frameworks".
+  - **Also look at**: an optional mod removed from a running save (from (a), disable HMI, load):
+    the "was removed after this game started" dialog once; what was already built stays (the HMI
+    beacon, Mara Voss), SagaLib doesn't clean up; the HMI quest options are gone.
+  - **Still to confirm (FORMATS.md)**: mods' startup code runs in mod order (Nexerelin before
+    SagaLib), for #63; not needed by this test mod.
+  - **First results (user, 2026-11-17, 0.98a-RC8)**: **(a) passed**: HMI beacon there and the
+    quiet one not, Mara Voss in the comm directory, both quest options (follow-up after the
+    contract), "which mods count?" phrase, option and Branch with HMI; dev menu › Mods: HMI at start
+    on, now on, counts; Crew Replacer at start off; skipped the quiet beacon and the
+    hideFromIntelTab change; no SagaLib errors in the log; Intel › Factions lists "Test 60 Friends"
+    with its relation to H.M.I. as intended. **(b) passed**: the opposite content, "Test 60
+    Friends" not in the intel tab; dev menu lists the two quests, the person, the HMI beacon and the
+    relation as "needs HMI (not enabled)"; the info lines in the log, no SagaLib errors. **(c)
+    passed**: the "was added since" dialog once, no HMI content, dev menu: HMI at start off, now on,
+    doesn't count, every item "needs HMI (not enabled when this game started)"; no dialog after
+    save/load. **(d) passed**: the "possibly conflicting" dialog once with the reason, the same line in
+    the log on every load ("[SagaLib] mods: …"), no dialog after save/load. **(e) passed** (from the
+    game's log, which names every .faction file it loads): with HMI, HMI's hmi.faction then
+    sixty_a's (merged, ours after it); without HMI, sixty_a's hmi.faction is never loaded and the
+    game runs normally. **(f) dropped** (user, 2026-11-17: out of scope): the save from (a) didn't
+    load without HMI: the game itself stops ("Error loading saved game … CommodityOnMarket.readResolve
+    … Commodity with id red_water not found", HMI's commodity in a market) before SagaLib runs.
+    Removing a mod with its own factions, commodities or markets breaks a save in vanilla; the
+    "was removed" notice can only show for small mods (utilities, a few rules), which is fine.
+    **Task #60 in-game check: done.**
+
+- **Task #64: versions by installed mods, other mods' content, sector snapshot** (SagaLib 1.3,
+  **0.98a** install `D:\Starsector`, dev mode, throwaway saves only). Three test mods, all to be
+  linked into `D:\Starsector\mods` by you (the game folder is read-only for Saga Forge):
+  `mods\sixtyfour_a` (the mod with versions, prefix `sfa_`; needs SagaLib), its optional mods
+  `mods\sixtyfour_j` ("Saga Forge 64: Java stand-in" = Mod1, a Java mod, no SagaLib; rebuild its jar
+  with `bash build.sh` in its folder) and `mods\sixtyfour_b` ("Saga Forge 64: Saga Forge stand-in" =
+  Mod2, made with Saga Forge). Rebuild the two Saga Forge mods with
+  `npx jiti scripts/build-test-mod.ts sixtyfour_a` / `sixtyfour_b`. The Reyes example: Ilse Reyes
+  at Range Control 64 (Test Range 64); Mod1 moves her to Haven Port (Haven 64J, the Java mod's
+  market); Mod2 makes her Ilse Okafor with another portrait; with both, her conversation ("Test 64,
+  talk to Reyes", at the station where she is) opens with the SWAPPED line. Ctrl+F9 › "64: go to
+  Test Range 64" / "64: go to Haven Port (only with Mod1)".
+
+```
+(a) Base: a new game without Mod1 and Mod2
+  1. Enable SagaLib and sixtyfour_a only. New game, Ctrl+F9 › "64: go to Test Range 64".
+  2. Range Control 64's comm directory has Ilse Reyes (mercenary portrait).
+  3. "Test 64, talk to Reyes": "I'm Ilse Reyes." (her own dialog); "Ask where she works": Range Control 64.
+  4. Intel › Factions: "Reyes Guild" (not "(Mod2)"); no relation with the Haven Harbor Authority.
+  5. No "Test 64, after Mod2's errand" option. Ctrl+F9 › Versions: every item "base".
+  6. starsector.log: no SagaLib errors.
+
+(b) Mod1 (the Java stand-in) at new game
+  1. Enable SagaLib, sixtyfour_a and sixtyfour_j. New game.
+  2. Haven 64J exists (log: "[sixtyfour_j] built Haven 64J"); Ctrl+F9 › "64: go to Haven Port".
+  3. Haven Port's comm directory has Ilse Reyes (and Mara Quell, the Java mod's portmaster);
+     Range Control 64's doesn't.
+  4. "Test 64, talk to Reyes" is at Haven Port (not at Range Control 64); "I'm Ilse Reyes."
+  5. Intel › Factions › Reyes Guild: a relation with the Haven Harbor Authority (0.6).
+  6. Ctrl+F9 › Versions: sfa_reyes "sixtyfour_j", sfa_meet "sixtyfour_j", factions "sixtyfour_j".
+
+(c) Mod2 (the Saga Forge stand-in) at new game
+  1. Enable SagaLib, sixtyfour_a and sixtyfour_b. New game.
+  2. Range Control 64: Ilse Okafor, corporate portrait. "Test 64, talk to Reyes": "I'm Ilse Okafor."
+  3. Intel › Factions: "Reyes Guild (Mod2)" (a scripted change of the Mod2 version).
+  4. Ctrl+F9 › "64B: go to Outpost 64B": "Test 64B, run an errand", accept (it ends at once).
+     Back at Range Control 64: "Test 64, after Mod2's errand" is offered now.
+
+(d) Both mods at new game
+  1. Enable SagaLib, sixtyfour_a, sixtyfour_j and sixtyfour_b. New game.
+  2. Haven Port: Ilse Okafor with the corporate portrait.
+  3. "Test 64, talk to Reyes" at Haven Port: the SWAPPED line ("Okafor, Haven Port, and a story I owe you.").
+  4. Reyes Guild (Mod2) with the relation to the Haven Harbor Authority.
+  5. Ctrl+F9 › Versions: sfa_reyes and sfa_meet "sixtyfour_b+sixtyfour_j".
+
+(e) A mod added to a running save changes nothing
+  1. Save the game from (b) (Mod1 only). Enable sixtyfour_b too, load.
+  2. #60's dialog once: "Saga Forge test #64: versions was set up for the mods this game started
+     with. Saga Forge 64: Saga Forge stand-in was added since, …".
+  3. Reyes is still Ilse Reyes with the mercenary portrait at Haven Port; the conversation still
+     shows her own dialog (not the swapped one); "Reyes Guild" without "(Mod2)".
+  4. Ctrl+F9 › Versions: still "sixtyfour_j". Save, load again: no dialog, nothing changes.
+
+(f) The sector snapshot makes the Java mod's market pickable and checked
+  1. In game from (b) or (d): Ctrl+F9 › "Write sector snapshot". The log names the file
+     (saves/common/sagaforge_snapshot.json.data).
+  2. In Saga Forge, open sixtyfour_a. Problems: "entity "sfj_port" … isn't known, so it isn't
+     checked" (Reyes, Mod1 version; and the conversation).
+  3. Saga › Mods › Seen in game › "Import from the game". It lists Saga Forge 64: Java stand-in:
+     1 system, 1 market, 1 person (and maybe places).
+  4. Those "not checked" warnings are gone. People › Ilse Reyes › Versions › the Java stand-in
+     cell: the Market picker offers Haven Port; Quests › Places offers it too.
+  5. Ctrl+F9 › Versions page lists every versioned item with its mods and the chosen version.
+
+(g) Also look at (SagaLib's own list)
+  - Load save A, then save B in one session: each keeps its own versions.
+  - A faction change in a translation: a scripted displayName and a translated name together.
+```
+
+  - **First results (user, 2026-11-18, 0.98a-RC8)**: **(a) passed**: Ilse Reyes in Range Control
+    64's comm directory, her own dialog with the name token filled, "Reyes Guild" with only the
+    Hegemony relation, no "after Mod2's errand" option, dev menu › Versions: 3 items base; log
+    clean. **Found from the log**: SagaLib said quest sfa_meet "mentions [sixtyfour_j]" only,
+    because the swapped node lives in rules.csv, not in the quest's JSON. So with both mods it
+    would never have set `$global.sfv_sfa_meet_sixtyfour_b`, and (d)'s swapped line couldn't
+    show. **Fixed**: a SagaLib file now names every mod of the item's versions (an empty version
+    where its JSON doesn't change). sixtyfour_a rebuilt; (b)–(g) to run on the rebuilt mod.
+    **(b) passed** (rebuilt mod): the log has "[sixtyfour_j] built Haven 64J"; Reyes at Haven Port
+    (not at Range Control 64), the conversation there; Reyes Guild friendly (60) with the Haven
+    Harbor Authority; dev menu › Versions: all 3 "sixtyfour_j", and sfa_meet now mentions both
+    mods (the fix works); log: "set 2 starting faction relations", no SagaLib warnings (no
+    "listed in market" warning), only vanilla's own hull spec error. **(c) passed**: Ilse Okafor
+    with the corporate portrait at Range Control 64, "I'm Ilse Okafor." from the token, "Reyes
+    Guild (Mod2)" in Intel › Factions (scripted displayName of the Mod2 version), sixtyfour_b's
+    errand at Outpost 64B, then "Test 64, after Mod2's errand" offered at Range Control 64 (not
+    before the errand; another
+    Saga Forge mod's quest as a prerequisite); dev menu › Versions: all 3 "sixtyfour_b".
+    **(d) passed**: Ilse Okafor (corporate portrait) at Haven Port; "Test 64, talk to Reyes" there
+    opens with the SWAPPED line (the extra rule with both sfv_ flags); "Reyes Guild (Mod2)",
+    friendly with the Haven Harbor Authority; dev menu › Versions: all 3 "sixtyfour_b+sixtyfour_j".
+    (Haven Port shows two portmasters, Mara Quell and vanilla's generated one: the Java stand-in's
+    own code adds hers without removing vanilla's; not Saga Forge's or SagaLib's.)
+    **(e) passed**: the save from (b) loaded with sixtyfour_b added: the "was added since" dialog
+    once; Reyes stays Ilse Reyes (mercenary portrait) at Haven Port, her own dialog (not the
+    swapped one), "Reyes Guild" without "(Mod2)"; dev menu › Versions: still "sixtyfour_j"; saved
+    and loaded again: no dialog.
+    **(f) passed, with two fixes**: "Write sector snapshot" wrote
+    `saves/common/sagaforge_snapshot.json.data` (the `.data` name confirmed); before the import,
+    the four "sfj_port isn't known" warnings; Saga › Mods › Import from the game listed the Java
+    stand-in; the warnings went away and Haven Port (sfj_port) is offered in the People market
+    picker and in Quests › Places. **Found**: the import also added sixtyfour_a's own system,
+    places and people (so Test Range 64 "clashed" with itself), because the prefix taken from a
+    mod id was its first part (`sixtyfour_`, shared by sixtyfour_a and sixtyfour_j), and the mod
+    being edited wasn't skipped; and vanilla's generated staff at Haven Port (`p_2ef2`, …, new ids
+    every game) were added as people. **Fixed**: the snapshot never adds the mod being edited, a mod
+    id is matched whole (`sixtyfour_j_`), a prefix two mods share ties to neither, and people are
+    tied by their id only. Replayed on the same snapshot file: only the Java stand-in's 1 system, 14
+    places, Haven Port and Mara Quell. Confirmed in the app after a restart (no new import): Saga ›
+    Mods lists only the Java stand-in (1 system, 14 places, 1 market, 1 person); the self-clash
+    warning is gone. The one warning left, "0 units from the game's Grid C21 R07", is the throwaway
+    grid_test mod's grid of systems on the same spot (only if both are enabled).
+    **(g) passed**: the (b) and (d) saves loaded one after the other in one session each keep their
+    own versions. **Task #64 in-game check: done.**
+
+- **Task #27: MagicLib bounties** (docs/DESIGN-MAGICLIB-BOUNTIES.md; **0.98a** install
+  `D:\Starsector`, where MagicLib 1.5.6 and LazyLib are; dev mode, throwaway saves only). Test mod
+  `mods\twentyseven_a` (prefix `tsa_`; needs SagaLib 1.3; MagicLib is **optional** in its list, so
+  its `mod_info.json` doesn't name MagicLib), to be linked into `D:\Starsector\mods` by you.
+  Rebuild with `npx jiti scripts/build-test-mod.ts twentyseven_a`. Enable SagaLib, LazyLib,
+  MagicLib and twentyseven_a; new game; Ctrl+F9 › "27: go to Test Range 27" (also sets the
+  independents to Welcoming, which tsa_b_hunt needs). Two bounties in
+  `data/config/modFiles/magicBounty_data.json`:
+  - **(a) the board**: Intel › the bounty board lists "Test 27 (a): Kasimir's raiders" and "Test 27:
+    hunt the Lantern Gang", paid by the Independents. starsector.log (dev mode): "tsa_b_raiders :
+    VALID", "tsa_b_hunt : VALID", no "INVALID" for them.
+  - **(b) offered only here**: fly to the core worlds (more than 10 light-years from Test Range 27):
+    neither bounty is listed there (the market id **and** the station's entity id in
+    `trigger_market_id`, FORMATS.md's quirk). Back at Test Range 27 they are listed again.
+  - **(c) the raiders**: open it: the text has "Vell Kasimir" highlighted, "Target Rock 27", "Test
+    Range 27" and "15,000" (MagicLib's `$name`, `$location`, `$system`, `$reward`), no "==error==".
+    Accept: the map arrow points at Target Rock 27; four pirate ships (flagship an Enforcer) wait
+    there, hostile; hail them: "Range Control sent you? Vell Kasimir doesn't run." Win (disable the
+    flagship): 15,000 credits, +5 with the Independents, the success text. At Range Control 27,
+    "Test 27, bounty status" › Check: "Only the raiders bounty succeeded".
+  - **(d) the hunt**: the text names a planet and its system and says "100% of the pay" (one percent
+    sign, from `%%`). The board says which system (`job_show_distance: system`). Accept: a pirate
+    fleet "Lantern Gang" (an Enforcer and random pirate ships, about 40 points) at a planet in a
+    system without a colony, pulsar or black hole, preferably a ruins or derelict system. Destroy
+    the whole fleet (obliteration): 20,000 credits, +5 Independents, 5 heavy armaments in the loot.
+    Status: "Both bounties succeeded". Time limit 60 days (the board shows it).
+  - **(e) only as a bounty**: neither fleet is spawned by SagaLib as well: starsector.log has no
+    "[SagaLib] … encounter tsa_raiders" or "encounter tsa_hunters" lines (SagaLib logs every
+    spawn), only one Kasimir fleet at Target Rock 27; Lantern Gang isn't a SagaLib quest (no intel
+    entry besides MagicLib's). (The dev menu has no encounter page.)
+  - **(f) without MagicLib**: disable MagicLib (keep the rest), new game: twentyseven_a loads, no
+    error about `magicBounty_data.json`; the station and "bounty status" ("No bounty has succeeded
+    yet") work.
+  - Record the results here and anything new about MagicLib in FORMATS.md, "MagicLib 1.5.6
+    bounties".
+  - **First results (user, 2026-11-18, 0.98a-RC8)**: **(a) passed**: the board at Test Range 27
+    lists both, paid by the Independents. **(b) passed**: in the core worlds the bounty list is
+    empty (the details pane still shows the last bounty opened, MagicLib's own panel). **(c), (d)
+    passed**: the hunt's text names Beta Suroclarile IV-C in Beta Suroclarile and "100%" (one
+    sign); obliteration, 20,000¢, "upwards of 5 other ships"; Kasimir's Raiders (four ships) and
+    the hail "Range Control sent you? Vell Kasimir doesn't run."; status: both succeeded. Found:
+    the status texts named `$global.…_succeeded`, which rules.csv fills in ("true and true"):
+    reworded in the test mod. **(e) passed** (from starsector.log): no SagaLib line for
+    tsa_raiders or tsa_hunters (SagaLib built only the system, the market and the profile); MagicLib
+    logged both bounties VALID, their rewards, and "Despawning bounty … with stage Succeeded" for
+    each. The log also has "Something went wrong when validating tsa_b_hunt / tsa_b_raiders"
+    (a NullPointerException in `MagicStringMatcher.findBestFactionMatch`): MagicLib's dev-mode
+    check at startup runs before a sector exists, so it fails the same way for every mod's bounties
+    (HMI's too), still marks them VALID, and the check when the game loads has no warning. Harmless
+    (FORMATS.md). **(f) passed**: a new game with LazyLib, SagaLib and twentyseven_a only (no
+    MagicLib): nothing in the log about `magicBounty_data.json` (the game itself never reads it),
+    no errors from the mod or SagaLib ("[SagaLib] content: 0 quests, 2 people, … 1 systems, 0
+    encounters": the bounty-only sources aren't SagaLib content); the system, market and profile
+    built as before. The only ERROR lines are the hull specs `flare` and `module_hightech_decor`,
+    which every earlier log has too. **Task #27 in-game check: done.**
+
+- **Task #59: MagicLib bounties from quests** (DESIGN-MAGICLIB-BOUNTIES.md §6; SagaLib 1.3's
+  MagicLib bridge; **0.98a** install `D:\Starsector`; dev mode, throwaway saves only). Same test mod
+  as #27, `mods\twentyseven_a` (1.1.0, already linked), rebuilt with its "Test 59" content; SagaLib
+  rebuilt with the bridge (`bash build.sh` in `mods\SagaLib` says "built magiclib"). Test Range 27
+  moved on the map (it crowded Test Range 60), so start a new game. At Range Control 27: "Test 59,
+  ask about Range Control's contract" starts the bounty "Test 59: the Ghost" (never on the board)
+  after testing whether it is available; "Test 59, report on the Ghost" reads its state; the board
+  bounty "Test 59 (e): the Ghost's partner" needs the contract to have succeeded.
+
+```
+(a) The bridge loads
+  1. Enable SagaLib, LazyLib, MagicLib and twentyseven_a; dev mode. New game, Ctrl+F9 › "27: go to Test Range 27".
+  2. starsector.log: "[SagaLib] MagicLib bridge loaded: quests can start and check MagicLib bounties";
+     MagicLib's "tsa_b_ghost : VALID" and "tsa_b_partner : VALID".
+  3. Ctrl+F9 › Mods: "MagicLib bounties: bridge ready".
+  4. Intel › bounty board at Test Range 27: the two #27 bounties; neither "Test 59: the Ghost" nor "Test 59 (e): the Ghost's partner".
+
+(b) The quest starts the bounty
+  1. Range Control 27: "Test 59, ask about Range Control's contract" › "Sign the contract".
+  2. The dialog shows MagicLib's highlighted "Accepted job: Test 59: the Ghost", then "Test 59 (b): contract signed …".
+  3. Intel: the journal entry "Test 59: Range Control's contract" (Hunt the Ghost) and MagicLib's bounty
+     "Test 59: the Ghost" (10,000 credits, Test Range 27); the bounty board lists it as accepted;
+     the map arrow points at Ghost Shoal 27.
+  4. Back in the station's menu "Test 59, ask about …" is gone. starsector.log: "SF_StartBounty in rule
+     tsa_job_take: bounty tsa_b_ghost accepted for the player".
+
+(c) Still running
+  1. Without fighting: "Test 59, report on the Ghost": "Test 59 (c): MagicLib says the bounty is still active …".
+  2. Back: the report option is offered again.
+
+(d) Succeeded
+  1. Fly to Ghost Shoal 27 and beat the Ghost (a Cerberus with a Hound; disable the flagship).
+     MagicLib pays 10,000 credits and +3 with the Independents and shows its success text.
+  2. Range Control 27, "Test 59, report on the Ghost": "Test 59 (d) passed …"; the journal moves the
+     contract to completed.
+
+(e) SagaLib's quest-ended key reaches MagicLib
+  1. Open the bounty board at Test Range 27 again: "Test 59 (e): the Ghost's partner" is listed now
+     (MagicLib's trigger reads $sagaforge_success_tsa_job). Taking it is optional.
+
+(f) Without MagicLib
+  1. Disable MagicLib (keep LazyLib, SagaLib and twentyseven_a). New game, Ctrl+F9 › "27: go to Test Range 27".
+  2. starsector.log: "[SagaLib] MagicLib isn't enabled: quests see its bounties as unavailable"; no
+     SagaLib errors, nothing about MagicLib classes (no NoClassDefFoundError).
+  3. Ctrl+F9 › Mods: "MagicLib bounties: MagicLib isn't enabled (quests see every bounty as unavailable)".
+  4. Range Control 27: "Test 59, ask about Range Control's contract" › "Sign the contract": "Test 59 (f):
+     the bounty isn't available here. MagicLib isn't installed …". No Test 59 journal entry; the
+     option is still offered.
+
+(g) Optional: MagicLib added to the running save from (f)
+  1. Save. Enable MagicLib, load: #60's notice once ("… MagicLib was added since …").
+  2. "Sign the contract" still says the bounty isn't available (MagicLib wasn't enabled when the game started).
+```
+
+  - Record the results here, and anything new about MagicLib in FORMATS.md, "MagicLib 1.5.6
+    bounties" ("Taking a bounty from code").
+  - **First results (user, 2026-11-18, 0.98a-RC8)**: **(a) passed**: the log has "[SagaLib]
+    MagicLib bridge loaded …" and MagicLib's "tsa_b_ghost : VALID" / "tsa_b_partner : VALID" (after
+    its usual harmless "Something went wrong when validating" at startup); dev menu › Mods: "bridge
+    ready", MagicLib "at start on, now on: counts"; the board lists only the two #27 bounties.
+    **(b) passed**: "Accepted job: Test 59: the Ghost" (highlighted), the journal entry, "(b):
+    contract signed"; the board shows the Ghost as accepted (10,000¢, Test Range 27, "Ghost Shoal 27"
+    from `$location`); "Test 59, ask about …" gone, "report on the Ghost" offered; log: "SF_StartBounty
+    in rule tsa_job_take: bounty tsa_b_ghost accepted for the player". **(c) passed** (still active;
+    the option came back). **(d) passed**: MagicLib "Despawning bounty tsa_b_ghost with stage
+    Succeeded"; the report says "(d) passed", the journal moves the contract to Completed, the
+    report option is gone. **(e) passed**: the board lists "Test 59 (e): the Ghost's partner"
+    (8,000¢); before the success MagicLib logged "Requirement not met: memKeys_all
+    $sagaforge_success_tsa_job key not found", after it no more. No SagaLib warnings or errors.
+    **Found (MagicLib's board, not SagaLib)**: the details pane still showed the finished Ghost (the
+    last bounty selected), now with a new captain and "Accept the job": drawing a bounty whose
+    active entry MagicLib has cleaned up calls `createActiveBounty` again (`MagicBountyInfo.layoutPanel`),
+    so the finished bounty is offered there once more. SagaLib still reads "succeeded" (the memory
+    keys don't change), and SF_StartBounty refuses it. FORMATS.md has the note.
+    **(f) passed** (new game with LazyLib, SagaLib and twentyseven_a, no MagicLib): the log has
+    "[SagaLib] MagicLib isn't enabled: quests see its bounties as unavailable"; the game looked up
+    SF_StartBounty in SagaLib's rule command package as usual (no MagicLib class loaded, no
+    NoClassDefFoundError); no SagaLib warnings or errors, and the only ERROR lines are vanilla's two
+    hull specs. Dev menu › Mods: "MagicLib isn't enabled (quests see every bounty as unavailable)",
+    MagicLib "at start off, now off: doesn't count". "Sign the contract": "Test 59 (f): the bounty
+    isn't available here …", and the option is still offered (the quest didn't start).
+    **(g) passed**: the save from (f) loaded with MagicLib enabled: "MagicLib bridge loaded", #60's
+    notice once ("… MagicLib was added since, so … plays on without its MagicLib content …", also a
+    [SagaLib] WARN in the log), and "Sign the contract" still says the bounty isn't available
+    (MagicLib doesn't count: it wasn't enabled when the game started). **Task #59 in-game check: done.**
+
+- **Task #69: waiting for a MagicLib bounty's end** (DESIGN-MAGICLIB-BOUNTIES.md §7; SagaLib 1.3,
+  no bridge needed; **0.98a** install `D:\Starsector`; dev mode, throwaway saves only). Same test
+  mod, `mods\twentyseven_a`, now 1.2.0 with "Test 69" content: Watch Buoy 27 (a new planet in Test
+  Range 27, where the Watcher and the Drifter wait), "Test 69, ask about the Watcher" (starts the
+  bounty "Test 69: the Watcher", never on the board, then waits for it: no report option) and
+  "Test 69 (c), ask about the Drifter" (waits for the board bounty "Test 69 (c): the Drifter", 2-day
+  deadline). Rebuild SagaLib (`bash build.sh`) and start a new game (new planet).
+
+```
+(a) The quest starts the bounty and waits
+  1. Enable SagaLib, LazyLib, MagicLib and twentyseven_a; dev mode. New game, Ctrl+F9 › "27: go to Test Range 27".
+  2. Range Control 27: "Test 69, ask about the Watcher" › "Sign the contract": MagicLib's "Accepted job: Test 69: the Watcher",
+     then "Test 69 (a): contract signed …". Intel: the journal entry "Test 69: the Watcher's contract" and MagicLib's bounty.
+  3. "Go" goes back to the station's menu (no orange "ERROR: no rule found for option tsa_watch_ok"): no "Test 69, ask about
+     the Watcher" and no report option for it.
+
+(b) Succeeded: the quest goes on by itself
+  1. Fly to Watch Buoy 27 and beat the Watcher (one Hound; disable it). MagicLib pays 6,000 credits and shows its success text.
+  2. Without docking anywhere: after the battle's dialogs close, a new dialog opens by itself within about a quarter day:
+     "Test 69 (b) passed: this dialog opened by itself …". "Good" closes it; the journal moves the contract to completed.
+  3. starsector.log: "[SagaLib] quest tsa_watch: MagicLib bounty ended, fired tsa_watch_w_succeeded".
+
+(c) Expired, and ended before the quest got there
+  1. Intel › bounty board at Test Range 27: "Test 69 (c): the Drifter" › Accept the job (its 2 days count from
+     accepting; an untaken bounty that runs out never ends for SagaLib). Don't fight it.
+  2. MagicLib's deadlines are off by default: LunaLib's settings (F2) › MagicLib › turn "Enable Bounty Deadlines" on
+     (if it shows on, turn it off and on: MagicLib reads it only when it changes). Then let more than 2 days pass
+     (away from Watch Buoy 27), until MagicLib's intel says it ran out.
+  3. Range Control 27: "Test 69 (c), ask about the Drifter" › "Tell them" › "Leave".
+  4. As the dialog closes, a new one opens by itself: "Test 69 (c) passed: the Drifter's bounty had expired …".
+     Log: "fired tsa_late_w_expired".
+
+(d) Nothing else changed
+  1. The Test 59 contract ("Test 59, ask about Range Control's contract") still works as before, report option included.
+  2. starsector.log: no SagaLib warnings or errors.
+
+(f) Without MagicLib
+  1. Disable MagicLib (keep LazyLib, SagaLib and twentyseven_a). New game, Ctrl+F9 › "27: go to Test Range 27".
+  2. Range Control 27: "Test 69, ask about the Watcher" › "Sign the contract": "Test 69 (f): the bounty isn't available here …";
+     "Test 69 (c), ask about the Drifter" › "Tell them": "Test 69 (f): the Drifter's bounty isn't available …". No Test 69 journal entries.
+  3. starsector.log: no SagaLib errors, no NoClassDefFoundError.
+```
+
+  - Record the results here.
+  - **First run (user, 2026-11-19, 0.98a-RC8)**: (a) signing worked (MagicLib's "Accepted job", the
+    journal entry, "(a): contract signed"), but "Go" showed "ERROR: no rule found for option tsa_watch_ok"
+    and the failsafe "Exit dialog". The export skipped the rule of an option that is the only way into a
+    node, expecting the node to answer it, which a Wait node never does (an Arrive was already exempt;
+    "wait N days" had the same bug). Fixed in questrules.ts (every Wait), with a test; test mod rebuilt
+    (rules.csv only). Run (a) again.
+  - **Second run (user, 2026-11-19, 0.98a-RC8)**: **(a) passed** ("Go" back to the station's menu, no
+    ERROR). **(b) passed**: after the Watcher was beaten MagicLib showed "Bounty Completed - Test 69: the
+    Watcher, 6,000 received" and "Test 69 (b) passed …" opened by itself. (c): the quest was asked
+    before the Drifter was taken; found that MagicLib counts `job_deadline` from acceptance
+    (`ActiveBounty.getDaysRemainingToComplete`), and an untaken bounty that runs out ends
+    "ExpiredWithoutAccepting" with no memory key (offered again later), so the Drifter must be accepted.
+    Accepted ("You have accepted this bounty"), several days later still running: MagicLib 1.5.6's
+    deadlines are off unless LunaLib's MagicLib setting "Enable Bounty Deadlines" is changed to on
+    (FORMATS.md). Step (c)2 now says so; the bounty editor notes it for every deadline.
+    **(c) passed** after turning "Enable Bounty Deadlines" on in LunaLib: the Drifter's bounty ended, and
+    "Test 69 (c) passed: the Drifter's bounty had expired, and this dialog opened by itself" opened on its
+    own (here the quest was waiting already; the ended-before order is covered by the golden case and
+    Play). **(d) passed**: "Test 59, ask about Range Control's contract" › "Sign the contract" works as
+    before ("Accepted job: Test 59: the Ghost", "(b): contract signed", "Go"). starsector.log: no [SagaLib]
+    WARN or ERROR; "Despawning bounty tsa_b_watch with stage Succeeded" then "[SagaLib] quest tsa_watch:
+    MagicLib bounty ended, fired tsa_watch_w_succeeded"; "Ending expired bounty tsa_b_late" then "… fired
+    tsa_late_w_expired"; the only exceptions are MagicLib's usual startup "Something went wrong when
+    validating" (as in #59). **(f) passed** (new game with LazyLib, SagaLib and twentyseven_a, no
+    MagicLib): both options say "Test 69 (f): … isn't available …", with Back, and the quests don't start;
+    the log has "[SagaLib] MagicLib isn't enabled: quests see its bounties as unavailable", no SagaLib
+    warnings or errors, no NoClassDefFoundError, and only vanilla's two hull-spec ERROR lines.
+    **Task #69 in-game check: done.**
+
+- **Task #61: markets changing owner** (PLAN.md §10.3; SagaLib 1.3, no bridge; **0.98a** install
+  `D:\Starsector`, where Nexerelin 0.12.2d is; dev mode, throwaway saves only). Test mod
+  `mods\sixtyone_a` (prefix `soa_`), built by `npx jiti scripts/build-test-mod.ts sixtyone_a`; it
+  needs a junction in `D:\Starsector\mods` like the other test mods (not made by Saga Forge: the
+  install is read-only). Rebuild SagaLib first (`bash build.sh` in `mods\SagaLib`). At Range Control
+  61 in "Test Range 61": three quests that watch Outpost 61 and Range Control 61 (keep going, fail,
+  go to a stage). Bastion 61 (pirates) is protected from invasion, Outpost 61 (pirates) isn't.
+  **The random sector was descoped on 2026-11-18** after its check passed (results below); its
+  checks are in `docs/parked/README.md` for when the on-hold task comes back.
+
+```
+(a) A market changing owner mid-quest: the three outcomes
+  1. Enable SagaLib, LazyLib, Nexerelin (and what it needs) and sixtyone_a; dev mode. New game
+     (hand-made core worlds, Nexerelin's default). Ctrl+F9 › "61: go to Test Range 61".
+  2. At Range Control 61 accept "Test 61, owner change - keep going", "… - fail" and
+     "… - go to a stage" (three journal entries, each marking Outpost 61).
+  3. Ctrl+F9 › "Change a market's owner": the three quests are listed with
+     "soa_outpost=pirates soa_station=independent". Pick Outpost 61 › Hegemony: "3 quests reacted".
+  4. keep going: its journal entry stays. At Range Control 61, "… - keep going - report":
+     'Changed owner: "soa_outpost", new owner: "hegemony"'; done.
+  5. fail: its journal entry is failed.
+  6. go to a stage: after closing the dev menu a message opens: "news reaches you: soa_outpost now
+     belongs to hegemony …" (Close); its journal entry is at "The outpost changed hands".
+  7. starsector.log: "quest soa_keep: market soa_outpost changed owner to hegemony; it keeps going",
+     and the same for soa_fail ("the quest fails") and soa_stage ("it goes to stage lost").
+  8. Optional, the real thing: in a fresh game accept the three again and invade Outpost 61 with
+     Nexerelin (marines, beat its defences): the same three outcomes within a day of the capture,
+     new owner "player" (or your faction).
+
+(b) A protected market is never an invasion target
+  1. With a fleet and marines at Test Range 61 (the profile gives 500,000 credits to buy them):
+     at Outpost 61 Nexerelin offers to invade; at Bastion 61 it doesn't.
+  2. Optional: let a few months pass and watch Nexerelin's invasion intel: no invasion targets
+     Bastion 61 (Outpost 61 may be targeted).
+```
+
+  - Record the results here, and anything new about Nexerelin in FORMATS.md, "Nexerelin 0.12.2d"
+    ("Checked for task #61").
+  - **Results (user, 2026-11-18, 0.98a-RC8, hand-made sector)**: **(a) steps 1–5 and 7 passed.**
+    Dev menu › Change a market's owner, Outpost 61 › Hegemony; the log has "dev menu: market
+    soa_outpost changed owner from pirates to hegemony" and the three lines (keeps going / the quest
+    fails / it goes to stage lost); the journal moved "go to a stage" to "The outpost changed hands";
+    "keep going"'s report showed 'Changed owner: "soa_outpost", new owner: "hegemony"' and completed
+    (+100 credits). **Found and fixed (2026-11-18)**: the failed quest still offered its Arrive
+    option ("Test 61 - fail - report"), whose End would have completed it: an Arrive's rule tested
+    only `$global.<quest>_step`, so a quest that failed at that step (owner change, time limit) kept
+    it. It now also tests `$global.<quest>_state == active` (test/expected/vanguard updated;
+    sixtyone_a rebuilt). Also seen: "Test 61, owner change - go to a stage" was still offered and
+    accepting it again set the active quest's step back to "go" (task #71: option-start quests stay
+    offered). **Step 6 passed** (new game, the rebuilt mod, only "go to a stage" accepted): dev menu
+    "1 quest reacted"; after closing it the message opened by itself, "Test 61 (a): news reaches you:
+    soa_outpost now belongs to hegemony. The quest moved to stage …" with Close; the journal at "The
+    outpost changed hands". **(b) passed**: at Bastion 61 "Invade Bastion 61" is greyed out with
+    Nexerelin's tooltip "This is not an invadable market."; at Outpost 61 Nexerelin offers the
+    invasion (it warns that the Hegemony, its owner now, isn't hostile yet). **Task #61 in-game
+    check: done.** (Seen, not ours: with more than nine options the game shows "null." before
+    Leave.)
+  - **Before the descope (user, 2026-11-18, 0.98a-RC8, Nexerelin 0.12.2d, random core worlds)**: the
+    random-sector check (old (a)) **passed**; the hand-made-sector check (old (b)) wasn't run.
+    The log has "Nexerelin random sector: …", "skipped system corvus …" and "skipped person soa_clerk
+    …" (so Nexerelin's flag is set before SagaLib's onNewGame); Test Range 61 was built (closest
+    system after random generation: Beta Gobi, 11,772 units); no SagaLib warnings or errors. Dev menu
+    › Mods: "Sector: Nexerelin random sector", skipped quest soa_handmade, person soa_clerk, system
+    corvus, object soa_corvus_buoy. Range Control 61 doesn't offer the hand-made-only quest. The
+    random-target version picked Airin (Kalico), marked it, and its report paid 100 credits. The
+    kept version didn't start: "skipped quest soa_kept: needs place jangala, which doesn't exist in
+    this game". **Found (not #61, task #71)**: an option-start quest stays offered after it was
+    accepted and after it ended; the offer text showed the target's tokens raw, because an option
+    start picks its target on accept (the test text was wrong; the mod now names the target in the
+    report instead, and its profile adds supplies and fuel). That refusal is the part that stayed in
+    #61 ("a quest isn't offered or started when a place it needs doesn't exist"): **passed in game**.
+    The test mod was then rebuilt without the random-sector content (the Jangala quests, the clerk,
+    the Corvus buoy).
+
+- **Task #71: option-start quests stay offered; target tokens before the target is picked**
+  (**0.98a** install `D:\Starsector`; dev mode, throwaway saves only; SagaLib unchanged, no rebuild
+  needed). The export now adds the quest's state to the start rule of a quest (kind Quest) that
+  starts from an option, a trigger, an interjection or a bar scene: `SF_QuestState <quest>
+  notStarted`, or `!SF_QuestState <quest> active` when it is repeatable. Contacts and bar events are
+  left to vanilla's hub; conversations have no state. Before, the option stayed while the quest ran
+  and after it ended, and accepting again while it ran set its step back (seen in #61's check).
+  Test mods `mods\sixtyone_a` and `mods\sixty_a` were rebuilt (only their start rules changed).
+  The warning for target and variable tokens before the quest starts, and Play leaving them
+  unfilled until then, are editor-only (npm test).
+
+```
+(a) An option-start quest stops offering itself (sixtyone_a; Nexerelin optional)
+  1. Enable SagaLib and sixtyone_a (Nexerelin and what it needs may stay on); dev mode. New game, then
+     Ctrl+F9 › "61: go to Test Range 61".
+  2. Range Control 61's menu offers "Test 61, owner change - keep going", "… - fail" and
+     "… - go to a stage". Pick "… - keep going" and accept.
+  3. Back in the menu: "Test 61, owner change - keep going" is gone; "Test 61 - keep going - report"
+     is there; "… - fail" and "… - go to a stage" are still offered.
+  4. Leave, undock and dock again: "… - keep going" is still not offered.
+  5. Pick "Test 61 - keep going - report": the quest completes (+100 credits). Back in the menu,
+     and after docking again, "… - keep going" isn't offered (the quest isn't repeatable).
+
+(b) Optional: a quest that ends right after accepting (sixty_a; needs Hazard Mining Incorporated)
+  1. Enable SagaLib, HMI (and what it needs) and sixty_a; dev mode. New game, Ctrl+F9 › "60: go to
+     Test Range 60".
+  2. At Range Control 60 pick "Test 60, HMI contract (only with HMI)" and accept: it completes at
+     once (+100 credits).
+  3. Back in the menu: "Test 60, HMI contract" is gone; "Test 60, HMI follow-up (after the contract)"
+     is offered. Accept it too: it completes, and its option is gone as well.
+```
+
+  - **Results (user, 2026-11-18, 0.98a-RC8, rebuilt sixtyone_a)**: **(a) passed**, run with "Test
+    61, owner change - go to a stage" instead of "keep going" (the same quest pattern). After
+    accepting ("Test 61 - go to a stage - Accepted") the menu offered "… - keep going" and "… -
+    fail" but no longer "… - go to a stage"; after docking again it was still gone; after "Test 61 -
+    go to a stage - report" (Completed, Gained 100¢) it stayed gone, and the other two were still
+    offered. (The report's raw `$global.soa_stage_ownerChanged` / `_newOwner` tokens are expected:
+    nothing changed owner. "null." before Leave with ten options is the game's, seen in #61.)
+    (b) wasn't run; (a) covers the task's check. **Task #71 in-game check: done.**
+
+- **Task #70: a character's presence depends on who controls their market** (SagaLib 1.3, no
+  bridge; **0.98a** install `D:\Starsector`; dev mode, throwaway saves only). Test mod
+  `mods\seventy_a` (prefix `sya_`), built by `npx jiti scripts/build-test-mod.ts seventy_a`; it
+  needs a junction in `D:\Starsector\mods` like the other test mods (not made by Saga Forge: the
+  install is read-only). Rebuild SagaLib first (`bash build.sh` in `mods\SagaLib`). In "Test Range
+  70": Waypoint 70 (independent) has Captain Hale Varro, a Hegemony loyalist (contact), present only
+  while the station's owner is at least Neutral with the Hegemony; while away he is listed at Refuge
+  70 (hegemony). He offers "Test 70: the loyalist's job". Waypoint 70's menu has "Test 70, ask who
+  runs the station" (a Branch on `SF_FactionRep $faction.id hegemony NEUTRAL`). Nexerelin may be on
+  or off.
+
+```
+(a) Present: in the comm directory, and he offers his quest
+  1. Enable SagaLib and seventy_a; dev mode. New game, then Ctrl+F9 › "70: go to Test Range 70"
+     (it also makes you Neutral with the pirates, so Waypoint 70 stays dockable when they own it).
+  2. starsector.log: no "person sya_loyal leaves" line (independent and Hegemony start Neutral).
+  3. Waypoint 70 › comm directory: Hale Varro is listed. Talk to him: "Test 70: the loyalist's job"
+     is offered (don't accept it).
+  4. Refuge 70 › comm directory: Hale Varro is not listed.
+
+(b) The station changes owner to a hostile faction: he leaves, the quest isn't offered
+  1. Ctrl+F9 › "Change a market's owner": the text lists "sya_loyal at sya_station: owner at least
+     NEUTRAL with hegemony (present now)". Pick Waypoint 70 › Pirates: "1 person left or came back".
+  2. starsector.log: "person sya_loyal leaves sya_station: its owner pirates is below NEUTRAL with
+     hegemony; they go to sya_refuge".
+  3. Waypoint 70 › comm directory: Hale Varro is gone.
+  4. Refuge 70 › comm directory: Hale Varro is listed. Talk to him: "Test 70: the loyalist's job"
+     is not offered. starsector.log: "skipped quest sya_job: its contact sya_loyal is away" (once).
+
+(c) Changing it back, or making peace, brings him back
+  1. Ctrl+F9 › "Change a market's owner" › Waypoint 70 › Independent: "1 person left or came back";
+     log "person sya_loyal is back at sya_station: …".
+  2. Waypoint 70 › comm directory: Hale Varro is listed again and offers his quest; Refuge 70 no
+     longer lists him.
+  3. A war instead of an owner change: Ctrl+F9 › "War or peace" › "War: independent and hegemony
+     hostile": he leaves (as in (b) 2–4). Then "Peace: independent and hegemony neutral": he is back.
+  4. Save, load: he stays as he was (listed or not) after the load.
+
+(d) SF_FactionRep in a dialog
+  1. With Waypoint 70 independent and at peace: its menu › "Test 70, ask who runs the station": the
+     text says "the station belongs to the independents. Captain Varro away: false". Pick "Does the owner
+     get on with the Hegemony?": "SF_FactionRep says the owner is at least Neutral with the Hegemony".
+  2. Ctrl+F9 › "War or peace" › "War: independent and hegemony hostile", ask again: "… belongs to
+     independent. Captain Varro away: true", then "… worse than Neutral with the Hegemony".
+  3. Optional: Peace again, change Waypoint 70's owner to Pirates (dev menu) and ask: "… belongs to
+     pirates", "… worse than Neutral".
+```
+
+  - Record the results here.
+  - **Results (user, 2026-11-18, 0.98a-RC8)**: **(a) passed.** Talking to Hale Varro at Waypoint 70
+    offers "Test 70: the loyalist's job" (next to vanilla's Hegemony missions from his hub); Refuge
+    70's comm directory doesn't list him. starsector.log: no "leaves" line, no SagaLib errors (no
+    "people: … created" line either: he was created when Waypoint 70 was built, from its people list).
+    **(b) passed.** Dev menu › Change a market's owner listed "sya_loyal at sya_station: owner at least
+    NEUTRAL with hegemony (present now)"; Waypoint 70 › pirates: "No quest reacted. 1 person left or
+    came back". Log: "dev menu: market sya_station changed owner from independent to pirates", "person
+    sya_loyal leaves sya_station: its owner pirates is below NEUTRAL with hegemony; they go to
+    sya_refuge", and on talking to him at Refuge 70 "skipped quest sya_job: its contact sya_loyal is
+    away". Waypoint 70's comm directory no longer lists him; Refuge 70's does; there he offers only
+    vanilla's observation-package mission (a new one: the hub was replaced), not the Test 70 job.
+    **(c) passed.** Waypoint 70 › Independent: "person sya_loyal is back at sya_station: its owner
+    independent is at least NEUTRAL with hegemony"; listed at Waypoint 70 again. War or peace showed
+    "independent and hegemony (sya_loyal): NEUTRAL"; War: "now HOSTILE. 1 person left or came back",
+    log "relation independent / hegemony set to -0.6" and "… leaves sya_station: its owner independent
+    is below NEUTRAL with hegemony"; Peace (0): "… is back". Saved while away (after a second War) and
+    loaded: no presence line on load (the flag didn't change) and Waypoint 70 still doesn't list him.
+    No SagaLib errors.
+    **(d) passed.** "Does the owner get on with the Hegemony?": independent at peace → "at least Neutral"
+    (away: false); independent at war → "worse than Neutral" (away: true); pirate owner → "worse than
+    Neutral" (away: true). So `SF_FactionRep $faction.id hegemony NEUTRAL` reads the real owner id.
+    **Found (test text only)**: the offer text's `$faction.id` showed as "independent.id" / "pirate.id":
+    in dialog *text* the game replaces its token `$faction` (the faction's name) before memory keys, so
+    `$faction.<x>` can't be shown in text (conditions are unaffected). The test mod now says
+    `$theFaction`. **Task #70 in-game check: done.**
+
+- **Task #62: a LunaLib settings page for the mod** (SagaLib 1.3 with its LunaLib bridge;
+  **0.98a** install `D:\Starsector`, where LunaLib 2.0.5 and LazyLib are; dev mode, throwaway saves
+  only). Test mod `mods\sixtytwo_a` (prefix `sta_`), built by `npx jiti scripts/build-test-mod.ts
+  sixtytwo_a`; it needs a junction in `D:\Starsector\mods` like the other test mods. Rebuild SagaLib
+  first (`bash build.sh` in `mods\SagaLib`; it must print "built lunalib"). LunaLib is **not** in
+  the test mod's `mod_info.json` (optional). Its page "Saga Forge test #62: LunaLib settings": a
+  header, **Enable the courier job** (on/off, on), **Difficulty** (Easy / Normal / Hard, Normal),
+  **Bonus pay (percent)** (0–300, 100) and a text line. In "Test Range 62", Waypoint 62's menu has
+  "Test 62, check the settings" (the values as SagaLib set them, a Branch on the difficulty and on
+  the bonus) and, while the switch is on, "Test 62 - the courier job" (repeatable): raiders (40
+  fleet points by the doctrine, × 0.5 / 1 / 2.5 by difficulty) wait at Waypoint 62 while it runs;
+  delivering at Drop 62 pays a 1,000¢ bonus × the bonus percent, then 10,000¢ × 0.5 / 1 / 2 by
+  difficulty. LunaLib's menu opens with **F3** (or Shift+F2) in the campaign, or **Mod Settings** in
+  the main menu.
+
+```
+(a) With LunaLib: the page shows, and the switch takes the job away without reloading
+  1. Enable LazyLib, LunaLib, SagaLib and sixtytwo_a; dev mode. New game, then Ctrl+F9 ›
+     "62: go to Test Range 62".
+  2. starsector.log: "LunaLib bridge loaded: mod settings use the player's values from LunaLib's
+     menu" and "settings of sixtytwo_a: 3 values (LunaLib)".
+  3. F3: LunaLib's menu lists "Saga Forge test #62: LunaLib settings". Its page shows the header,
+     the switch (ticked), Difficulty (Normal), Bonus pay (a slider 0–300 at 100) and the text line;
+     each option's description is printed under its label.
+  4. Dock at Waypoint 62: the menu has "Test 62 - the courier job" and "Test 62, check the settings".
+     Check the settings: "Courier job enabled: true. Difficulty: Normal. Bonus: 100 percent."
+  5. Leave, F3, untick "Enable the courier job", save the settings. starsector.log: "settings of
+     sixtytwo_a saved in LunaLib's menu: sta_side_job true -> false".
+  6. Dock at Waypoint 62 again (no reload): "Test 62 - the courier job" is gone; check the
+     settings says "Courier job enabled: false".
+  7. F3, tick it again, save: the job is offered again at the next docking.
+  8. Ctrl+F9 › "Mod settings": each value, where it came from (LunaLib), its default and the bridge.
+
+(b) The difficulty changes the raiders' size and the pay; the bonus percent changes the bonus
+  1. F3: Difficulty Hard, Bonus pay 150; save. Dock, check the settings › "Ask about the
+     difficulty": "the Branch says Hard"; "Ask about the bonus": "at least 150 percent".
+  2. Take the courier job. starsector.log: "encounter sta_raiders: 40.0 fleet points scaled to
+     100.0 by setting sta_difficulty". The "Test 62 Raiders" fleet at Waypoint 62 is clearly bigger
+     than in step 5 (hover it, or look at it with the Hard and Easy runs side by side).
+  3. Fly to Drop 62 › "Test 62 - deliver the parcel": "Gained 1,500¢" (the bonus) and then
+     "Gained 20,000¢" (the pay). Log: "reward bonus: 1000 credits scaled to 1500 by setting
+     sta_bonus" and "reward pay: 10000 credits scaled to 20000 by setting sta_difficulty".
+  4. F3: Difficulty Easy, Bonus pay 100; save. Take the job again: raiders "scaled to 20.0",
+     a small fleet; delivering pays "Gained 1,000¢" and "Gained 5,000¢".
+  5. Changing the difficulty while the job runs leaves the raiders already spawned as they are
+     (they were sized when they spawned); the pay follows the setting when it is paid.
+
+(c) Without LunaLib: the mod loads and the defaults apply
+  1. Disable LunaLib (keep the rest). New game (or load the save from (a)/(b)).
+  2. The game loads with no error about LunaLib. starsector.log: "settings of sixtytwo_a: 3 values
+     (defaults; LunaLib isn't enabled)", and no "LunaLib bridge" line.
+  3. Ctrl+F9 › "62: go to Test Range 62", dock at Waypoint 62: the courier job is offered; check
+     the settings: "true", "Normal", "100" (the defaults, whatever was saved in LunaLib's menu).
+  4. Take the job: no "scaled" line for the raiders (Normal × 1, 40 points); delivering pays
+     "Gained 1,000¢" and "Gained 10,000¢".
+  5. Ctrl+F9 › "Mod settings": every value from its default; the bridge status says LunaLib isn't
+     enabled.
+```
+
+  - Record the results here.
+  - **Results (user, 2026-11-18, 0.98a-RC8, LunaLib 2.0.5)**: **(a) passed.** Log: "LunaLib bridge
+    loaded …" and "settings of sixtytwo_a: 3 values (LunaLib)"; LunaLib loaded all five rows. The
+    page shows the mod with its switch, choice and 0–300 slider; descriptions are printed under the
+    labels (LunaLib has no hover tooltip). Waypoint 62 offered the job and "check the settings" said
+    true / Normal / 100. Unticking the switch logged "settings of sixtytwo_a saved in LunaLib's menu:
+    sta_side_job true -> false"; docking again without a reload, the job option was gone and the
+    check said false; ticking it again brought the job back. Ctrl+F9 › Mod settings: "LunaLib: bridge
+    ready", each value "from LunaLib (default …)".
+    **Found and fixed**: the Header and Text line showed empty: LunaLib draws `defaultValue` for
+    them, not `fieldName` (FORMATS.md). The export now writes the label in both; after the rebuild
+    both showed. **Found**: a whole-number setting shown in dialog text reads "100.0" (memory numbers are
+    Floats; conditions are fine). User, 2026-11-18: warn, don't change the type: Problems now warns.
+    **(b) passed.** Hard / 150: the Branches said Hard and "at least 150"; log "encounter sta_raiders:
+    40.0 fleet points scaled to 100.0" (a big fleet, ~15 ships), "reward bonus: 1000 credits scaled to
+    1500" and "reward pay: 10000 credits scaled to 20000". Easy / 100: "scaled to 20.0" (a small fleet),
+    "Gained 1,000¢" and "Gained 5,000¢" (log: pay scaled to 5000; the bonus at 100% logs nothing).
+    **Found and fixed (test mod, plus a new Problems warning)**: Drop 62 is a station without a market,
+    where vanilla's defaultOpenDialog shows only Leave and never fires PopulateOptions, so the Arrive's
+    menu option never appeared (FORMATS.md). The Arrive now takes over the arrival, and Problems warns
+    about an Arrive or option start at such a place. Then the takeover paid but the dialog closed at
+    once (the end link "back to the menu" closes it where there is no menu), so the job now ends on a
+    dialog with Leave. Problems now also warns about "takeover at a place without a menu, straight to back to the menu"
+    (user, 2026-11-18).
+    **(c) passed.** LunaLib disabled, same save: log "settings of sixtytwo_a: 3 values (defaults;
+    LunaLib isn't enabled)", no LunaLib class loaded (the bridge never touched), no SagaLib errors.
+    Check the settings: true / Normal / 100 (LunaLib's menu last had Easy); the raiders were 40 points
+    (no "scaled" line); delivering paid "Gained 1,000¢" and "Gained 10,000¢". Ctrl+F9 › Mod settings:
+    "LunaLib isn't enabled (every setting uses its default)", each value "default".
+    **Task #62 in-game check: done.**
+
+- **Task #63: Nexerelin faction config for the mod's own factions** (PLAN.md §10.3; data only,
+  Nexerelin optional; SagaLib 1.3 leaves the starting relations to Nexerelin; **0.98a** install
+  `D:\Starsector`, where Nexerelin 0.12.2d, LazyLib and MagicLib are; dev mode, throwaway saves only).
+  Test mod `mods\sixtythree_a` (prefix `sth_`), built by `npx jiti scripts/build-test-mod.ts
+  sixtythree_a`; it needs a junction in `D:\Starsector\mods` like the other test mods. Rebuild SagaLib
+  first (`bash build.sh` in `mods\SagaLib`). Nexerelin is **not** in the test mod's `mod_info.json`.
+  Two factions with a station each in "Test Range 63" (Compact Hold 63, Keepers Hold 63; Range Control
+  63 is independent):
+  - **Test 63 Compact** (`sth_compact`): starting faction, difficulty "Test", a tooltip, ready-made fleets
+    Frigate (Lasher), small combat (two fleets) and small trade. Starting relations: Hegemony -0.6
+    **Hostile**, Independent 0.55 **Friendly**, Tri-Tachyon 0.3 **Welcoming** (all three in its
+    Nexerelin config), and Luddic Church -0.8 **Vengeful** *only with Nexerelin* (a relation with a mod
+    condition: not in the config, SagaLib sets it after Nexerelin, never randomized).
+  - **Test 63 Keepers** (`sth_keep`): starting faction (difficulty "Test, kept"), "Keep relations when
+    randomized" on. Starting relations: Hegemony 0.6 **Friendly**, pirates -0.6 **Hostile**.
+  - **The player faction** (free start, own faction): ready-made fleets added to Nexerelin's, one more
+    Frigate (classic) fleet (a Kite) and one more Combat (small) fleet (Hammerhead + 2 Kites), in the
+    mod's `data/config/exerelinFactionConfig/player.json` (only those lists).
+  Relations are read in the intel tab › Factions (pick the faction; its relations list), or with the
+  console. "starsector.log" lines are SagaLib's.
+
+```
+(a) Pickable in Nexerelin's new-game list
+  1. Enable LazyLib, MagicLib, Nexerelin, SagaLib and sixtythree_a; dev mode. New game, the
+     hand-made sector (not random), Reset relations: no.
+  2. Join a faction › main factions: "Test 63 Compact (Test)" and "Test 63 Keepers (Test, kept)" are
+     in the list, in their colors. Hovering Test 63 Compact shows "Test 63 (a): this tooltip comes from
+     the faction's Nexerelin config, made in Saga Forge."
+  3. Pick Test 63 Compact: the fleet choice offers Frigate (classic) (a Lasher), Combat (small) with
+     < > (1 / 2: Hammerhead + Lasher, two Lashers) and Trade (small) (Buffalo + Lasher), plus
+     Nexerelin's Custom button, and no other types. Start the game.
+  4. You start as a member of Test 63 Compact (commissioned). Note where you start (Compact Hold 63
+     or elsewhere).
+
+(b) Starting relations as designed, hand-made sector
+  1. The game from (a). starsector.log: "left 3 starting relations of sth_compact to Nexerelin (its
+     faction config)" and "left 2 starting relations of sth_keep to Nexerelin", and "set 1 starting
+     faction relations" (the Luddic Church one).
+  2. Intel › Factions › Test 63 Compact: Hegemony Hostile, Independent Friendly, Tri-Tachyon
+     Welcoming, Luddic Church Vengeful. Test 63 Keepers: Hegemony Friendly, Pirates Hostile.
+  3. Nexerelin's diplomacy profile of Test 63 Compact (Intel › Factions, Nexerelin's page): morality
+     Good, alignments diplomatic / corporate up and militarist down, traits Pacifist and Helps Allies.
+
+(c) Random relations: randomized only when asked, and the kept faction keeps its own
+  1. New game, hand-made sector, Reset relations: randomize. Start as anyone.
+  2. Intel › Factions › Test 63 Keepers: Hegemony Friendly, Pirates Hostile (kept).
+  3. Test 63 Compact: its relations with Hegemony, Independent and Tri-Tachyon are random (likely
+     not Hostile / Friendly / Welcoming all three; repeat once if they happen to match). Luddic Church
+     is still Vengeful (SagaLib sets it after Nexerelin: ModPlugins run in mod order, and "SagaLib"
+     sorts after "Nexerelin").
+  4. Optional: Reset relations: flatten. Test 63 Compact and Keepers are neutral with everyone
+     (Nexerelin's flatten), except the Luddic Church line, which SagaLib still sets (Vengeful).
+
+(d) A random sector (ON HOLD with the random sector, descoped 2026-11-18: skip; user, 2026-11-19)
+  1. New game, random sector, Reset relations: no; Test 63 Compact and Keepers switched on in the
+     faction list. Start as anyone.
+  2. Test 63 Compact: Hegemony Hostile, Independent Friendly, Tri-Tachyon Welcoming, Luddic Church
+     Vengeful. Test 63 Keepers: Hegemony Friendly, Pirates Hostile.
+
+(e) Without Nexerelin, nothing changes
+  1. Disable Nexerelin (keep the rest). New game (vanilla's sector).
+  2. starsector.log: "set 5 starting faction relations", no "left … to Nexerelin" line, no error.
+     (The Luddic Church relation is only with Nexerelin, so it is skipped.)
+  3. Intel › Factions: Test 63 Compact Hegemony Hostile, Independent Friendly, Tri-Tachyon Welcoming,
+     Luddic Church neutral; Test 63 Keepers Hegemony Friendly, Pirates Hostile, as SagaLib always set
+     them.
+
+(f) Ready-made fleets added to the player faction (free start)
+  1. With Nexerelin (as in (a)): New game › Free start (hard). The fleet choice is Nexerelin's
+     (your screenshot of 2026-11-19 had Frigate (classic) 1 / 5).
+  2. Frigate (classic): one more fleet than without sixtythree_a (1 / 6); the last one is a lone Kite.
+     Combat (small): < > now 1 / 2; the second is a Hammerhead and two Kites. Nexerelin's own fleets
+     are all still there, in their order.
+  3. Optional, to compare: disable sixtythree_a: back to 1 / 5 and a single Combat (small) fleet.
+```
+
+  - Record the results here.
+  - **Results (user, 2026-11-19, 0.98a-RC8, Nexerelin 0.12.2d)**: **(a) passed.** The new-game list
+    (Factions: Pir - Tri) has "Test 63 Compact (Test)" and "Test 63 Keepers (Test, kept)"; hovering
+    Compact shows the config's tooltip. Joining it shows its description ("Test 63: a faction with a
+    full Nexerelin config.") and the fleet choice Frigate (classic), Combat (small) 1 / 2 and Trade
+    (small), plus Custom, nothing else. Picking Trade (small) gave a Buffalo Mk.II and a Lasher.
+    Commissioned, started at Compact Hold 63.
+    **(b) passed** (steps 1 and 2; step 3, Nexerelin's diplomacy profile, not looked at). Log:
+    "set 1 starting faction relations", "left 2 starting relations of sth_keep to Nexerelin (its
+    faction config)", "left 3 … of sth_compact …"; the mod list reads Nexerelin, sixtythree_a, SagaLib,
+    and Nexerelin's last relations line comes 3 ms before SagaLib's (ModPlugins run in mod order, seen
+    in game). Test 63 Compact: Hegemony Hostile -60, Tri-Tachyon Welcoming 30, Independent Friendly 55,
+    Luddic Church Vengeful -80. Test 63 Keepers: Hegemony Friendly 60, Pirates Hostile -60.
+    **Found**: the player, who joined Test 63 Compact, was Neutral with the Luddic Church (the other
+    relations matched Compact's). Nexerelin copies the joined faction's relations to the player at the
+    end of its setup, before SagaLib sets the relation with a mod condition. User, 2026-11-19: not a
+    bug of either mod, don't work around Nexerelin; documented (FORMATS.md) and Problems' line on the
+    relations that stay SagaLib's now says a joining player doesn't get them.
+    **(c) passed** (Random, joined Independent). Test 63 Compact: Hegemony, Independent and Tri-Tachyon
+    no longer Hostile / Friendly / Welcoming (none among its allies or enemies: randomized, here near
+    neutral); Luddic Church still Vengeful -80 (SagaLib, after Nexerelin). Test 63 Keepers: Hegemony
+    Friendly 60, Pirates Hostile -60 (kept). Both Hostile -60 with the Luddic Path and the pirates:
+    Nexerelin's pirate rule in that mode, not ours. **Step 4 (Flatten) passed** (joined the Persean
+    League): Test 63 Compact neutral with everyone but the Luddic Church, still Vengeful -80; Test 63
+    Keepers neutral with everyone but Pirates Hostile -60 (its Hegemony Friendly is gone too: "keep
+    relations" only protects from Random, Flatten resets every faction afterwards; the pirates are
+    Nexerelin's pirate rule).
+    **(e) passed** (Nexerelin disabled). Log: "skipped relation sth_compact/luddic_church of
+    sixtythree_a: needs nexerelin (not enabled)", "set 5 starting faction relations", no "left … to
+    Nexerelin" line, no SagaLib error. Test 63 Compact: Tri-Tachyon Welcoming 30, Independent Friendly
+    55, Hegemony Hostile -60, Luddic Church neutral; Test 63 Keepers: Hegemony Friendly 60, Pirates
+    Hostile -60.
+    **(d) on hold** (the random sector). **(f) passed**: Free start (hard) shows Frigate (classic)
+    1 / 6 (was 1 / 5) and Combat (small) 1 / 2 (was one fleet): the mod's player.json is appended to
+    Nexerelin's by the game's merge, Nexerelin's fleets all still there.
+    **Task #63 in-game check: done** (2026-11-19; (d) on hold with the random sector).
+
+- **Task #65: Nexerelin quest skip, MagicLib achievements, shared drop groups** (PLAN.md §10, "Later"
+  rows, §10.7 question 5; SagaLib 1.3's Nexerelin plugin and MagicLib bridge; **0.98a** install
+  `D:\Starsector`, where Nexerelin 0.12.2d, MagicLib 1.5.6 and LazyLib are; dev mode, throwaway saves
+  only). Test mod `mods\sixtyfive_a` (prefix `sfv_`), built by `npx jiti scripts/build-test-mod.ts
+  sixtyfive_a`; it needs a junction in `D:\Starsector\mods` like the other test mods. Rebuild SagaLib
+  first (`bash build.sh` in `mods\SagaLib`: it must say "built magiclib" and "built nexerelin").
+  Neither Nexerelin nor MagicLib is in the test mod's `mod_info.json`. At Waypoint 65 ("Test Range 65";
+  Ctrl+F9 › "65: go to Test Range 65"):
+  - **Test 65: the first job** (`sfv_first`): Accept, then Help (sets `$global.sfv_first_helped`, +500
+    XP, success with 5,000 credits and the achievement "Test 65: first job done") or Refuse (failure).
+  - **Test 65: the second job** (`sfv_second`): offered only after the first ended in success; its
+    end unlocks the hidden achievement "Test 65: second job done".
+  - **Test 65, check the skip**: prints the first job's state, step, flag, completed key and
+    `$global.sagaforge_skipped_sfv_first`, the second job's state, and a Branch on
+    `SF_QuestDone sfv_first success`.
+  - Saga › Quest skip: chain "Test 65" (sorted last) with "Test 65: first" (a skip means Help) and
+    "Test 65: second".
+  Achievements are kept in `saves/common` (MagicLib's `magic_achievements.json`), not in a save: once
+  unlocked, they stay unlocked for later runs (MagicLib's list has no reset, and Console Commands
+  isn't installed). Run (a) before (b): (a) unlocks only the second job's achievement.
+
+```
+(a) The chain on Nexerelin's new-game screen, and a skip sets the chosen ending
+  1. Enable LazyLib, MagicLib, Nexerelin, SagaLib and sixtyfive_a; dev mode. New game (hand-made
+     sector), any start.
+  2. In the new-game options, Skip story ("Set completed quests"): a row "Test 65" with its icon,
+     after Nexerelin's rows, with the buttons "Test 65: first" and "Test 65: second". Hovering
+     the row and each button shows its tooltip.
+  3. Check "Test 65: second": "Test 65: first" is checked with it. Uncheck "Test 65: first":
+     "Test 65: second" is unchecked too. Leave only "Test 65: first" checked. Start the game.
+  4. starsector.log: "quest skip: sfv_first skipped through Nexerelin (state success, 2 reward(s)
+     given)"; no SagaLib or Nexerelin error. The credits went up by 5,000 and the XP by 500 at the
+     start (compare with a start without the skip, or the log's credit lines).
+  5. Ctrl+F9 › 65, at Waypoint 65: "Test 65 - the first job" is NOT offered; "Test 65 - the second
+     job" IS offered. Its text says "Helped in the first job: true".
+  6. "Test 65, check the skip": first job success, step done, helped true, completed key true,
+     skipped through Nexerelin true; second job (empty: not started). Ask whether it's done:
+     "SF_QuestDone sfv_first success is true".
+  7. Take and finish the second job: it ends in success; with MagicLib, its achievement notice.
+
+(b) A quest end unlocks the achievement, and MagicLib lists it
+  1. New game without skipping (or a new save; Skip story: nothing checked). Ctrl+F9 › 65.
+  2. Intel › Achievements (MagicLib): "Test 65: first job done" is listed (visible, common), not yet
+     unlocked; "Test 65: second job done" isn't shown (hidden).
+  3. "Test 65 - the first job" › Accept › Test 65 - help: the dialog shows the 5,000 credits and
+     MagicLib's achievement notice. "Test 65 - the second job" is offered now.
+  4. Intel › Achievements: "Test 65: first job done" unlocked, with the job's icon (not MagicLib's
+     default image). starsector.log: "SF_Achievement in rule …: achievement sfv_first_done
+     unlocked" and MagicLib's "Achievement completed! sfv_first_done".
+  5. Optional: Refuse instead (a new game): the job fails, no achievement, the second job isn't
+     offered.
+
+(c) Without MagicLib: the mod loads and nothing happens
+  1. Disable MagicLib (keep Nexerelin, or disable both). The game starts; no error about
+     magic_achievements.csv or SF_Achievement.
+  2. New game, Ctrl+F9 › 65, play the first job to Help: it ends in success with the credits, no
+     achievement notice, the dialog goes on. starsector.log: one line "achievement sfv_first_done not
+     unlocked: MagicLib isn't enabled".
+  3. Without Nexerelin too: no Skip story screen; the mod loads, no error about questSkip.json.
+
+(d) Shared drop groups (Saga Forge only)
+  1. In Saga Forge, with the 0.98.5a install (D:\Starsector_98_5a, where eight_a and eight_a_twin are
+     junctioned), open eight_a: Problems shows the warning on loot pool "More alpha cores":
+     "ai_cores1" already has "alpha_core" (eight_a_twin) … only one weight counts. (The automated
+     test reads the same two files: test/crossmod65.test.ts.)
+```
+
+  **(a) passed** (2026-11-19, 0.98a-RC8, Nexerelin 0.12.2d, MagicLib 1.5.6): the "Test 65" row with its
+  icon (so an image listed in settings.json graphics is loaded and drawn by path), both buttons and
+  tooltips, forcing on and off as designed. Log: "quest skip: sfv_first skipped through Nexerelin
+  (state success, 2 reward(s) given)", no error. Check the skip: success, step done, helped true,
+  completed key true, skipped true; the first job not offered, the second offered ("Helped in the
+  first job: true"); its end showed MagicLib's notice ("Achievement completed! sfv_second_done").
+  Notes: an unset key in text prints its name ("Second job: $global.sfv_second_state"), as vanilla
+  does, not empty; and the test profile sets the credits to 100,000, so the skip's 5,000 can't be
+  seen with it (the log line counts the rewards).
+  **(b) passed** (2026-11-19): Intel › Achievements listed "Test 65: first job done" locked; Help showed
+  "Gained 500 experience", "Gained 5,000¢" and MagicLib's notice; the list then had it unlocked with
+  the mission icon (the second, without an image, MagicLib's default); log "Achievement completed!
+  sfv_first_done" and SF_Achievement's line. Refuse: failed, no notice, the second job not offered.
+  The shared "after" text read as if an achievement came after Refuse too; reworded in the test mod.
+  **(c) passed** (2026-11-19), with Nexerelin and MagicLib both disabled (Nexerelin needs MagicLib,
+  so "only MagicLib off" can't be tested): no Skip story screen; the mod loads with no error ("0
+  errors" in SagaLib's content line); both jobs end in success with their rewards and no notice; one
+  log line each: "achievement sfv_first_done not unlocked: MagicLib isn't enabled" (and sfv_second_done).
+  **(d) passed** (2026-11-19, Saga Forge on the 0.98.5a install): eight_a's loot pool "More alpha cores"
+  warns that "ai_cores1" already has "alpha_core" (eight_a_twin); eight_a_twin, whose row is written by
+  hand, warns the same way naming eight_a (the hand-written-row check).
+  **Task #65 in-game check: done** (2026-11-19).
+
+- **Follow-up: quest icons of the mod's own** (2026-11-19; SagaLib 1.3 now loads a quest's icon
+  before the game draws it, `SagaQuest.getIcon` › `Textures.ensure`). Same test mod and install. Two
+  quests at Waypoint 65 with icons that are the mod's own files (made with `node
+  scripts/make-test-art.mjs <dir> <color>`, `icon_box.png` copied to
+  `graphics/icons/missions/sfv_icon_option.png` (red) and `sfv_icon_contact.png` (blue); the build
+  writes only text). Run 1 uses the SagaLib jar from before the fix (commit 7744d71), run 2 the fixed
+  one; Nexerelin and MagicLib can stay off.
+
+```
+Run 1 (SagaLib before the fix) and run 2 (after it): the same steps
+  1. Enable LazyLib, SagaLib and sixtyfive_a; dev mode. New game, Ctrl+F9 › 65.
+  2. At Waypoint 65: "Test 65 - the icon job (option start)" › Accept. Look at the "Accepted"
+     and stage lines in the dialog: a red square, or blank?
+  3. Comm directory › Ada Kell › her job "Test 65: icon, contact start" (it may take a
+     moment to be offered; leave and come back if not) › Accept. The lines: a blue square, or
+     blank?
+  4. Intel › Missions (or Accepted): both entries' icons.
+  5. starsector.log: any "can't load image" line from SagaLib?
+  Expected: run 2 shows both squares and no log line. Run 1 tells whether the game loads the icon
+  in person_missions.csv by itself (the blue one) and confirms the option start's red one is blank.
+```
+
+  **Run 1 done** (2026-11-19, SagaLib before the fix): the option start's icon is **blank** in the
+  dialog's Accepted and stage lines and in the intel list; the contact start's blue icon **shows**, so
+  the game loads the icons named in person_missions.csv (and so bar_events.csv, presumably) itself.
+  Only quests without such a row (option, trigger, interjection, bar scene, manual, started by another
+  quest) needed the fix.
+  **Run 2 passed** (2026-11-19, fixed SagaLib): the option start's red icon shows in the dialog lines,
+  the contact start's blue one still does; no "can't load image" line. **Follow-up check: done.**
+
 ## Workflow checks (task #36)
 
 > **Decision (user, 2026-11-15): the test mod build is cancelled until after the changes.** The
@@ -852,7 +1763,7 @@ probe arrival use).
 | RC-F6 | **Loot fields reserved** on entities and rewards; format checks for the salvage CSVs; in-game check of how `drop_groups.csv` merges | XS | — | **Done** (2026-11-15, Phase 4; §5): `loot` reserved in FORMAT.md (SagaLib ignores it); Check mod verifies the columns of the mod's own `drop_groups.csv` and `salvage_entity_gen_data.csv`. The merge of `drop_groups.csv` is on the in-game list. |
 | RC-F7 | **Loot tables, salvage specials and defenders** as the first users of the pool model (`SF_SalvageSpec`, `SF_SetSpecial`, `SF_SetDefenders`, a random-from-group reward) | L | R23 (fleets: defenders) | **Partly done (7e)** (2026-11-16): **loot tables** (Saga › Pools › a loot table: the mod's own drop groups in drop_groups.csv, no SagaLib; the user's decision: own groups only until the merge check), **salvage loot** on entities and scatters (addDropRandom / addDropValue) and **defenders** (DefenderDataOverride), SagaLib 1.2. Not done: salvage **specials** (vanilla's special data objects per kind), additions to vanilla's groups, a random-from-group reward (DESIGN-PHASE7 question 12). Needs the in-game check (seven_e). |
 | RC-F8 | Ruins criteria for random targets: folded into RC-R1 | — | — | Merged into RC-R1 |
-| RC-F9 | Cross-mod ruins work | — | — | Task #31 |
+| RC-F9 | Cross-mod ruins work | — | — | **Decided (#31, 2026-11-17)**: no separate work. VoK's `ruins_*` specs don't touch ours; ruins on another mod's planets are conditional content; in a random sector, random ruins targets are the fallback (PLAN.md §10, table and §10.2–§10.3) |
 | RC-R1 | **Random targets**: a quest picks its place when offered, by criteria mapped 1:1 to vanilla's `HubMissionWithSearch` (faction, distance, tags, size, …), with fallbacks, tokens and a "no match" explanation | M | Heliopolis: Kythera at a random location (guide §13); PLAN §11.2 (#30) | **Done (7c)** (2026-11-16): a quest variable of type **random target** picks a planet, entity, system or market with 56 of vanilla's HubMissionWithSearch criteria (Must / Prefer in order, "system first"), run by SagaLib 1.2 in SagaQuest.create(): when a contact or bar offers the quest, or for other starts at its first Stage node. Nothing found: not offered / not started. The pick and its name, system, distance and faction are in `$global` memory (text tokens); stage markers, Arrive places and entity flags can name it (`target:<var>`, condition SF_IsTarget). Checks for criteria that don't fit the pick, empty lists, prefer-only gaps, unknown targets. Not done: commodity and terrain picks, a weighted pool of fixed places, "used for story" and exclusive references (DESIGN-PHASE7 questions). Needs the in-game check (seven_c). |
 | RC-R1b | **Play mode for random targets**: designer-picked mock targets; optional dev-mode snapshot of a real sector | S (+M) | R14 (read-only vanilla systems) | **Done (7c), mock only** (2026-11-16): each target has a **mock** (name, system, distance, faction) that Play mode and the preview use, and "Arrive at target:<var>" arrives at it. The dev-mode sector snapshot is left for later (decision 5). |
 | RC-R2 | **Spawn at the target**: a mission node, derelict, debris field, cache with loot, graveyard or custom entity, placed at a stage and removed when the quest ends | M | **R25, R26** (objects that appear, are removed or replaced during a quest): the same mechanism for fixed places | **Done (7d)** (2026-11-16): Action › **Spawn at the random target** (SF_SpawnAtTarget): vanilla's mission spawning near the pick (a custom entity type such as supply_cache, or a faction's derelict ship; where = vanilla's EntityLocationType), removed when the quest ends, marked on the map; place `target:<var>.spawned` for markers and Arrive. An encounter's **At** can be a quest's random target. Not done: debris fields, mission nodes and graveyards (vanilla has them; one Action each later). Needs the in-game check (seven_d). |

@@ -45,8 +45,10 @@ Under the list are the open quest's **Stages (journal)** and **Variables**:
 - **Variables** are values the quest remembers in the save, such as the agreed pay. Each has a name,
   a type (number, string, bool, entity, person, or *random target*) and a starting value. In
   conditions and Set actions they are `$global.<quest id>_<name>`, e.g.
-  `$global.vgc_lost_convoy_pay`. The player never sees them unless a text uses the token.
-- A **random target** variable is a place SagaLib picks when the quest is offered (for example "an
+  `$global.vgc_lost_convoy_pay`. The player never sees them unless a text uses the token. They get
+  their starting value when a contact or bar event offers the quest; with any other start, only
+  when the quest starts (its first Stage node), so an offer before that can't show them.
+- A **random target** variable is a place SagaLib picks in each game (for example "an
   uncolonised planet within 15 light-years of the quest giver"). Its button in the Starts at column
   opens its search. Stage map markers, Arrive nodes and the *Spawn at the random target* action can
   then use it as `target:<name>`. See
@@ -67,12 +69,24 @@ Click the empty chart to see the quest's settings in the inspector:
 - **Repeatable**, **Icon** (64×64, **Choose…** picks one by picture, see
   [Images › Pick an image for a field](images.md#pick-an-image-for-a-field)) and **Time limit** (days
   after accepting; the quest fails when they run out).
+- **If a market of this quest changes owner** (a Nexerelin invasion, a rebellion, a sale, another
+  mod): SagaLib remembers who owns the quest's markets when it starts (the giver's market, stage
+  markers, Arrive places, named places, random targets that are markets) and checks them once a
+  day. **Keep going (don't watch)** is the default; **keep going (set the keys)**, **fail the
+  quest**, or **go to a stage**, where what follows that Stage node in the chart runs (a dialog can
+  bring the news). Every choice but the first sets `$global.<quest>_ownerChanged` (the market id)
+  and `$global.<quest>_newOwner` (the faction), for dialog and Branch cases. In Play mode, the
+  green bar offers "<market> changes owner to …" while the quest is active; in game, SagaLib's dev
+  menu (Ctrl+F9) has **Change a market's owner**.
 - **How it starts**: where the player first meets the quest, see the table below.
-- **Prerequisites**: other quests that must have ended (succeeded, failed or either), or flags that
-  must be set, before the quest is offered or starts.
+- **Prerequisites**: other quests that must have ended (succeeded, failed or either), flags that
+  must be set, or one of the mod's settings (see
+  [Saga › Switch a questline on or off](saga.md#switch-a-questline-on-or-off)), before the quest
+  is offered or starts.
 - **Rewards**: named rewards (credits, XP, story points, reputation, items, random items from a drop
   group) that an End node or a *Give a reward* action pays. See
-  [Give a reward](#give-a-reward).
+  [Give a reward](#give-a-reward). The credits can be **Scaled by** a setting, such as a
+  difficulty (see [Saga › Settings](saga.md#settings)).
 - **Notes**: for you only, never exported.
 
 | Start | Where the player meets it | Written to |
@@ -87,6 +101,10 @@ Click the empty chart to see the quest's settings in the inspector:
 
 Every start kind shows its own fields with help under each one (the contact or contact tags, how
 often it is offered, the blurb, the option text, conditions …).
+
+A quest that starts from an option, a trigger, an interjection or a bar scene is only offered until
+the player accepts it; a repeatable one comes back after it ends. The export adds that test to the
+start's conditions (a contact or bar event leaves it to vanilla's mission list).
 
 ![Save as template: the quest becomes a starting point for new quests](../img/quests-savetemplate.png)
 
@@ -198,8 +216,9 @@ Things that happen in order, then the quest goes on. Nothing is shown unless a s
 **+ add…** offers: set a variable or flag, clear a flag, give or take credits, change reputation,
 give or take an item, give a reward, story points, experience, spawn an encounter, an encounter
 leaves, place or remove an object, remove a person, spawn something at the random target, start
-another quest, add progress to a progress event, or a raw rules.csv script line. Each step has its
-help text under it.
+another quest, add progress to a progress event, start a MagicLib bounty, unlock a MagicLib
+achievement ([Saga › Achievements](saga.md#achievements)), or a raw rules.csv script line. Each step
+has its help text under it.
 
 ![An Action node that sets the pay variable to 2](../img/quests-node-action.png)
 
@@ -245,8 +264,9 @@ needed.
 #### End
 
 Ends the quest: **success**, **failure** or **abandoned** (like the player's Abandon button), and
-optionally pays one of the quest's rewards. The conversation can go on after it, for a last line or
-a Link back to the menu.
+optionally pays one of the quest's rewards. Once the mod has MagicLib achievements
+([Saga › Achievements](saga.md#achievements)), an **Achievement** field unlocks one there too. The
+conversation can go on after it, for a last line or a Link back to the menu.
 
 ![An End node: success, with the reward "paid"](../img/quests-node-end.png)
 
@@ -287,6 +307,12 @@ options in the preview; the chart lights up the path taken.
 - **Play log** explains every step (which rule fired and why).
 - In a random branch, **Next pick** in the branch's inspector forces what the next roll picks, so
   you can try each case.
+- With optional mods in [Saga › Mods](saga.md#mods), the toolbar has a switch for each: Play
+  as if that mod was enabled when the game started (switching restarts). Options, cases and
+  phrases with **Only with / Only without** follow them, as in game.
+- For people with a [Presence](people.md) rule, the green bar has a "<name> is away" switch. A
+  quest whose contact is away isn't offered (as in game), and dialog that tests
+  `$global.sagaforge_away_<id>` follows the switch.
 
 See [Test a quest in Play mode](#test-a-quest-in-play-mode).
 
@@ -447,8 +473,7 @@ instead, set **Continue: after a number of days**.
 
 ### Send the player to a random place
 
-Lets SagaLib pick the quest's place when the quest is offered, so it's different in every game.
-Example: *Old Claims*, where Reyes sends the player to an old Compact claim on an uncolonised
+Lets SagaLib pick the quest's place, so it's different in every game. Example: *Old Claims*, where Reyes sends the player to an old Compact claim on an uncolonised
 planet near her.
 
 1. Under **Variables**, **+** a variable (e.g. `ruin`) and set its type to **random target**. Its
@@ -467,8 +492,15 @@ planet near her.
 ![The random target "ruin": an uncolonised planet within 15 light-years, ruins preferred](../img/quests-target.png)
 ![Old Claims: the stage and the Arrive both point at target:ruin](../img/quests-scout-chart.png)
 
-If nothing in the player's sector fits, the quest isn't offered then, and the contact offers
-something else. Random targets need SagaLib 1.2.
+**When the place is picked** depends on how the quest starts. A contact or bar event picks it when
+it offers the quest, so the offer can name it. With any other start (an option, a trigger, …)
+SagaLib picks it when the quest starts, at its first Stage node: name the place only in texts
+after that. Problems warns about a text that names it too early, and Play mode shows the token
+unfilled there, as the game does.
+
+If nothing in the player's sector fits, a contact or bar event doesn't offer the quest then (the
+contact offers something else); with any other start the quest doesn't start (a Branch on its
+state after the Stage node can tell the player). Random targets need SagaLib 1.2.
 
 ### Give a reward
 

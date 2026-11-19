@@ -1,22 +1,23 @@
 <script lang="ts">
   /** Inspector for the selected node (Dialog has its own component). */
   import type { ActionNode, ActionOp, BranchNode, QNode, QuestPlan } from '../../../shared/model'
-  import { uniqueId } from '../../../shared/quest'
+  import { uniqueId, setWaitMode } from '../../../shared/quest'
   import { newEncounter } from '../../../shared/encounters'
   import { branchPool, chances } from '../../../shared/pools'
-  import { play } from './play.svelte'
+  import { play, playModel } from './play.svelte'
   import { lockedEntityIds } from '../../../shared/patterns'
   import { compileQuest } from '../../../shared/export/questrules'
   import { itemKindLookup } from '../../../shared/export/items'
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
-  import { editNode, editQuest, conditionTemplates } from './edit'
+  import { editNode, editQuest, conditionTemplates, bountyChoices } from './edit'
   import { renameTodoElement } from '../../../shared/todo'
   import DialogInspector from './DialogInspector.svelte'
   import LinesInput from './LinesInput.svelte'
   import IdInput from '../ui/IdInput.svelte'
   import { arriveTakesOver, defaultTakeover, targetPlaces } from '../../../shared/targets'
   import Field from '../ui/Field.svelte'
+  import ModsCond from '../ui/ModsCond.svelte'
   import { later } from '../ui/later'
 
   interface Props { quest: QuestPlan; node: QNode }
@@ -24,13 +25,19 @@
   const qid = $derived(quest.id)
   const m = $derived(project.m!)
   const factions = $derived([...m.factions.filter((f) => f.kind === 'addition').map((f) => f.id), ...(app.index?.factions.map((f) => f.id) ?? [])])
-  const templates = $derived(conditionTemplates(quest, factions, m.quests))
+  /** #59: the MagicLib bounties this quest can start or test. */
+  const bounties = $derived(bountyChoices(quest))
+  const templates = $derived(conditionTemplates(quest, factions, m.quests, bounties))
   /** Places for Arrive nodes: this mod's entities and the game's market entities. */
-  const places = $derived([...targetPlaces(quest), ...m.systems.flatMap((s) => s.entities.map((e) => ({ id: e.id, name: `${e.name} (${s.name})` }))), ...(app.index?.markets.flatMap((x) => x.entities.map((id) => ({ id, name: x.name }))) ?? [])])
+  const places = $derived([...targetPlaces(quest), ...m.systems.flatMap((s) => s.entities.map((e) => ({ id: e.id, name: `${e.name} (${s.name})` }))), ...(app.index?.markets.flatMap((x) => x.entities.map((id) => ({ id, name: x.name }))) ?? []),
+    // #64: other Saga Forge mods' places and what a sector snapshot saw
+    ...(app.index?.places ?? []).filter((x) => !app.index?.markets.some((mk) => mk.entities.includes(x.id))).map((x) => ({ id: x.id, name: x.name }))])
   const ed = <T extends QNode>(fn: (n: T) => void) => editNode<T>(qid, node.id, fn)
   const rules = $derived.by(() => {
     try {
-      const c = compileQuest(quest, { sagalib: true, phrases: [...m.phrases, ...m.people.flatMap((p) => p.phrases)], itemKind: itemKindLookup(m.items, app.index?.items ?? []), lockedEntities: lockedEntityIds(m.quests) })
+      // #60: as exported (mod conditions folded into rule conditions)
+      const lq = playModel()?.quests.find((x) => x.id === quest.id) ?? quest
+      const c = compileQuest(lq, { sagalib: true, phrases: [...m.phrases, ...m.people.flatMap((p) => p.phrases)], itemKind: itemKindLookup(m.items, app.index?.items ?? []), lockedEntities: lockedEntityIds(m.quests) })
       return c.rows.filter((r) => c.nodeOf[r.id] === node.id)
     } catch { return [] }
   })
@@ -104,11 +111,14 @@
     { op: 'startQuest', label: 'Start another quest', help: 'Starts a quest of this mod whose start is "started by another quest", without an offer.' },
     { op: 'unset', label: 'Clear a flag', help: 'Removes a memory key from the save.' },
     { op: 'progress', label: 'Add progress', help: 'One-time points for one of the mod\'s progress events (Saga › Progress), listed with the text in its one-time factors; starts the event if it isn\'t running. Negative points lower it. Needs SagaLib 1.2.' },
+    { op: 'startBounty', label: 'Start a MagicLib bounty', help: 'The player takes a MagicLib bounty, as if accepted on MagicLib\'s bounty board: MagicLib picks its place, spawns the fleet, adds its intel and pays its reward when it ends. Once: a bounty already taken or ended stays as it is. Without MagicLib it does nothing, so test "MagicLib bounty … unavailable" in a Branch before and tell the player. Later dialog tests how it went (Branch conditions "MagicLib bounty …"). Needs SagaLib 1.3.' },
+    { op: 'achievement', label: 'Unlock a MagicLib achievement', help: "Unlocks one of the mod's MagicLib achievements (Saga › Achievements), with MagicLib's notice in the dialog. MagicLib keeps achievements outside the save, so it stays unlocked in every playthrough; unlocking it again does nothing. Without MagicLib nothing happens and the dialog goes on. Needs SagaLib 1.3." },
     { op: 'line', label: 'Script line', help: 'Any rules.csv script command, written as is (e.g. AdjustRep hegemony 5).' }
   ]
+  const achievements = $derived((m.project.achievements ?? []).map((a) => ({ id: a.id, name: a.name || a.id })))
   // SagaLib 1.1: objects that appear later, and every object (the mod's, vanilla's, other mods') for removal
   const deferred = $derived(m.systems.flatMap((s) => s.entities.filter((e) => !!e.appears)))
-  const allEntities = $derived([...m.systems.flatMap((s) => s.entities.map((e) => ({ id: e.id, name: e.name }))), ...(app.index?.codeSystems ?? []).flatMap((c) => c.bodies.filter((b) => b.id).map((b) => ({ id: b.id, name: `${b.name} · ${c.name}` }))), ...(app.index?.markets ?? []).flatMap((mk) => mk.entities.map((id) => ({ id, name: mk.name })))])
+  const allEntities = $derived([...m.systems.flatMap((s) => s.entities.map((e) => ({ id: e.id, name: e.name }))), ...(app.index?.codeSystems ?? []).flatMap((c) => c.bodies.filter((b) => b.id).map((b) => ({ id: b.id, name: `${b.name} · ${c.name}` }))), ...(app.index?.markets ?? []).flatMap((mk) => mk.entities.map((id) => ({ id, name: mk.name }))), ...(app.index?.places ?? []).map((x) => ({ id: x.id, name: x.name }))])
   function addOp(op: ActionOp['op']) {
     const v = quest.variables[0]
     const fresh: Record<ActionOp['op'], ActionOp> = {
@@ -120,7 +130,9 @@
       startQuest: { op: 'startQuest', quest: m.quests.find((x) => x.id !== qid)?.id ?? '' }, line: { op: 'line', line: '' },
       placeEntity: { op: 'placeEntity', entity: deferred[0]?.id ?? '' }, removeEntity: { op: 'removeEntity', entity: '' }, removePerson: { op: 'removePerson', person: '' },
       progress: { op: 'progress', event: m.progress?.[0]?.id ?? '', points: 100, text: '' },
-      spawnAtTarget: { op: 'spawnAtTarget', target: quest.variables.find((x) => x.type === 'target')?.name ?? '', kind: 'entity', type: 'supply_cache', where: 'ORBITING_PARAM' }
+      spawnAtTarget: { op: 'spawnAtTarget', target: quest.variables.find((x) => x.type === 'target')?.name ?? '', kind: 'entity', type: 'supply_cache', where: 'ORBITING_PARAM' },
+      startBounty: { op: 'startBounty', bounty: bounties[0] ?? '' },
+      achievement: { op: 'achievement', achievement: achievements[0]?.id ?? '' }
     }
     ed<ActionNode>((n) => { n.ops.push(fresh[op]) })
   }
@@ -204,6 +216,7 @@
           <label title="At most this many picks per playthrough; 0 = no limit">at most <input type="number" class="short" min="0" value={c.limit?.max ?? 0} onchange={(e) => { const v = Math.max(0, Math.floor(Number(e.currentTarget.value) || 0)); ed<BranchNode>((n) => { n.cases[i].limit = { ...(n.cases[i].limit ?? {}), max: v || undefined } }) }} /> times</label>
         </div>
       {/if}
+      <ModsCond compact value={c.mods} onChange={(v) => ed<BranchNode>((n) => { if (v) n.cases[i].mods = v; else delete n.cases[i].mods })} />
       <LinesInput lines={c.conditions} {templates} placeholder={b.random ? 'may be picked only if… (optional)' : `condition lines, e.g. ${quest.variables[0] ? `$global.${qid}_${quest.variables[0].name} == 2` : `$global.${qid}_flag`}`} onChange={(l) => ed<BranchNode>((n) => { n.cases[i].conditions = l })} />
     </div>
   {/each}
@@ -237,6 +250,8 @@
       {:else if op.op === 'removeEntity'}<IdInput value={op.entity} options={allEntities} width="170px" placeholder="object id" onCommit={(v) => setOp(i, 'entity', v)} /><label class="small" title="Needed for an object with a market: the colony is destroyed (vanilla's decivilization)"><input type="checkbox" checked={!!op.decivilize} onchange={(e) => { const v = e.currentTarget.checked; if (v && !confirm('Decivilize: the colony on this object is destroyed for good (as vanilla\'s decivilization), with everything that depends on it. Continue?')) { e.currentTarget.checked = false; return } setOp(i, 'decivilize', v) }} /> decivilize</label>
       {:else if op.op === 'removePerson'}<select value={op.person} onchange={(e) => { const v = e.currentTarget.value; if (v && !confirm('Remove this person for good? In game they are gone from every market and never come back (a save can\'t undo it).')) { e.currentTarget.value = op.person; return } setOp(i, 'person', v) }}><option value="">—</option>{#each m.people as p (p.id)}<option value={p.id}>{p.name.first} {p.name.last}</option>{/each}</select>
       {:else if op.op === 'progress'}<select value={op.event} onchange={(e) => setOp(i, 'event', e.currentTarget.value)}><option value="">—</option>{#each m.progress ?? [] as pe (pe.id)}<option value={pe.id}>{pe.name}</option>{/each}</select><input type="number" class="short" value={op.points} title="Points (negative lowers it)" onchange={(e) => setOp(i, 'points', Number(e.currentTarget.value))} /><input type="text" value={op.text ?? ''} placeholder="text in the event's list" title="Shown in the event's one-time factors" onchange={(e) => setOp(i, 'text', e.currentTarget.value)} />
+      {:else if op.op === 'startBounty'}<IdInput value={op.bounty} options={bounties.map((id) => ({ id, name: m.bounties?.find((b) => b.id === id)?.name || id }))} width="200px" placeholder="bounty id" onCommit={(v) => setOp(i, 'bounty', v)} />
+      {:else if op.op === 'achievement'}<IdInput value={op.achievement} options={achievements} width="200px" placeholder="achievement id" onCommit={(v) => setOp(i, 'achievement', v)} /><button class="mini" title="Saga › Achievements" onclick={() => { app.selected.sagaOpen = 'achievements'; app.selected.sagaTab = 'achievements'; app.go('saga') }}>Achievements…</button>
       {:else if op.op === 'line'}<input type="text" class="mono" value={op.line} onchange={(e) => setOp(i, 'line', e.currentTarget.value)} />{/if}
       <button class="mini" onclick={() => ed<ActionNode>((n) => { n.ops.splice(i, 1) })}>✕</button>
       {#if info}<div class="f-help oph">{info.help}</div>{/if}
@@ -270,11 +285,16 @@
     </Field>
   </div>
 {:else if node.type === 'wait'}
+  {#if node.mode === 'bounty'}<p class="f-help">SagaLib watches the bounty while the quest is at the stage set before this node, and continues by the way it ended: <b>Succeeded</b> (the target was beaten), <b>Failed</b> (its flagship was salvaged), <b>Expired</b> (time ran out, only when the player turned on MagicLib's &quot;Enable Bounty Deadlines&quot; in LunaLib, off by default; or it ended without the player), <b>Dismissed</b> (only from MagicLib's old bar board, switched off in 1.5.6: rare). If it ended before the quest got here, the quest continues at once. The next node opens in its own dialog once no other is open, after MagicLib's own messages. An output not connected leaves the quest waiting here. Without MagicLib the bounty is unavailable and the quest waits for good, so test "MagicLib bounty … unavailable" before. Needs SagaLib 1.3.</p>{/if}
   <div class="grid2">
-    <Field label="Continue" for="w-m" help="An arrival waits until the player docks at or visits the place; a timer waits a number of in-game days.">
-      <select id="w-m" value={node.mode} onchange={(e) => { const v = e.currentTarget.value as 'arrive' | 'days'; ed<Extract<QNode, { type: 'wait' }>>((n) => { n.mode = v }) }}><option value="arrive">when the player arrives at…</option><option value="days">after a number of days</option></select>
+    <Field label="Continue" for="w-m" help="An arrival waits until the player docks at or visits the place; a timer waits a number of in-game days; a MagicLib bounty waits until the bounty ends, with one output per way it can end.">
+      <select id="w-m" value={node.mode} onchange={(e) => { const v = e.currentTarget.value as 'arrive' | 'days' | 'bounty'; editQuest(qid, (q) => { setWaitMode(q, node.id, v) }) }}><option value="arrive">when the player arrives at…</option><option value="days">after a number of days</option><option value="bounty">when a MagicLib bounty ends</option></select>
     </Field>
-    {#if node.mode === 'arrive'}
+    {#if node.mode === 'bounty'}
+      <Field label="Bounty" help="The MagicLib bounty to wait for: one of this mod's (Quests › MagicLib bounties), a hand-written one in its magicBounty_data.json, or another mod's id. It may be started by this quest (Start a MagicLib bounty) or taken on MagicLib's board.">
+        <IdInput value={node.bounty ?? ''} options={bounties.map((id) => ({ id, name: m.bounties?.find((b) => b.id === id)?.name || id }))} width="220px" placeholder="bounty id" onCommit={(v) => ed<Extract<QNode, { type: 'wait' }>>((n) => { n.bounty = v.trim() || undefined })} />
+      </Field>
+    {:else if node.mode === 'arrive'}
       <Field label="Place" later={later(quest, `nodes#${node.id}.entity`, (fn) => editQuest(qid, fn))} help="The entity the player must reach: a planet, station, wreck… of this mod or the game. Usually the current stage's map marker.">
         <IdInput value={node.entity ?? ''} options={places} placeholder="e.g. vgc_convoy_wreck" onCommit={(v) => ed<Extract<QNode, { type: 'wait' }>>((n) => { n.entity = v })} />
       </Field>
@@ -341,6 +361,11 @@
     <Field label="Reward" for="e-r" help="Paid when the quest ends here; the dialog shows its &quot;Gained …&quot; lines. Rewards are set in the quest settings.">
       <select id="e-r" value={node.reward ?? ''} onchange={(e) => { const v = e.currentTarget.value; ed<Extract<QNode, { type: 'end' }>>((n) => { n.reward = v || undefined }) }}><option value="">none</option>{#each quest.rewards as r (r.id)}<option value={r.id}>{r.id}</option>{/each}</select>
     </Field>
+    {#if achievements.length || node.achievement}
+      <Field label="Achievement" for="e-a" help="A MagicLib achievement (Saga › Achievements) unlocked when the quest ends here, with MagicLib's notice after the reward lines. It stays unlocked in every save. Without MagicLib nothing happens. Needs SagaLib 1.3.">
+        <select id="e-a" value={node.achievement ?? ''} onchange={(e) => { const v = e.currentTarget.value; ed<Extract<QNode, { type: 'end' }>>((n) => { n.achievement = v || undefined }) }}><option value="">none</option>{#each achievements as a (a.id)}<option value={a.id}>{a.name}</option>{/each}{#if node.achievement && !achievements.some((a) => a.id === node.achievement)}<option value={node.achievement}>{node.achievement} (not the mod's)</option>{/if}</select>
+      </Field>
+    {/if}
   </div>
   <p class="f-help">After an End node the conversation can go on (a last line from the contact, or a Link back to the menu).</p>
 {:else if node.type === 'link'}

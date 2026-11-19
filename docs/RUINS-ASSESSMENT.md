@@ -220,7 +220,7 @@ yet explored* (prefer), *system theme* (`theme_ruins`, `theme_derelict`, `theme_
 `theme_misc`, as the vanilla missions use), *has condition X* (e.g. `decivilized`), *pulsar in
 system*. Also **variations** chosen from the target ("if the target is decivilised, use the raid
 branch"). These are Branch conditions on target tokens, so the tokens must be available to the
-quest (`$<quest>_target_isDeciv`, …). In Nexerelin's random sector (#31), random ruins targets are
+quest (`$<quest>_target_isDeciv`, …). In Nexerelin's random sector (#31; decided in PLAN.md §10.3), random ruins targets are
 the only kind that works, because there are no fixed vanilla planets. That's a reason to include
 them in the first version of §11.2.
 

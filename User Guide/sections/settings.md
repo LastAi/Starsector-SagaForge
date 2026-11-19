@@ -16,8 +16,9 @@ never writes code, and never overwrites a file that was changed on disk since it
 
 - **The header**, left to right: the tabs (Saga, Factions, People, Items, Quests, Locations,
   Encounters, Fleets, Images, Dialog, Problems; Problems shows a count when something needs
-  attention), the **active mod** list, **+ New mod**, **+ Translation**, then **Save**, **Check
-  mod**, **Export…** and **⚙** (Settings).
+  attention), the **active mod** list, **+ New mod**, **+ Translation**, the **Works with** pill (the other
+  mods your mod uses; it opens [Saga › Mods](saga.md#mods)), then **Save**, **Check mod**,
+  **Export…** and **⚙** (Settings).
 - **The page** of the tab you picked. Most tabs have a list on the left, the editor in the middle
   and details or a preview on the right. The dividers between them can be dragged.
 - **The footer**: the active mod's name and a count of its factions, quests and people on the

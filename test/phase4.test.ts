@@ -100,7 +100,8 @@ describe('planet scenes without a takeover (RC-F2)', () => {
     const rows = compileQuest(arriveQuest(), { sagalib: true, phrases: [] }).rows
     const offer = rows.find((r) => r.id === 'vgc_q_arrive_offer')!
     expect(offer.trigger).toBe('PopulateOptions')
-    expect(offer.conditions.split('\n')).toEqual(['$id == vgc_probe', '$global.vgc_q_step == find', '!$global.vgc_q_arrive_done'])
+    // #61: and only while the quest runs (a quest that failed at this step offered it before)
+    expect(offer.conditions.split('\n')).toEqual(['$id == vgc_probe', '$global.vgc_q_step == find', '$global.vgc_q_state == active', '!$global.vgc_q_arrive_done'])
     expect(offer.options).toBe('5:vgc_q_arrive_go:Search the probe')
     expect(rows.find((r) => r.id === 'vgc_q_arrive')).toMatchObject({ trigger: 'DialogOptionSelected', conditions: '$option == vgc_q_arrive_go', text: 'The probe.' })
     expect(rows.some((r) => r.trigger === 'OpenInteractionDialog')).toBe(false)

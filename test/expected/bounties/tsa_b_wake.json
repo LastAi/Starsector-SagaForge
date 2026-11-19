@@ -1,0 +1,86 @@
+{
+  "json": {
+    "required_mods_id": [
+      "HMI"
+    ],
+    "trigger_marketFaction_any": [
+      "hegemony"
+    ],
+    "trigger_marketFaction_alliedWith": false,
+    "trigger_market_minSize": 5,
+    "trigger_player_minLevel": 10,
+    "trigger_min_days_elapsed": 30,
+    "trigger_weight_mult": 2,
+    "trigger_memKeys_all": {
+      "$tsa_b_raiders_succeeded": true
+    },
+    "trigger_memKeys_none": {
+      "$tsa_raid_refused": true
+    },
+    "job_name": "Test 27: the Iron Wake",
+    "job_description": "A Hegemony officer drinks alone. Costs 5%%.",
+    "job_intel_success": "The Lantern Gang is broken. (Test 27 (b): the success text comes from the quest's success stage.)",
+    "job_intel_failure": "The gang got away.",
+    "job_deadline": -1,
+    "job_credit_reward": 5000,
+    "job_type": "assassination",
+    "job_show_type": true,
+    "job_show_captain": true,
+    "job_show_fleet": "flagshipText",
+    "job_show_distance": "vanilla",
+    "job_show_arrow": false,
+    "job_difficultyDescription": "auto",
+    "fleet_faction": "hegemony",
+    "fleet_name": "Iron Wake",
+    "fleet_flagship_variant": "enforcer_Elite",
+    "fleet_flagship_name": "HSS Anvil",
+    "fleet_preset_ships": {
+      "hound_Standard": 2
+    },
+    "fleet_scaling_multiplier": 1.5,
+    "fleet_composition_faction": "hegemony",
+    "fleet_behavior": "GUARDED",
+    "fleet_no_retreat": false,
+    "location_marketFactions": [
+      "pirates",
+      "luddic_path"
+    ]
+  },
+  "notes": [
+    {
+      "level": "warning",
+      "field": "mods",
+      "message": "MagicLib can only say \"only with\" these mods (required_mods_id): \"only without\" and \"any one of\" are left out."
+    },
+    {
+      "level": "warning",
+      "field": "offer",
+      "message": "The prerequisite \"$player.tsa_x == 2\" isn't a true/false flag in $global memory, which is all MagicLib can test. Left out."
+    },
+    {
+      "level": "warning",
+      "field": "offer",
+      "message": "The prerequisite \"quest tsa_hunt ended\": that quest is exported only as a bounty, so SagaLib never ends it. Test its bounty's own key instead ($global.<bounty>_succeeded, a flag prerequisite). Left out."
+    },
+    {
+      "level": "warning",
+      "field": "rewards",
+      "message": "MagicLib can't give ships, XP: left out of the bounty."
+    },
+    {
+      "level": "info",
+      "field": "fleet",
+      "message": "MagicLib names only the flagship: the other ships' names are left out."
+    },
+    {
+      "level": "info",
+      "field": "fleet",
+      "message": "MagicLib has no \"intercept-player\" order: the fleet waits at its place."
+    },
+    {
+      "level": "warning",
+      "field": "location",
+      "message": "MagicLib can't: \"Size at least\" (a market target only says the faction). The bounty leaves it out."
+    }
+  ]
+}

@@ -24,6 +24,8 @@ What the fleet is:
 - **Ships**, one of three ways:
   - **from the faction's doctrine (fleet points)**: the faction builds it the way it builds its own
     fleets; **Fleet points** sets how big (a frigate costs a few, a capital ship 20 or more).
+    **Size scaled by** lets one of the mod's settings, such as a difficulty, multiply the points
+    when the fleet spawns (see [Saga › Settings](saga.md#settings)).
   - **exact variants**: a list of variant ids; the first is the flagship.
   - **a named fleet**: one of the mod's named fleets from the Fleets page, with the same ships,
     names and captain every time (see [Use a named fleet](#use-a-named-fleet)).

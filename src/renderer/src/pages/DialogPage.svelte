@@ -4,6 +4,8 @@
    * read-only graph per conversation chain, with the in-game dialog preview and a live Play from
    * any rule.
    */
+  import ShowAllMods from '../ui/ShowAllMods.svelte'
+  import { mods } from '../state/mods.svelte'
   import { SvelteFlow, Background, Controls, MiniMap, type Node, type Edge } from '@xyflow/svelte'
   import '@xyflow/svelte/dist/style.css'
   import { app } from '../state/app.svelte'
@@ -24,7 +26,9 @@
   let stubs = $state<string[]>([])
   const sel = $derived(app.selected.dialog ?? null)
   const rs = $derived(app.ruleSet)
-  const results = $derived(rs ? searchRules(rs, query) : [])
+  // #60: vanilla, this mod and its listed mods (Show all installed mods for every rule)
+  const allResults = $derived(rs ? searchRules(rs, query) : [])
+  const results = $derived(mods.filter('dialog', allResults, (r) => r.row.sourceId))
   const rule = $derived(sel && rs ? rs.byId.get(sel) ?? null : null)
   const srcName = (id: string) => (id === 'starsector-core' ? 'vanilla' : app.index?.sources.find((s) => s.id === id)?.name ?? id)
 
@@ -98,7 +102,7 @@
 <div class="page" style="grid-template-columns:{layout.left}px 1px minmax(0,1fr) 1px {layout.right}px">
   <aside class="left">
     <input class="search" type="search" placeholder="Rule id, trigger, option id or text…" bind:value={query} oninput={() => (app.selected.dialogQuery = query)} />
-    <div class="muted small pad">{loading ? 'Reading every rules file…' : `${rs?.all.length ?? 0} rules from ${Object.keys(app.index?.ruleCounts ?? {}).length} sources${(app.index?.ruleFiles?.length ?? 1) > 1 ? ` and ${app.index?.ruleFiles?.length} listed rule files` : ''}. ${results.length >= 300 ? 'First 300 matches.' : `${results.length} matches.`}`}</div>
+    <div class="muted small pad">{loading ? 'Reading every rules file…' : `${rs?.all.length ?? 0} rules from ${Object.keys(app.index?.ruleCounts ?? {}).length} sources${(app.index?.ruleFiles?.length ?? 1) > 1 ? ` and ${app.index?.ruleFiles?.length} listed rule files` : ''}. ${results.length >= 300 ? 'First 300 matches.' : `${results.length} matches.`}`} <ShowAllMods list="dialog" hidden={allResults.length - results.length} /></div>
     <ul class="list">
       {#each results as r (r.row.id + r.row.sourceId)}
         <li class:on={sel === r.row.id}><button class="li" onclick={() => (app.selected.dialog = r.row.id)}>

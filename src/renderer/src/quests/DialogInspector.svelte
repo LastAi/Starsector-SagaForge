@@ -4,11 +4,14 @@
   import { nextVariationToken, newPhrase, uniqueId } from '../../../shared/quest'
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
-  import { editNode, conditionTemplates } from './edit'
+  import { editNode, conditionTemplates, bountyChoices } from './edit'
   import LinesInput from './LinesInput.svelte'
   import PhraseEditor from './PhraseEditor.svelte'
   import IdInput from '../ui/IdInput.svelte'
   import Field from '../ui/Field.svelte'
+  import ModsCond from '../ui/ModsCond.svelte'
+  import { condText } from '../../../shared/modlist'
+  import { mods } from '../state/mods.svelte'
   import { chooseImages } from '../state/imagepicker.svelte'
 
   interface Props { quest: QuestPlan; node: DialogNode }
@@ -19,7 +22,7 @@
   const m = $derived(project.m!)
   const people = $derived([...m.people.map((p) => ({ id: p.id, name: `${p.name.first} ${p.name.last}` })), ...(app.index?.people ?? [])])
   const factions = $derived([...m.factions.filter((f) => f.kind === 'addition').map((f) => f.id), ...(app.index?.factions.map((f) => f.id) ?? [])])
-  const templates = $derived(conditionTemplates(quest, factions, m.quests))
+  const templates = $derived(conditionTemplates(quest, factions, m.quests, bountyChoices(quest)))
   const items = $derived([...m.items.map((i) => ({ id: i.id, name: i.name })), ...(app.index?.items ?? [])])
   const illus = $derived([...Object.keys(m.project.illustrations ?? {}).map((k) => ({ id: k, name: 'this mod' })), ...(app.index?.illustrations.filter((i) => i.category === 'illustrations').map((i) => ({ id: i.key, name: i.path })) ?? [])])
   const tokens = $derived([
@@ -263,8 +266,8 @@
         <td class="to muted">{t ? `→ ${t.type}` : '→ ?'}</td>
         <td class="btns"><button class="mini" onclick={() => (openOpt = openOpt === o.id ? null : o.id)} title="More settings">⋯</button><button class="mini" onclick={() => moveOption(o.id, -1)} disabled={i === 0}>↑</button><button class="mini" onclick={() => removeOption(o.id)}>✕</button></td>
       </tr>
-      {#if o.story || o.showOnce || o.showIf?.length || o.tooltip || o.shortcut || o.disabledIf}
-        <tr><td></td><td colspan="3" class="muted small">{[o.story ? `story point ×${o.story.cost}` : '', o.showOnce ? `once per ${o.showOnce === 'ever' ? 'playthrough' : 'conversation'}` : '', o.showIf?.length ? `only if ${o.showIf.join(', ')}` : '', o.tooltip ? 'tooltip' : '', o.shortcut ? `shortcut ${o.shortcut}` : '', o.disabledIf ? 'disabled when…' : ''].filter(Boolean).join(' · ')}</td></tr>
+      {#if o.story || o.showOnce || o.showIf?.length || o.tooltip || o.shortcut || o.disabledIf || o.mods}
+        <tr><td></td><td colspan="3" class="muted small">{[o.story ? `story point ×${o.story.cost}` : '', o.showOnce ? `once per ${o.showOnce === 'ever' ? 'playthrough' : 'conversation'}` : '', o.showIf?.length ? `only if ${o.showIf.join(', ')}` : '', o.tooltip ? 'tooltip' : '', o.shortcut ? `shortcut ${o.shortcut}` : '', o.disabledIf ? 'disabled when…' : '', o.mods ? condText(o.mods, (id) => mods.name(id)) : ''].filter(Boolean).join(' · ')}</td></tr>
       {/if}
       {#if openOpt === o.id}
         <tr><td></td><td colspan="3">
@@ -286,6 +289,9 @@
             </Field>
             <Field label="Only show if" help="Condition lines that must all be true for the option to be listed.">
               <LinesInput lines={o.showIf ?? []} {templates} onChange={(l) => edOpt(o.id, (x) => { x.showIf = l.length ? l : undefined })} />
+            </Field>
+            <Field label="Mods" help="Only offered with / without optional mods (Saga › Mods): exported as SF_HasMod on the option's own small rule. Every combination of the optional mods must leave the node at least one option (Check).">
+              <ModsCond compact value={o.mods} onChange={(v) => edOpt(o.id, (x) => { x.mods = v })} />
             </Field>
             <Field label="Disabled if" help="Listed but greyed out (not pickable) while these conditions are true; empty = always.">
               <div><label class="chk"><input type="checkbox" checked={!!o.disabledIf} onchange={(e) => { const v = e.currentTarget.checked; edOpt(o.id, (x) => { x.disabledIf = v ? [] : undefined }) }} /> shown greyed out</label>{#if o.disabledIf}<LinesInput lines={o.disabledIf} {templates} placeholder="(always)" onChange={(l) => edOpt(o.id, (x) => { x.disabledIf = l })} />{/if}</div>

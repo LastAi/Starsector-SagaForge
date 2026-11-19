@@ -27,6 +27,15 @@ import { versionProblems } from '../versionrefs'
 import { poolProblems } from './pools'
 import { eventProblems } from './events'
 import { progressProblems } from './progress'
+import { modProblems } from './mods'
+import { nexerelinProblems } from './nexerelin'
+import { bountyProblems } from './bounties'
+import { presenceProblems } from './presence'
+import { settingProblems } from './settings'
+import { achievementProblems, questSkipProblems } from './crossmod65'
+import { appVersionProblems } from './appversions'
+import { versionCheckProblems } from './versions'
+import { lowerPlacesModel } from '../modelversions'
 import type { VersionDiff } from '../versiondiff'
 import { modTakeoverProblems } from '../export'
 
@@ -50,7 +59,7 @@ export interface CheckContext {
 }
 
 type Checker = (ctx: CheckContext) => Problem[]
-const CHECKERS: Checker[] = [basicProblems, factionProblems, allQuestProblems, flagsChecker, locationProblems, encounterProblems, saveChecker, styleChecks, itemProblems, missingImageProblems, (ctx) => todoProblems(ctx.model), (ctx) => inactiveProblems(ctx.model), imageSizeProblems, nameProblems, worldProblems, fleetProblems, poolProblems, eventProblems, progressProblems,
+const CHECKERS: Checker[] = [basicProblems, appVersionProblems, modProblems, nexerelinProblems, versionCheckProblems, factionProblems, allQuestProblems, flagsChecker, locationProblems, encounterProblems, saveChecker, styleChecks, itemProblems, missingImageProblems, (ctx) => todoProblems(ctx.model), (ctx) => inactiveProblems(ctx.model), imageSizeProblems, nameProblems, worldProblems, fleetProblems, poolProblems, eventProblems, progressProblems, bountyProblems, presenceProblems, settingProblems, achievementProblems, questSkipProblems,
   (ctx) => (ctx.version ? versionProblems(ctx.model, ctx.version.diff, ctx.version.targetIsNewer, ctx.defs) : []),
   // Check mod only: rules that would take over the game's or other mods' dialog (Export runs it too)
   (ctx) => (ctx.rules ? modTakeoverProblems(ctx.model, ctx.loaded, ctx.index, ctx.rules) : [])]
@@ -58,7 +67,7 @@ const CHECKERS: Checker[] = [basicProblems, factionProblems, allQuestProblems, f
 function flagsChecker(ctx: CheckContext): Problem[] {
   const own = handRules(ctx.loaded.files['data/campaign/rules.csv']?.text, ctx.loaded.sourceId)
   const ext = ctx.rules ? ctx.rules.filter((r) => r.sourceId !== ctx.loaded.sourceId) : []
-  return flagProblems(buildRegistry(ctx.model, own, ext), ctx.model.project.prefix)
+  return flagProblems(buildRegistry(ctx.model, own, ext, ctx.index.sagaQuests ?? []), ctx.model.project.prefix)
 }
 
 /** Register more checkers (each milestone's module adds its own). */
@@ -66,8 +75,10 @@ export function addChecker(c: Checker): void { if (!CHECKERS.includes(c)) CHECKE
 
 export function checkModel(ctx: CheckContext): Problem[] {
   const out: Problem[] = []
+  // #64: named places ("place:<id>") are checked as the objects they stand for
+  const lowered = { ...ctx, model: lowerPlacesModel(ctx.model) }
   for (const c of CHECKERS) {
-    try { out.push(...c(ctx)) } catch (e) {
+    try { out.push(...c(c === versionCheckProblems ? ctx : lowered)) } catch (e) {
       out.push({ level: 'error', area: 'Editor', message: `A check failed: ${(e as Error)?.message ?? e}` })
     }
   }

@@ -24,16 +24,22 @@ export interface TestModDef {
   extraFiles?: Record<string, string>
   /** mod_info.json dependencies written by hand (a translation mod needs the mod it translates). */
   dependencies?: { id: string; name: string; version?: string }[]
+  /** The game version it is for (default TEST_GAME); #60's test mod needs the 0.98a install, where the other mods are. */
+  gameVersion?: string
+  /** Index entries the export needs to know (#60: another mod's faction, for the automatic "Only with"). */
+  indexStub?: Record<string, unknown>
+  /** Warnings the mod has on purpose (#27: a criterion MagicLib can't use, to show its note). */
+  expectedWarnings?: RegExp[]
 }
 
 function modInfoText(d: TestModDef): string {
-  return `{\n\t"id": "${d.id}",\n\t"name": "${d.name}",\n\t"author": "LastAi",\n\t"version": "${d.version}",\n\t"description": "${d.description}",\n\t"gameVersion": "${TEST_GAME}",\n${d.dependencies ? `\t"dependencies": ${JSON.stringify(d.dependencies)},\n` : ''}}\n`
+  return `{\n\t"id": "${d.id}",\n\t"name": "${d.name}",\n\t"author": "LastAi",\n\t"version": "${d.version}",\n\t"description": "${d.description}",\n\t"gameVersion": "${d.gameVersion ?? TEST_GAME}",\n${d.dependencies ? `\t"dependencies": ${JSON.stringify(d.dependencies)},\n` : ''}}\n`
 }
 
 export function testModState(d: TestModDef, m: ModModel, files: Record<string, string>): ProjectState {
   return {
     sourceId: d.id, modDir: '/x', isNew: false,
-    modInfo: { id: d.id, name: d.name, version: d.version, gameVersion: TEST_GAME, dependencies: [] },
+    modInfo: { id: d.id, name: d.name, version: d.version, gameVersion: d.gameVersion ?? TEST_GAME, dependencies: [] },
     project: m.project, quests: [], people: [], items: [], systems: [], encounters: [], phrases: [], testProfiles: [], factionsRuntime: { relations: {}, scripted: {} },
     descriptions: {}, factions: [], releases: [],
     files: Object.fromEntries(Object.entries(files).map(([p, t]) => [p, { text: t, hash: hashText(t) }])), errors: []
@@ -43,11 +49,11 @@ export function testModState(d: TestModDef, m: ModModel, files: Record<string, s
 /** Every file of a test mod: plan files and the export (with the SagaLib dependency). */
 export function testModFiles(d: TestModDef): Record<string, string> {
   const m = d.model()
-  m.project.target = TEST_GAME
+  m.project.target = d.gameVersion ?? TEST_GAME
   const base: Record<string, string> = { 'mod_info.json': modInfoText(d) }
   const saved = { ...base }
   for (const w of modelToWrites(m, testModState(d, m, base))) if (!w.remove) saved[w.path] = w.text
-  const plan = planExport(m, testModState(d, m, saved), { factions: [], items: [], people: [], markets: [] } as never, null, { addDependency: true })
+  const plan = planExport(m, testModState(d, m, saved), { factions: [], items: [], people: [], markets: [], sources: [], ...(d.indexStub ?? {}) } as never, null, { addDependency: true, addRequired: true })
   const errors = plan.problems.filter((p) => p.level === 'error')
   if (errors.length) throw new Error(`${d.id}: export errors: ${errors.map((p) => p.message).join('; ')}`)
   const out = { ...saved, ...(d.extraFiles ?? {}) }

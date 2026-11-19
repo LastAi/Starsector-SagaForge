@@ -1,4 +1,6 @@
 <script lang="ts">
+  import VersionStrip from '../ui/VersionStrip.svelte'
+  import { itemVer } from '../state/itemver.svelte'
   /**
    * Saga › Events (Phase 8d, RC-R12; DESIGN-PHASE8.md "8d"): event schedulers. A scheduler keeps
    * between min and max of its events running and checks every few days; an event is picked like
@@ -11,12 +13,14 @@
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
   import Field from '../ui/Field.svelte'
+  import ModsCond from '../ui/ModsCond.svelte'
   import IdInput from '../ui/IdInput.svelte'
 
   const m = $derived(project.m!)
   const list = $derived(m.events ?? [])
   let selId = $state<string | null>(app.selected.eventScheduler ?? null)
-  const sel = $derived(list.find((x) => x.id === (selId ?? list[0]?.id)) ?? null)
+  // #64: the scheduler as in the open version (the versions strip)
+  const sel = $derived(((s) => itemVer.view('events', s?.id, s))(list.find((x) => x.id === (selId ?? list[0]?.id)) ?? null))
   let evId = $state<string | null>(null)
   const ev = $derived(sel?.events.find((e) => e.id === (evId ?? sel.events[0]?.id)) ?? null)
 
@@ -25,8 +29,8 @@
   const factions = $derived([...m.factions.filter((f) => f.kind === 'addition').map((f) => f.id), ...(app.index?.factions ?? []).map((f) => f.id)])
   const deferred = $derived(m.systems.flatMap((s) => s.entities.filter((e) => !!e.appears)))
 
-  const edS = (fn: (s: EventSchedulerPlan) => void) => { const id = sel?.id; project.change((mm) => { const s = mm.events?.find((x) => x.id === id); if (s) fn(s) }) }
-  const edE = (fn: (e: WorldEventPlan) => void) => { const sid = sel?.id, id = ev?.id; project.change((mm) => { const e = mm.events?.find((x) => x.id === sid)?.events.find((x) => x.id === id); if (e) fn(e) }) }
+  const edS = (fn: (s: EventSchedulerPlan) => void) => { const id = sel?.id; if (id) itemVer.edit<EventSchedulerPlan>('events', id, (s) => fn(s)) }
+  const edE = (fn: (e: WorldEventPlan) => void) => { const id = ev?.id; edS((s) => { const e = s.events.find((x) => x.id === id); if (e) fn(e) }) }
 
   function addScheduler() {
     const id = uniqueId(`${m.project.prefix}events`, [...list.map((x) => x.id), ...(m.pools ?? []).map((p) => p.id)])
@@ -72,11 +76,15 @@
     {/if}
     <p class="muted small pad">Things that happen in the sector without the player starting them, like vanilla's bounties and hostilities: a scheduler keeps some of its events running and starts new ones every few days. Each event can post a news item and run actions when it starts and ends. Needs SagaLib 1.2.</p>
   </div>
+  {#if sel}<VersionStrip kind="events" id={sel.id} what="this scheduler and its events" />{/if}
   <div class="scroll pad">
     {#if sel}
       <div class="grid2">
         <Field label="Name" for="ev-n" help="For you (the scheduler isn't shown in game).">
           <input id="ev-n" type="text" value={sel.name} onchange={(e) => { const v = e.currentTarget.value; edS((s) => { s.name = v }) }} />
+        </Field>
+        <Field label="Mods" help="Only runs with / without optional mods (Saga › Mods; SagaLib 1.3).">
+          <ModsCond value={sel?.mods} itemKey={`events:${sel?.id}`} onChange={(c) => edS((s) => { if (c) s.mods = c; else delete s.mods })} />
         </Field>
         <Field label="Id" help="SagaLib's name for it (data/sagaforge/events/<id>.json)."><span class="mono">{sel.id}</span></Field>
         <Field label="Running" help="How many of its events run at the same time: it starts new ones until the most are running, a day apart while fewer than the least run.">
@@ -102,6 +110,9 @@
             <input id="we-n" type="text" value={ev.name} onchange={(e) => { const v = e.currentTarget.value; edE((x) => { x.name = v }) }} />
           </Field>
           <Field label="Id" help="Its flag while it runs is shown below; its actions are the rules SF_event_<id>_start and _end."><span class="mono">{ev.id}</span></Field>
+          <Field label="Mods" help="Only picked with / without optional mods (Saga › Mods): exported as SF_HasMod conditions of the event.">
+            <ModsCond value={ev.mods} itemKey={`event:${sel.id}/${ev.id}`} onChange={(c) => edE((x) => { if (c) x.mods = c; else delete x.mods })} />
+          </Field>
           <Field label="Weight" for="we-w" help="How likely it is picked, against the scheduler's other events that can run now.">
             <span class="row"><input id="we-w" type="number" class="short" min="0" step="0.5" value={ev.weight} onchange={(e) => { const v = Math.max(0, Number(e.currentTarget.value) || 0); edE((x) => { x.weight = v }) }} /></span>
           </Field>

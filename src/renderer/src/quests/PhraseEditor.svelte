@@ -2,6 +2,7 @@
   /** One phrase (PLAN.md §4.3): cases with conditions, first match or random, and an otherwise text. */
   import type { Phrase } from '../../../shared/model'
   import LinesInput from './LinesInput.svelte'
+  import ModsCond from '../ui/ModsCond.svelte'
 
   interface Props { phrase: Phrase; templates: { label: string; line: string }[]; onChange: (p: Phrase) => void; onRemove?: () => void; tokenEditable?: boolean }
   let { phrase, templates, onChange, onRemove, tokenEditable = false }: Props = $props()
@@ -26,6 +27,8 @@
     <div class="case">
       {#if phrase.mode === 'first-match'}
         <div class="when"><span class="muted">if</span><LinesInput lines={c.when} {templates} rows={1} onChange={(l) => up((p) => { p.cases[i].when = l })} /></div>
+        <!-- #60: a phrase case only with / without optional mods (exported as SF_HasMod lines) -->
+        <ModsCond compact value={c.mods} onChange={(v) => up((p) => { if (v) p.cases[i].mods = v; else delete p.cases[i].mods })} />
       {/if}
       <div class="txt"><input type="text" value={c.text} placeholder="text for this case" onchange={(e) => { const v = e.currentTarget.value; up((p) => { p.cases[i].text = v }) }} />
         <button class="mini" onclick={() => up((p) => { p.cases.splice(i, 1) })}>✕</button></div>

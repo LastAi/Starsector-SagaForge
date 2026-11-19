@@ -43,7 +43,7 @@ async function walkFiles(dir: string, base = dir): Promise<string[]> {
 
 const TEXT = /\.(csv|json|faction|version|txt|md|ini)$/i
 
-export interface PackRequest { modDir: string; releasesDir: string; version: string; forumPost: string; overwrite: boolean; rules: WriteRules }
+export interface PackRequest { modDir: string; releasesDir: string; version: string; forumPost: string; overwrite: boolean; rules: WriteRules; /** #60: release notes (the mods it requires, works with, conflicts with), written next to the zip when given. */ notes?: string }
 
 export async function packRelease(req: PackRequest): Promise<PackResult> {
   const problem = releaseDirProblem(req.releasesDir, req.rules)
@@ -73,5 +73,7 @@ export async function packRelease(req: PackRequest): Promise<PackResult> {
   await fsp.rename(tmp, zip)
   // the forum post draft is switched off until post templates exist (user, 2026-11-17); written only when given
   if (req.forumPost.trim()) await fsp.writeFile(post, req.forumPost.replace(/\r?\n/g, '\r\n'), 'utf8')
+  // #60: Requires / Works with / Known conflicts (PLAN.md §10.1)
+  if (req.notes?.trim()) await fsp.writeFile(path.join(req.releasesDir, `${name} - release notes.txt`), req.notes.replace(/\r?\n/g, '\r\n'), 'utf8')
   return { zip, post: req.forumPost.trim() ? post : '', folder, files: entries.length, leftOut }
 }

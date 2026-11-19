@@ -11,6 +11,7 @@
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
   import Field from '../ui/Field.svelte'
+  import ModsCond from '../ui/ModsCond.svelte'
   import IdInput from '../ui/IdInput.svelte'
   import TargetEditor from '../quests/TargetEditor.svelte'
 
@@ -45,6 +46,9 @@
       <div class="grid2">
         <Field label="Name" for="sc-n" help="For you, and the objects' name when Name below is empty.">
           <input id="sc-n" type="text" value={sel.name} onchange={(e) => { const v = e.currentTarget.value; ed((s) => { s.name = v }) }} />
+        </Field>
+        <Field label="Mods" help="Only placed with / without optional mods (Saga › Mods; SagaLib 1.3).">
+          <ModsCond value={sel?.mods} itemKey={`scatter:${sel?.id}`} onChange={(c) => ed((s) => { if (c) s.mods = c; else delete s.mods })} />
         </Field>
         <Field label="Id" help="SagaLib's name for it (data/sagaforge/scatter/<id>.json); the objects are <id>_1, <id>_2, …"><span class="mono">{sel.id}</span></Field>
         <Field label="How many" for="sc-c" help="Copies to place, each in a different star system (fewer if not enough places fit).">

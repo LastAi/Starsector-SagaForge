@@ -57,7 +57,7 @@
     {:else if n.type === 'raid'}
       <div>{n.objective || '(objective)'}</div><div class="muted small">danger {n.danger.toLowerCase()}{n.difficulty > 0 ? ` · strength ${n.difficulty}` : " · the colony's defences"}</div>
     {:else if n.type === 'wait'}
-      <div>{n.mode === 'arrive' ? `player reaches ${n.entity || '?'}` : `after ${n.days ?? '?'} days`}</div>
+      <div>{n.mode === 'arrive' ? `player reaches ${n.entity || '?'}` : n.mode === 'bounty' ? 'MagicLib bounty ends' : `after ${n.days ?? '?'} days`}</div>{#if n.mode === 'bounty'}<div class="mono small">{n.bounty || '(pick a bounty)'}</div>{/if}
     {:else if n.type === 'end'}
       <div class:good={n.outcome === 'success'} class:bad={n.outcome !== 'success'}>{n.outcome}{n.reward ? ` · reward ${n.reward}` : ''}</div>
     {:else if n.type === 'link'}

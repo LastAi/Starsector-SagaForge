@@ -1,0 +1,89 @@
+{
+  "json": {
+    "trigger_market_id": [
+      "tsa_station_market",
+      "tsa_station"
+    ],
+    "trigger_playerRelationship_atLeast": {
+      "independent": 0.15
+    },
+    "job_name": "Test 27: hunt the Lantern Gang",
+    "job_description": "\"The Lantern Gang hides near $location in $system. 100%% of the pay on proof, captain.\" (Test 27 (b): this text comes from the quest.)",
+    "job_intel_success": "The Lantern Gang is broken. (Test 27 (b): the success text comes from the quest's success stage.)",
+    "job_intel_failure": "The gang got away.",
+    "job_forFaction": "independent",
+    "job_deadline": 60,
+    "job_credit_reward": 20000,
+    "job_reputation_reward": 5,
+    "job_item_reward": {
+      "hand_weapons": 5
+    },
+    "job_type": "obliteration",
+    "job_show_type": true,
+    "job_show_captain": true,
+    "job_show_fleet": "flagshipText",
+    "job_show_distance": "system",
+    "job_show_arrow": true,
+    "job_difficultyDescription": "auto",
+    "fleet_faction": "pirates",
+    "fleet_name": "Lantern Gang",
+    "fleet_flagship_variant": "enforcer_Elite",
+    "fleet_min_FP": 40,
+    "fleet_composition_faction": "pirates",
+    "fleet_composition_quality": 0.5,
+    "fleet_behavior": "ROAMING",
+    "fleet_attitude": "HOSTILE",
+    "fleet_no_retreat": false,
+    "location_prioritizeUnexplored": true,
+    "location_themes": [
+      "theme_ruins",
+      "theme_derelict"
+    ],
+    "location_themes_blacklist": [
+      "theme_already_occupied",
+      "no_pulsar_blackhole"
+    ],
+    "location_entities": [
+      "planet"
+    ],
+    "location_distance": "CORE",
+    "location_defaultToAnyEntity": true
+  },
+  "notes": [
+    {
+      "level": "info",
+      "field": "deadline",
+      "message": "The 60-day deadline counts from acceptance, and only if the player turned on \"Enable Bounty Deadlines\" in LunaLib's MagicLib settings (off by default). Otherwise the bounty never expires."
+    },
+    {
+      "level": "info",
+      "field": "rewards",
+      "message": "MagicLib puts the reward's items into the battle's loot (the player takes them after the fight)."
+    },
+    {
+      "level": "info",
+      "field": "location",
+      "message": "\"No pulsar\" → no_pulsar_blackhole (no pulsars and no black holes)"
+    },
+    {
+      "level": "info",
+      "field": "location",
+      "message": "\"System tags\" → location_themes (preferred)"
+    },
+    {
+      "level": "info",
+      "field": "location",
+      "message": "\"Unexplored\" → unexplored systems first"
+    },
+    {
+      "level": "info",
+      "field": "location",
+      "message": "\"Inner sector\" → location_distance CORE: the inner third of the sector by distance from its centre, preferred"
+    },
+    {
+      "level": "warning",
+      "field": "location",
+      "message": "MagicLib can't: \"Within N light-years\" (MagicLib measures from the sector's centre, not from the giver; use Inner sector or Fringe). The bounty leaves it out."
+    }
+  ]
+}

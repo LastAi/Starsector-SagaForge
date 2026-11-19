@@ -1,4 +1,6 @@
 <script lang="ts">
+  import VersionStrip from '../ui/VersionStrip.svelte'
+  import { itemVer } from '../state/itemver.svelte'
   /** Encounters (PLAN.md §4.6, mock-up encounters.html): fleets, spawn, behavior, comm dialog, outcomes. */
   import type { EncounterDef } from '../../../shared/model'
   import { newEncounter, newCommDialog, encounterUses } from '../../../shared/encounters'
@@ -9,16 +11,21 @@
   import IdInput from '../ui/IdInput.svelte'
   import Modal from '../ui/Modal.svelte'
   import Field from '../ui/Field.svelte'
+  import ModsCond from '../ui/ModsCond.svelte'
+  import ModsChip from '../ui/ModsChip.svelte'
+  import ScaleInput from '../ui/ScaleInput.svelte'
   import { later } from '../ui/later'
   import { spawnSuggestions } from '../../../shared/patterns'
   import { targetKey, targetVars } from '../../../shared/targets'
   import { applyProblemFix } from '../state/problems.svelte'
+  import { newBounty, bountyEncounter } from '../../../shared/bounties'
 
   const m = $derived(project.m)
   const index = $derived(app.index!)
   const sel = $derived(app.selected.encounters ?? null)
-  const enc = $derived(m?.encounters.find((e) => e.id === sel) ?? null)
-  const ed = (fn: (e: EncounterDef) => void) => { const id = sel; project.change((mm) => { const e = mm.encounters.find((x) => x.id === id); if (e) fn(e) }) }
+  // #64: the encounter as in the open version (the versions strip)
+  const enc = $derived(itemVer.view('encounter', sel, m?.encounters.find((e) => e.id === sel) ?? null))
+  const ed = (fn: (e: EncounterDef) => void) => { const id = sel; if (id) itemVer.edit<EncounterDef>('encounter', id, (e) => fn(e)) }
   const factions = $derived([...(m?.factions.filter((f) => f.kind === 'addition').map((f) => ({ id: f.id })) ?? []), ...index.factions])
   // Phase 7d (RC-R2): the quests' random targets (SagaLib 1.2 resolves the pick)
   const entities = $derived([...(m?.quests.flatMap((q) => targetVars(q).map((v) => ({ id: targetKey(q.id, v.name), name: `random target ${v.name} of ${q.title}` }))) ?? []), ...(m?.systems.flatMap((s) => s.entities.map((e) => ({ id: e.id, name: `${e.name} (${s.name})` }))) ?? []), ...index.markets.flatMap((x) => x.entities.map((id) => ({ id, name: x.name })))])
@@ -42,6 +49,15 @@
     project.change((mm) => { mm.quests.push(q); const e = mm.encounters.find((x) => x.id === id); if (e) e.commDialog = q.id })
     app.go('quests', q.id)
   }
+  // #27: MagicLib bounties with this fleet as the target (edited on the Quests page)
+  const bountiesHere = $derived(enc && m ? (m.bounties ?? []).filter((b) => bountyEncounter(m, b)?.id === enc.id) : [])
+  function openBounty(id: string) { app.go('quests'); app.selected.bounty = id }
+  function makeBounty() {
+    if (!enc || !m) return
+    const nb = newBounty(m, { encounter: enc.id })
+    project.change((mm) => { (mm.bounties ??= []).push(nb) })
+    openBounty(nb.id)
+  }
   function remove() {
     if (!enc || !confirm(`Delete "${enc.name}"?`)) return
     const id = enc.id
@@ -57,12 +73,14 @@
   <aside class="left">
     <div class="sect">Encounters <button disabled={!m} onclick={() => (showNew = true)}>+ New</button></div>
     <ul class="list">
-      {#each m?.encounters ?? [] as e (e.id)}<li class:on={sel === e.id}><button class="li" onclick={() => (app.selected.encounters = e.id)}>{e.name}<span class="sub">{e.fleet.faction} · {e.fleet.size === 'fp' ? `${e.fleet.points} FP` : e.fleet.size === 'template' ? 'named fleet' : `${e.fleet.variants?.length ?? 0} ships`}</span></button></li>{:else}<li class="muted small pad">{m ? 'None yet.' : 'Pick an active mod first.'}</li>{/each}
+      {#each m?.encounters ?? [] as e (e.id)}<li class:on={sel === e.id}><button class="li" onclick={() => (app.selected.encounters = e.id)}>{e.name}<ModsChip itemKey={`encounter:${e.id}`} /><span class="sub">{e.fleet.faction} · {e.fleet.size === 'fp' ? `${e.fleet.points} FP` : e.fleet.size === 'template' ? 'named fleet' : `${e.fleet.variants?.length ?? 0} ships`}</span></button></li>{:else}<li class="muted small pad">{m ? 'None yet.' : 'Pick an active mod first.'}</li>{/each}
     </ul>
   </aside>
   <section class="main">
     {#if enc}
-      <div class="head"><h2>{enc.name}</h2><span class="mono muted">{enc.id}</span><span class="spacer"></span><span class="badge b-lib">SagaLib</span><button class="mini danger" onclick={remove}>Delete</button></div>
+      <div class="head"><h2>{enc.name}</h2><span class="mono muted">{enc.id}</span><span class="spacer"></span><span class="badge b-lib">SagaLib</span><button class="mini" title="Make a MagicLib bounty with this fleet as the target (edited on the Quests page)" onclick={makeBounty}>MagicLib bounty…</button><button class="mini danger" onclick={remove}>Delete</button></div>
+      {#if bountiesHere.length}<p class="muted small">MagicLib bount{bountiesHere.length === 1 ? 'y' : 'ies'} with this fleet: {#each bountiesHere as bt, i (bt.id)}{i ? ', ' : ''}<button class="lnk" onclick={() => openBounty(bt.id)}>{bt.id}</button>{/each}{#if bountiesHere.some((bt) => bt.only !== false)} (exported only as a bounty: SagaLib doesn't spawn it){/if}</p>{/if}
+      <VersionStrip kind="encounter" id={enc.id} what="this encounter" />
       <div class="body">
         <div class="cols">
           <div class="group">
@@ -71,6 +89,9 @@
               <Field label="Name" for="en-n" help="For this editor (lists, Encounter nodes). In game the fleet shows its Fleet name.">
                 <input id="en-n" type="text" value={enc.name} onchange={(e) => { const v = e.currentTarget.value; ed((x) => { x.name = v }) }} />
               </Field>
+        <Field label="Mods" help="Only spawned with / without optional mods (Saga › Mods; SagaLib 1.3). Set automatically (greyed) for an optional mod's fleet, ships or place, or when only conditional quests use it.">
+          <ModsCond value={enc?.mods} itemKey={`encounter:${enc?.id}`} onChange={(c) => ed((e) => { if (c) e.mods = c; else delete e.mods })} />
+        </Field>
               {#if enc.fleet.size !== 'template'}
               <Field label="Faction" help="Who the fleet belongs to: its ships, colors, officers and comm greeting.">
                 <IdInput value={enc.fleet.faction} options={factions} strict onCommit={(v) => ed((x) => { x.fleet.faction = v })} />
@@ -92,6 +113,10 @@
               {:else if enc.fleet.size === 'fp'}
                 <Field label="Fleet points" for="en-p" help="How big the fleet is, in fleet points: a frigate costs a few, a capital ship 20 or more. The faction picks the ships.">
                   <input id="en-p" type="number" value={enc.fleet.points ?? 0} onchange={(e) => { const v = Number(e.currentTarget.value); ed((x) => { x.fleet.points = v }) }} />
+                </Field>
+                <!-- #62 (SagaLib 1.3): a difficulty-style setting scales the fleet when it spawns -->
+                <Field label="Size scaled by" for="en-ps" help="One of the mod's settings (Saga › Settings) multiplies the fleet points when the fleet spawns, e.g. a difficulty choice (Easy × 0.5, Hard × 2) or a percent. Only for fleets from the faction's doctrine. Needs SagaLib 1.3.">
+                  <ScaleInput id="en-ps" value={enc.fleet.sizeScale} onChange={(v) => ed((x) => { if (v) x.fleet.sizeScale = v; else delete x.fleet.sizeScale })} />
                 </Field>
               {:else}
                 <Field label="Variants" help="The ships, one variant id each (the first is the flagship).">

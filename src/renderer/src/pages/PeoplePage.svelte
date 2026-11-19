@@ -11,21 +11,36 @@
   import IdInput from '../ui/IdInput.svelte'
   import Modal from '../ui/Modal.svelte'
   import Field from '../ui/Field.svelte'
+  import ModsCond from '../ui/ModsCond.svelte'
+  import ModsChip from '../ui/ModsChip.svelte'
+  import ShowAllMods from '../ui/ShowAllMods.svelte'
+  import { mods } from '../state/mods.svelte'
   import { chooseImages } from '../state/imagepicker.svelte'
   import { later } from '../ui/later'
   import { setPersonMarket } from '../../../shared/locations'
   import PhraseEditor from '../quests/PhraseEditor.svelte'
   import { conditionTemplates } from '../quests/edit'
+  import VersionStrip from '../ui/VersionStrip.svelte'
+  import { nexListed } from '../../../shared/modlist'
+  import { INVASION_POSTS, POST_NAMES, marketOf } from '../../../shared/nexerelin'
+  import { itemVer } from '../state/itemver.svelte'
+  import { REP_LEVELS } from '../../../shared/model'
+  import { editorRelation } from '../state/testctx.svelte'
+  import { levelAtLeast } from '../../../shared/replevels'
 
   const m = $derived(project.m)
   const index = $derived(app.index!)
   let filter = $state('')
   const sel = $derived(app.selected.people ?? null)
-  const person = $derived(m?.people.find((p) => p.id === sel) ?? null)
+  // #64: the person as in the open version (the versions strip)
+  const person = $derived(itemVer.view('person', sel, m?.people.find((p) => p.id === sel) ?? null))
+  const inVersion = $derived(itemVer.combo('person', sel).length > 0)
   const existing = $derived(!person && sel ? index.people.find((p) => p.id === sel) ?? null : null)
   const match = (s: string) => !filter || s.toLowerCase().includes(filter.toLowerCase())
   const srcName = (id: string): string => (id.startsWith('code:') ? `code (${srcName(id.slice(5))})` : id === 'starsector-core' ? 'vanilla' : index.sources.find((s) => s.id === id)?.name ?? id)
-  const ed = (fn: (p: PersonDef) => void) => { const id = sel; project.change((mm) => { const p = mm.people.find((x) => x.id === id); if (p) fn(p) }) }
+  const ed = (fn: (p: PersonDef) => void) => { const id = sel; if (id) itemVer.edit<PersonDef>('person', id, (p) => fn(p)) }
+  /** Not part of a version (on/off for the whole person). */
+  const edBase = (fn: (p: PersonDef) => void) => { const id = sel; project.change((mm) => { const p = mm.people.find((x) => x.id === id); if (p) fn(p) }) }
   const factions = $derived([...(m?.factions.filter((f) => f.kind === 'addition').map((f) => ({ id: f.id, name: String((f as { raw: Record<string, unknown> }).raw.displayName ?? f.id) })) ?? []), ...index.factions])
   const markets = $derived([...(m?.systems.flatMap((s) => s.entities.flatMap((e) => (e.market ? [{ id: e.market.id, name: `${e.market.name} (this mod)` }] : []))) ?? []), ...index.markets])
   const templates = $derived(conditionTemplates(null, factions.map((f) => f.id), m?.quests ?? []))
@@ -61,6 +76,9 @@
   function setPlacement(at: Placement['at']) {
     const id = sel
     if (!id) return
+    const pl: Placement = at === 'market' ? { at, market: '', inCommDirectory: true } : at === 'fleet' ? { at, encounter: '' } : { at: 'none' }
+    // #64: in a version only the placement changes (the market lists are the base's)
+    if (inVersion) { ed((p) => { p.placement = pl }); return }
     // leaving a market also takes them off that market's people list (Locations page)
     project.change((mm) => {
       setPersonMarket(mm, id, null)
@@ -68,7 +86,7 @@
       if (p) p.placement = at === 'market' ? { at, market: '', inCommDirectory: true } : at === 'fleet' ? { at, encounter: '' } : { at: 'none' }
     })
   }
-  const setMarket = (market: string) => { const id = sel; if (id) project.change((mm) => setPersonMarket(mm, id, market || null)) }
+  const setMarket = (market: string) => { const id = sel; if (!id) return; if (inVersion) { ed((p) => { if (p.placement.at === 'market') p.placement.market = market }); return } project.change((mm) => setPersonMarket(mm, id, market || null)) }
   function addPhrase() {
     const id = sel
     if (!id) return
@@ -122,7 +140,32 @@
       : ''
     return `${base} A staff post: at their market they take it over, and vanilla's generated ${app.defs.posts.find((x) => x.id === p)?.name?.toLowerCase() ?? p} there leaves.${comm}`
   })
+  // #60: the existing characters (filtered to the mod's list of other mods unless Show all)
+  const others = $derived(index.people.filter((p) => match(`${p.id} ${p.name}`) && !m?.people.some((x) => x.id === p.id)))
   const rankName = (id: string) => app.defs.ranks.find((r) => r.id === id)?.name ?? id
+  // #70: screenshot mode "people:<id>:presence" shows the Presence section
+  $effect(() => { if (app.smokeArg === 'presence' && person) setTimeout(() => document.getElementById('pp-presence')?.scrollIntoView({ block: 'start' }), 300) })
+  // #70: who owns their market at the start, and whether they'd be present then
+  const presenceNow = $derived.by(() => {
+    if (!person?.presence || person.placement.at !== 'market' || !person.placement.market || !m) return ''
+    const mk = marketOf(person.placement.market, m, app.index)
+    const loyal = person.presence.faction || person.faction
+    if (!mk?.faction) return `SagaLib compares the market's owner with ${loyal} in game.`
+    const rel = editorRelation(mk.faction, loyal)
+    const lvl = (id: string) => app.defs.repLevels.find((x) => x.id === id)?.name ?? id
+    if (rel === undefined) return `At the start ${mk.name} belongs to ${mk.faction}; how ${mk.faction} stands with ${loyal} is set by the game's code, so SagaLib reads it in game. Play mode and the Test context have a "${person.name.first || person.id} is away" switch.`
+    const ok = levelAtLeast(rel, person.presence.atLeast)
+    return `At the start ${mk.name} belongs to ${mk.faction}, which is ${lvl(rel)} with ${loyal} (this mod's starting relations): ${ok ? 'present' : 'away from the start'}.`
+  })
+  // #61 (PLAN.md §10.3): Nexerelin re-flags these posts when it captures a market; a quest contact in one changes faction with it
+  const invasionWarn = $derived.by(() => {
+    if (!person || !m || !nexListed(m.project) || !(INVASION_POSTS as readonly string[]).includes(person.post) || person.placement.at !== 'market' || !person.placement.market) return null
+    const qs = m.quests.filter((q) => (q.start.kind === 'contact' || q.start.kind === 'bar') && q.start.person === person!.id)
+    if (!qs.length) return null
+    const mk = marketOf(person.placement.market, m, app.index)
+    if (mk?.protect) return null
+    return { quests: qs.map((q) => q.title).join(', '), market: mk?.name ?? person.placement.market, own: !!mk?.own, id: person.placement.market }
+  })
 </script>
 
 <div class="page">
@@ -132,12 +175,13 @@
       <div class="sect">This mod's people <span class="sectr"><label class="chk" title="Show people marked Inactive (planned, not exported)"><input type="checkbox" bind:checked={showInactive} /> inactive</label><button disabled={!m} onclick={() => (showNew = true)}>+ New person</button></span></div>
       <ul class="list">
         {#each (m?.people ?? []).filter((p) => match(`${p.id} ${p.name.first} ${p.name.last}`) && (showInactive || !p.inactive)) as p (p.id)}
-          <li class:on={sel === p.id} class:inactive={p.inactive}><button class="li" onclick={() => (app.selected.people = p.id)}><ImageView path={p.portrait} w={22} h={22} /> {p.name.first} {p.name.last}{#if p.inactive} <span class="muted">[Inactive]</span>{/if} <span class="badge b-new">new</span><span class="sub">{rankName(p.rank)}</span></button></li>
+          <li class:on={sel === p.id} class:inactive={p.inactive}><button class="li" onclick={() => (app.selected.people = p.id)}><ImageView path={p.portrait} w={22} h={22} /> {p.name.first} {p.name.last}{#if p.inactive} <span class="muted">[Inactive]</span>{/if} <span class="badge b-new">new</span><ModsChip itemKey={`person:${p.id}`} /><span class="sub">{rankName(p.rank)}</span></button></li>
         {:else}<li class="muted small pad">{m ? 'None yet.' : 'Pick an active mod first.'}</li>{/each}
       </ul>
       <div class="sect">Existing characters (read-only)</div>
+      <ShowAllMods list="people" hidden={mods.hidden('people', others, (p) => p.definedBy)} />
       <ul class="list ro">
-        {#each index.people.filter((p) => match(`${p.id} ${p.name}`) && !m?.people.some((x) => x.id === p.id)) as p (p.id)}
+        {#each mods.filter('people', others, (p) => p.definedBy) as p (p.id)}
           <li class:on={sel === p.id}><button class="li" onclick={() => (app.selected.people = p.id)}>{p.name}<span class="sub">{srcName(p.definedBy)}</span></button></li>
         {/each}
       </ul>
@@ -146,7 +190,13 @@
   <section class="main">
     {#if person}
       <div class="head"><ImageView path={person.portrait} w={40} h={40} /><h2>{person.name.first} {person.name.last}</h2><span class="badge b-new">new</span><span class="mono muted">{person.id}</span>
-        <span class="spacer"></span><span class="muted small">exported to <span class="mono">data/sagaforge/people/</span> (SagaLib creates and places them)</span><label class="chk" title="Planned but not ready: not exported, so not in the game. Its problems become warnings."><input type="checkbox" checked={!!person.inactive} onchange={(e) => { const v = e.currentTarget.checked; ed((p) => { if (v) p.inactive = true; else delete p.inactive }) }} /> Inactive</label><button class="mini danger" onclick={remove}>Delete</button></div>
+        <span class="spacer"></span><span class="muted small">exported to <span class="mono">data/sagaforge/people/</span> (SagaLib creates and places them)</span><label class="chk" title="Planned but not ready: not exported, so not in the game. Its problems become warnings."><input type="checkbox" checked={!!person.inactive} onchange={(e) => { const v = e.currentTarget.checked; edBase((p) => { if (v) p.inactive = true; else delete p.inactive }) }} /> Inactive</label><button class="mini danger" onclick={remove}>Delete</button></div>
+      <VersionStrip kind="person" id={person.id} what="this person" />
+      {#if invasionWarn}
+        <div class="nexwarn">⚠ Contact of {invasionWarn.quests}, as {POST_NAMES[person.post] ?? person.post} at {invasionWarn.market}. When Nexerelin captures that market, the new owner's faction takes this post over, so {person.name.first || 'they'} would change faction too (Nexerelin re-flags administrators, portmasters, supply officers and station, base and outpost commanders). Give them another post, protect the market, or set the quest's "If a market of this quest changes owner".
+          {#if invasionWarn.own}<button class="mini" onclick={() => project.change((mm) => { for (const s of mm.systems) for (const e of s.entities) if (e.id === invasionWarn!.id && e.market) e.market.protectFromInvasion = true })}>Protect {invasionWarn.market} from invasion</button>{/if}
+        </div>
+      {/if}
       <div class="cols">
         <div class="body">
           <div class="grid2">
@@ -182,6 +232,9 @@
           </div>
           <div class="sect2">Placement</div>
           <div class="grid2">
+            <Field label="Mods" help="Only with / Only without optional mods (Saga › Mods): SagaLib doesn't create them otherwise. Set automatically (greyed) when they belong to an optional mod's faction or market, or when only conditional quests use them.">
+              <ModsCond value={person.mods} itemKey={`person:${person.id}`} onChange={(v) => edBase((p) => { if (v) p.mods = v; else delete p.mods })} />
+            </Field>
             <Field label="Where" for="pp-pl" help="Where SagaLib puts them in the sector when a game starts (and in older saves).">
               <select id="pp-pl" value={person.placement.at} onchange={(e) => setPlacement(e.currentTarget.value as Placement['at'])}><option value="market">at a market</option><option value="fleet">commanding a fleet (encounter)</option><option value="none">nowhere until a quest needs them</option></select>
             </Field>
@@ -200,6 +253,28 @@
               </Field>
             {/if}
           </div>
+          {#if person.placement.at === 'market'}
+            <!-- #70 (SagaLib 1.3): present only while the market's owner gets on with a faction -->
+            {@const pr = person.presence}
+            <div class="sect2" id="pp-presence">Presence</div>
+            <div class="grid2">
+              <Field label="Presence" for="pp-pr" help="Whether they stay when their market changes hands. SagaLib checks once a day and on load, so a new owner, a war breaking out or peace all count. While away they're hidden from the comm directory (not removed, so saves stay safe), quests with them as contact aren't offered, and $global.sagaforge_away_{person.id} is true for dialog to test.">
+                <select id="pp-pr" value={pr ? 'rule' : ''} onchange={(e) => { const v = e.currentTarget.value; ed((p) => { if (v) p.presence = { atLeast: 'NEUTRAL' }; else delete p.presence }) }}><option value="">always present</option><option value="rule">only while the market's owner gets on with a faction</option></select>
+              </Field>
+              {#if pr}
+                <Field label="At least" for="pp-pl2" help="How the market's owner must stand with the faction. Vanilla's levels from Vengeful to Cooperative; &quot;not hostile&quot; is Inhospitable or better (not at war).">
+                  <select id="pp-pl2" value={pr.atLeast} onchange={(e) => { const v = e.currentTarget.value as NonNullable<PersonDef['presence']>['atLeast']; ed((p) => { if (p.presence) p.presence.atLeast = v }) }}>{#each REP_LEVELS as l (l)}<option value={l}>{app.defs.repLevels.find((x) => x.id === l)?.name ?? l}</option>{/each}<option value="notHostile">not hostile</option></select>
+                </Field>
+                <Field label="With" help="The faction they're loyal to. Empty = their own faction.">
+                  <IdInput value={pr.faction ?? ''} options={factions} strict placeholder={`${person.faction} (their own)`} onCommit={(v) => ed((p) => { if (p.presence) { if (v) p.presence.faction = v; else delete p.presence.faction } })} />
+                </Field>
+                <Field label="Elsewhere" help="Where they go while away: listed in that market's comm directory (their quests still aren't offered). Empty = nowhere.">
+                  <IdInput value={pr.elsewhere ?? ''} options={markets.filter((x) => person.placement.at !== 'market' || x.id !== person.placement.market)} strict placeholder="nowhere" onCommit={(v) => ed((p) => { if (p.presence) { if (v) p.presence.elsewhere = v; else delete p.presence.elsewhere } })} />
+                </Field>
+                <span></span><span class="f-help">{presenceNow}</span>
+              {/if}
+            </div>
+          {/if}
           <div class="sect2">Contact</div>
           <div class="grid2">
             <Field label="Contact" for="pp-c" help="Can become one of the player's contacts (the intel screen's Contacts), as vanilla's mission givers do after a completed job.">
@@ -298,4 +373,5 @@
   .danger:hover { border-color: var(--bad); color: var(--bad); }
   .small { font-size: 11px; }
   .pad { padding: 4px 10px; }
+  .nexwarn { margin: 4px 12px; padding: 6px 8px; border: 1px solid #8a5a2b; border-radius: 4px; color: var(--warn); font-size: 12px; }
 </style>

@@ -58,7 +58,8 @@ you changed has a **Revert** button.
 The game's merge can only **add** to a list, never take something out. If you click ✕ on an
 entry that isn't yours (say, the Onslaught in the Hegemony's hulls), Saga Forge explains this and
 offers to **remove it at game start with SagaLib (scripted change)**. Such removals are listed
-under **Scripted changes** on the right, and they need SagaLib in game.
+on the **Scripted changes** tab (a change to an existing faction) or the **Relations & changes** tab
+(your own faction), and they need SagaLib in game.
 
 ![Removing a vanilla entry: the merge can't, SagaLib can](../img/factions-cantremove.png)
 
@@ -75,8 +76,9 @@ reference page for that key.
 | **Doctrine** | Fleet make-up (warships, carriers, phase ships), officer and ship quality, ship size, aggression, officer and commander skills, illegal goods | Its fleets in battle; customs scans at its markets |
 | **Names & ranks** | Person name sets and ship name sources (with weights), portrait lists for men and women, rank and post titles, fleet type names, music | Generated officers, administrators and contacts; ship names; music in its systems |
 | **Behavior** | Switches such as Offers commissions, Wars and hostilities, Buys AI cores, Makes pirate bases, Punitive expeditions | How vanilla's campaign systems treat the faction |
-| **Relations** | Starting relations with other factions (new factions only) | The intel tab's relations from a new game |
+| **Relations & changes** | Starting relations with other factions, hidden from the intel tab, and **scripted changes** (new factions; changes to existing factions have a **Scripted changes** tab instead) | The intel tab's relations from a new game; the scripted changes on every load |
 | **Description** | The text of its intel page (new factions only) | Intel tab › the faction |
+| **Nexerelin** | The faction's Nexerelin config (new factions only, when the mod lists Nexerelin in [Saga › Mods](saga.md#mods)): new-game list and ready-made fleets, war and invasions, diplomacy, fleet names, economy | Only with Nexerelin: its new-game faction list, invasions, diplomacy events, starting relations |
 | **Other keys** | Every key the tabs don't show, as editable loose JSON, and **Add a key** with the keys vanilla's factions use | Depends on the key |
 
 ![Colors](../img/factions-colors.png)
@@ -89,9 +91,45 @@ reference page for that key.
 
 Two tabs write elsewhere than the `.faction` file, because they aren't `.faction` keys:
 
-- **Relations** go into `data/sagaforge/factions.json`, and SagaLib sets them when a new game
-  starts, so the mod needs SagaLib.
+- **Relations & changes** go into `data/sagaforge/factions.json`, and SagaLib sets the relations
+  when a new game starts and applies the scripted changes on every load, so the mod needs SagaLib.
+  A scripted change sets at runtime what the `.faction` file can't do per mod: the display name
+  (and with "the"), logo, crest, secondary color, a known ship added or removed, a commodity made
+  illegal or legal, a doctrine value, and shown in or hidden from the intel tab. With optional
+  mods, the tab has a **Versions** strip (see [Saga › Mods](saga.md#mods)): each combination can
+  have its own relations and changes.
 - **Description** goes into the mod's `data/strings/descriptions.csv` when you export.
+- **Nexerelin** goes into `data/config/exerelinFactionConfig/<id>.json` plus a row in that
+  folder's `mod_factions.csv`. Only Nexerelin reads these files, so Nexerelin stays optional: your
+  mod doesn't depend on it.
+
+### Nexerelin
+
+Without a config, Nexerelin treats your faction as a bystander with neutral defaults: it can't be
+picked when starting a new game, never invades, has no diplomatic personality, and its starting
+relations follow whatever mode Nexerelin is in. The **Nexerelin** tab gives it a config, so it
+takes part like Nexerelin's own factions. The tab shows on your mod's own factions once Nexerelin
+is in [Saga › Mods](saga.md#mods) (optional is right: the files do nothing without it).
+
+- **New game**: *Playable*, *Starting faction* (in the new-game list), *On in a random sector*, the
+  *Difficulty* shown after its name, the *New-game tooltip*, and a count of its **Ready-made
+  fleets**: the preset fleets a player who joins the faction at the start can pick. You edit them on
+  [Fleets › New-game fleets](fleets.md#new-game-fleets-nexerelin). Nexerelin's **Custom** button (a
+  fleet built from the faction's known ships) is always there too, so without ready-made fleets the
+  player only gets Custom; Problems notes it.
+- **War and invasions**: pirates, hostile to all, can invade, how often and how big its invasions
+  and response fleets are, ground bonuses, special forces.
+- **Diplomacy**: morality, alignments, traits (hover one for what it does), liked and disliked
+  factions, and **Keep relations when randomized**.
+- **Fleet names**, **Economy** (free market, tariffs).
+- **Starting relations** aren't edited here: the tab shows the faction's relations from **Relations
+  & changes**, and Export writes them into the config. With Nexerelin, Nexerelin then sets them, in
+  the hand-made and in a random sector, and randomizes them only when the player picks random
+  relations (unless *Keep relations when randomized* is on); SagaLib leaves them alone. Without
+  Nexerelin, SagaLib sets them as always. A relation that only applies with or without some mod
+  can't be in the config: it stays SagaLib's.
+- **Other keys**: anything the tab has no field for is kept as it is, and can be edited as JSON.
+  A mod that already has config files for its own factions has them read in when you first open it.
 
 ### Name lists
 
@@ -177,7 +215,7 @@ them. For a fixed fleet with exact ships, see [Fleets › Make a named fleet](fl
 This works for your mod's **new** factions only: the Relations tab isn't there for a change to
 an existing faction.
 
-1. Open your faction and its **Relations** tab.
+1. Open your faction and its **Relations & changes** tab.
 2. In **+ faction…**, pick another faction (or *Player*). It is added at 0, neutral.
 3. Drag the slider or type an exact value from -1 to 1. **Level** shows the name the game uses
    (Vengeful, Hostile, … Friendly, Cooperative).
@@ -186,7 +224,23 @@ an existing faction.
 ![Starting relations](../img/factions-relations.png)
 
 **In game:** SagaLib sets these relations when a **new game** starts. They are not applied to
-existing saves, and the mod needs SagaLib.
+existing saves, and the mod needs SagaLib. If the faction has a Nexerelin config, Nexerelin sets
+them instead whenever it is enabled (see [Nexerelin](#nexerelin)).
+
+### Make a faction playable in Nexerelin
+
+1. In [Saga › Mods](saga.md#mods), set **Nexerelin** to *Optional*.
+2. Open your faction and its **Nexerelin** tab, and click **Add a Nexerelin config**.
+3. Under **New game**, tick **Starting faction**, type a **Difficulty** (e.g. *Medium*) and a
+   **New-game tooltip**.
+4. Click **Edit on Fleets › New-game fleets** next to **Ready-made fleets** and add the fleets (see
+   [Add new-game fleets](fleets.md#add-new-game-fleets-nexerelin)).
+5. Set its **Diplomacy** (morality, alignments, traits, liked and disliked factions) and anything
+   else you want; empty fields keep Nexerelin's defaults.
+6. Set its starting relations on **Relations & changes** as usual, and export.
+
+**In game:** with Nexerelin, the faction is in the new-game list as "<name> (<difficulty>)" with
+your tooltip, and starting as a member offers your fleets. Without Nexerelin nothing changes.
 
 ### Add a name list
 

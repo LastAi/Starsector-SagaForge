@@ -60,7 +60,7 @@ export async function runExtensionIndex(cache: IndexCache, enabled: Set<string>)
   for (const ext of EXTENSIONS) {
     const available = !ext.info.requiresMod || cache.sources.some((s) => s.id === ext.info.requiresMod)
     const on = available && enabled.has(ext.info.id)
-    states.push({ id: ext.info.id, name: ext.info.name, description: ext.info.description, on, available, reason: available ? undefined : `needs ${ext.info.requiresMod}` })
+    states.push({ id: ext.info.id, name: ext.info.name, description: ext.info.description, on, available, reason: available ? undefined : `needs ${ext.info.requiresMod}`, requiresMod: ext.info.requiresMod })
     if (!on || !ext.index) continue
     try {
       const r = await ext.index(cache)

@@ -25,10 +25,15 @@
     app.go(r.page as PageId, r.id ?? null)
     if (r.page === 'quests') app.selected.questNode = r.sub?.split('/')[0] ?? null
     if (r.page === 'saga' && r.id === 'flags') app.selected.sagaTab = 'flags'
+    if (r.page === 'saga' && r.id === 'mods') { app.selected.sagaTab = 'mods'; app.selected.sagaOpen = 'mods' }
     if (r.page === 'saga' && r.id === 'pools') { app.selected.sagaTab = 'pools'; app.selected.pool = r.sub ?? null }
     if (r.page === 'saga' && r.id === 'scatter') app.selected.sagaTab = 'scatter'
+    if (r.page === 'saga' && r.id === 'settings') { app.selected.sagaTab = 'settings'; app.selected.sagaOpen = 'settings'; app.selected.setting = r.sub ?? null }
     if (r.page === 'saga' && r.id === 'progress') { app.selected.sagaTab = 'progress'; app.selected.progressEvent = r.sub ?? null }
     if (r.page === 'saga' && r.id === 'events') { app.selected.sagaTab = 'events'; app.selected.eventScheduler = r.sub ?? null }
+    // #65
+    if (r.page === 'saga' && r.id === 'achievements') { app.selected.sagaTab = 'achievements'; app.selected.sagaOpen = 'achievements'; app.selected.achievement = r.sub ?? null }
+    if (r.page === 'saga' && r.id === 'questskip') { app.selected.sagaTab = 'questskip'; app.selected.sagaOpen = 'questskip'; app.selected.skipChain = r.sub?.split(':')[0] ?? null; app.selected.skipQuest = r.sub?.split(':')[1] ?? null }
   }
 
   function fix(p: Problem, action: string, arg: unknown) {

@@ -1,5 +1,6 @@
 <script lang="ts">
   /** A quest or conversation on the Saga overview board (PLAN.md §4.8). */
+  import ModsChip from '../ui/ModsChip.svelte'
   import { Handle, Position } from '@xyflow/svelte'
   import type { QuestPlan } from '../../../shared/model'
 
@@ -11,7 +12,7 @@
 
 <div class="card" class:dialog={q.kind === 'dialog'} class:inactive={data.inactive}>
   <Handle type="target" position={Position.Left} />
-  <div class="h"><span>{q.title}{#if data.inactive} [Inactive]{/if}</span>{#if data.problems}<span class="p">{data.problems}</span>{/if}</div>
+  <div class="h"><span>{q.title}{#if data.inactive} [Inactive]{/if}<ModsChip itemKey={`quest:${q.id}`} /></span>{#if data.problems}<span class="p">{data.problems}</span>{/if}</div>
   <div class="b">
     <div class="muted">{data.start}</div>
     {#if q.kind === 'quest'}<div>{q.stages.length} stage{q.stages.length === 1 ? '' : 's'}{ends.length ? ` · ends: ${[...new Set(ends)].join(', ')}` : ''}</div>{:else}<div class="muted">conversation only</div>{/if}

@@ -106,11 +106,12 @@ The user went through the left-out items and the questions below:
 - **Additions to vanilla's drop groups, a random-from-group reward (q. 12):** after the user's
   in-game merge check of `drop_groups.csv`. **Checked 2026-11-16: a mod's rows are added to the
   vanilla group**, so both can be built: **moved to Phase 8** (WORK-ORDER F7-a, F7-b). Two mods
-  adding the same item to one vanilla group: noted for the cross-mod work (#31).
+  adding the same item to one vanilla group: noted for the cross-mod work (#31; now a Check warning
+  in task #65, PLAN.md §10.7).
 - **Roaming fleets (q. 13):** Phase 8, with world events.
 - **Target extras (q. 6):** noted; the user will ask modders whether they want or need them.
   **Commodity targets need a delicate touch**: two major mods change how vanilla's economy and
-  planetary industry work. **Terrain targets** look too obscure: most mods would rather spawn a
+  planetary industry work. (Moved to task #66, after the mod-support baseline: PLAN.md §10.7.) **Terrain targets** look too obscure: most mods would rather spawn a
   matching place with randomized elements than match a random existing one.
 - **More spawn kinds (q. 10):** to look at, like specials.
 - **rdsm fixtures (q. 5):** right to leave out of Phase 7; an outstanding test case (INGAME-CHECKS

@@ -15,6 +15,8 @@ import { errText, hashText, isDir, isFile, versionString, walk } from './install
 import { checkWritable, isInside, realpathLoose, writeNewBytes, writeText, type WriteRules } from './workspace'
 import type { IndexCache } from './gameindex'
 import type { SourceInfo } from '../shared/api'
+import { FRAMEWORK_FILES } from '../shared/modlist'
+import { NEX_CONFIG_DIR, NEX_PLAN } from '../shared/nexconfig'
 
 const slash = (p: string) => p.replace(/\\/g, '/')
 
@@ -31,6 +33,15 @@ export const SHARED_FILES = [
   'data/strings/ship_names.json',
   'data/config/custom_entities.json',
   'data/world/factions/default_fleet_type_names.json',
+  // #27: MagicLib bounties (merged by key; hand-written bounties stay) and the older CSV (read only)
+  'data/config/modFiles/magicBounty_data.json',
+  // #62: the mod's LunaLib settings page and icon
+  'data/config/LunaSettings.csv',
+  'data/config/LunaSettingsConfig.json',
+  // #65: MagicLib achievements (an owned block; hand-written rows stay) and Nexerelin's quest skip (merged by key)
+  'data/config/magic_achievements.csv',
+  'data/config/exerelin/questSkip.json',
+  'data/config/vayraBounties/unique_bounty_data.csv',
   // read only: the mod's own salvage tables, for Check mod's header check (RC-F6)
   'data/campaign/procgen/drop_groups.csv',
   'data/campaign/procgen/salvage_entity_gen_data.csv',
@@ -79,7 +90,7 @@ export async function loadProject(cache: IndexCache, src: SourceInfo): Promise<P
     gameVersion: String(info.gameVersion ?? ''),
     dependencies: (Array.isArray(info.dependencies) ? info.dependencies : []).map((d) => {
       const o = d as Record<string, unknown>
-      return { id: String(o?.id ?? ''), name: o?.name == null ? undefined : String(o.name) }
+      return { id: String(o?.id ?? ''), name: o?.name == null ? undefined : String(o.name), ...(o?.version == null ? {} : { version: versionString(o.version) }) }
     }).filter((d) => d.id)
   }
 
@@ -104,6 +115,7 @@ export async function loadProject(cache: IndexCache, src: SourceInfo): Promise<P
   const scatterRaw = await readJson<Record<string, unknown>>('sagaforge/scatter.json')
   const eventsRaw = await readJson<Record<string, unknown>>('sagaforge/events.json')
   const progressRaw = await readJson<Record<string, unknown>>('sagaforge/progress.json')
+  const bountiesRaw = await readJson<Record<string, unknown>>('sagaforge/bounties.json')
 
   // The mod's own faction files: a path that an earlier source defines is an override.
   const factions: FactionFile[] = []
@@ -137,6 +149,12 @@ export async function loadProject(cache: IndexCache, src: SourceInfo): Promise<P
     const rel = slash(path.relative(dir, f))
     remember(rel, await fsp.readFile(f, 'utf8'))
   }
+  // #63: the mod's Nexerelin faction configs (Export updates them in place; read in when there is no plan file yet)
+  for (const f of await walk(path.join(dir, ...NEX_CONFIG_DIR.split('/')), ['.json', '.csv'])) {
+    const rel = slash(path.relative(dir, f))
+    if (!files[rel]) remember(rel, await fsp.readFile(f, 'utf8'))
+  }
+  const nexRaw = await readJson<Record<string, unknown>>(NEX_PLAN)
 
   const fr = factionsRuntimeRaw ?? {}
   return {
@@ -147,7 +165,9 @@ export async function loadProject(cache: IndexCache, src: SourceInfo): Promise<P
     systems, encounters,
     phrases: await listOf('sagaforge/phrases.json', 'phrases'),
     testProfiles: await listOf('sagaforge/test-profiles.json', 'profiles'),
-    factionsRuntime: { relations: (fr.relations ?? {}) as never, scripted: (fr.scripted ?? {}) as never },
+    factionsRuntime: { relations: (fr.relations ?? {}) as never, scripted: (fr.scripted ?? {}) as never, ...(fr.relationMods ? { relationMods: fr.relationMods as never } : {}) },
+    // #60: framework files the mod ships (LunaLib, Nexerelin, MagicLib), for the uses-scan
+    frameworkFiles: FRAMEWORK_FILES.filter((rel) => fs.existsSync(path.join(dir, rel))),
     descriptions: ((descriptionsRaw?.descriptions ?? {}) as never),
     names: { people: (Array.isArray(namesRaw?.people) ? namesRaw.people : []) as never, ships: (Array.isArray(namesRaw?.ships) ? namesRaw.ships : []) as never },
     types: { entities: (Array.isArray(typesRaw?.entities) ? typesRaw.entities : []) as never, planets: (Array.isArray(typesRaw?.planets) ? typesRaw.planets : []) as never },
@@ -156,6 +176,9 @@ export async function loadProject(cache: IndexCache, src: SourceInfo): Promise<P
     scatter: (Array.isArray(scatterRaw?.scatter) ? scatterRaw.scatter : []) as never,
     events: (Array.isArray(eventsRaw?.events) ? eventsRaw.events : []) as never,
     progress: (Array.isArray(progressRaw?.progress) ? progressRaw.progress : []) as never,
+    bounties: (Array.isArray(bountiesRaw?.bounties) ? bountiesRaw.bounties : []) as never,
+    ...(nexRaw ? { nexerelin: (nexRaw.factions && typeof nexRaw.factions === 'object' && !Array.isArray(nexRaw.factions) ? nexRaw.factions : {}) as never } : {}),
+    ...(nexRaw?.player && typeof nexRaw.player === 'object' && !Array.isArray(nexRaw.player) ? { nexerelinPlayer: nexRaw.player as never } : {}),
     factions, releases, files, errors
   }
 }
@@ -191,7 +214,8 @@ export function modPath(modDir: string, rel: string): string {
 export function removable(rel: string): boolean {
   const p = slash(rel)
   if (p.split('/').some((s) => s === '..' || s === '')) return false
-  return p.startsWith('sagaforge/') || /^data\/world\/factions\/[^/]+\.faction$/.test(p) ||
+  // #63: a Nexerelin config Export wrote for a faction that no longer has one (only ids it wrote: project.exported.nexerelin)
+  return p.startsWith('sagaforge/') || /^data\/world\/factions\/[^/]+\.faction$/.test(p) || /^data\/config\/exerelinFactionConfig\/[^/]+\.json$/.test(p) ||
     /^data\/sagaforge\/.+\.(json|csv)$/.test(p) || /^data\/config\/sagaforge\/[^/]+\.csv$/.test(p)
 }
 
@@ -205,7 +229,7 @@ export async function writeFiles(modDir: string, req: WriteRequest, rules: Write
   for (const w of req.writes) {
     const abs = modPath(modDir, w.path)
     checkWritable(abs, rules)
-    if (w.remove && !removable(w.path)) throw new Error(`Only plan files, the mod's own faction files and its generated SagaLib files can be removed: ${w.path}`)
+    if (w.remove && !removable(w.path)) throw new Error(`Only plan files, the mod's own faction files, its Nexerelin faction configs and its generated SagaLib files can be removed: ${w.path}`)
     const old = isFile(abs) ? await fsp.readFile(abs, 'utf8') : null
     if (w.expectedHash !== undefined) {
       const cur = old == null ? null : hashText(old)

@@ -9,11 +9,14 @@ import { parseCsvRecords, csvCell } from './csvedit'
 import { jsonToPatch, patchToJson, clone, type FactionPatch } from './faction'
 import {
   PLAN_FORMAT, newProjectFile, emptyNameLists, emptyModTypes, emptyFleetPlans,
-  type Descriptions, type EncounterDef, type FactionsRuntime, type FleetPlans, type ItemDef, type ModTypes, type NameLists, type PoolPlan, type EventSchedulerPlan, type ProgressEventPlan, type ScatterPlan, type PersonDef, type Phrase, type ProjectFile,
+  type Descriptions, type EncounterDef, type FactionsRuntime, type FleetPlans, type ItemDef, type ModTypes, type NameLists, type PoolPlan, type EventSchedulerPlan, type ProgressEventPlan, type ScatterPlan, type BountyPlan, type PersonDef, type Phrase, type ProjectFile,
   type QuestPlan, type StarSystemDef, type TestProfile, type TodoMap
 } from './model'
 import type { FileWrite, ProjectState } from './project'
 import { pruneTodos } from './todo'
+import { importNexFiles, NEX_PLAN } from './nexconfig'
+import { SAGA_FORGE_VERSION } from './appinfo'
+import { cmpVersionStrings } from './version'
 
 export interface FactionAdditionEdit {
   kind: 'addition'
@@ -57,10 +60,23 @@ export interface ModModel {
   progress?: ProgressEventPlan[]
   /** Scatter at new game (Phase 7e). Optional: older models have none. */
   scatter?: ScatterPlan[]
+  /** MagicLib bounties (#27). Optional: older models have none. */
+  bounties?: BountyPlan[]
+  /** #63: Nexerelin faction configs of the mod's own factions (faction id → the document, unknown keys kept). Optional: older models have none. */
+  nexerelin?: Record<string, Record<string, unknown>>
+  /** #63: ready-made fleets the mod adds to the player faction (free start, own faction): Nexerelin's player.json, appended. */
+  nexerelinPlayer?: Record<string, unknown>
   factions: FactionEdit[]
 }
 
 export function modelFromProject(p: ProjectState): ModModel {
+  const m = modelOf(p)
+  // #63: no plan file yet: the mod's own Nexerelin config files are read in (their relations join the faction's)
+  if (p.nexerelin == null) importNexFiles(m, p.files)
+  return m
+}
+
+function modelOf(p: ProjectState): ModModel {
   return clone({
     project: p.project,
     quests: p.quests,
@@ -79,6 +95,9 @@ export function modelFromProject(p: ProjectState): ModModel {
     events: p.events ?? [],
     progress: p.progress ?? [],
     scatter: p.scatter ?? [],
+    bounties: p.bounties ?? [],
+    nexerelin: p.nexerelin ?? {},
+    ...(p.nexerelinPlayer ? { nexerelinPlayer: p.nexerelinPlayer } : {}),
     factions: p.factions.map((f): FactionEdit => f.kind === 'addition'
       ? { kind: 'addition', id: f.id, file: f.file, raw: f.raw, listed: f.listed }
       : { kind: 'override', id: f.id, file: f.file, patch: jsonToPatch(f.raw) })
@@ -87,7 +106,7 @@ export function modelFromProject(p: ProjectState): ModModel {
 
 export const emptyModel = (prefix = ''): ModModel => ({
   project: newProjectFile(prefix), quests: [], people: [], items: [], systems: [], encounters: [], phrases: [], testProfiles: [],
-  factionsRuntime: { relations: {}, scripted: {} }, descriptions: {}, names: emptyNameLists(), types: emptyModTypes(), fleets: emptyFleetPlans(), pools: [], events: [], progress: [], scatter: [], factions: []
+  factionsRuntime: { relations: {}, scripted: {} }, descriptions: {}, names: emptyNameLists(), types: emptyModTypes(), fleets: emptyFleetPlans(), pools: [], events: [], progress: [], scatter: [], bounties: [], nexerelin: {}, factions: []
 })
 
 export const json = (v: unknown) => JSON.stringify(v, null, 2) + '\n'
@@ -110,7 +129,9 @@ export function planTexts(model: ModModel): Record<string, string> {
   // to-dos whose field has changed since they were marked are done: not written (R9)
   const m = withoutDoneTodos(model)
   const out: Record<string, string> = {}
-  out['sagaforge/project.json'] = json({ ...m.project, format: PLAN_FORMAT })
+  // the version that saved it, unless a newer Saga Forge did (this one doesn't lower it)
+  const savedWith = m.project.savedWith && cmpVersionStrings(m.project.savedWith, SAGA_FORGE_VERSION) > 0 ? m.project.savedWith : SAGA_FORGE_VERSION
+  out['sagaforge/project.json'] = json({ ...m.project, format: Math.max(PLAN_FORMAT, m.project.format ?? 0), savedWith })
   for (const q of m.quests) out[questFile(q.id)] = json({ ...q, format: PLAN_FORMAT })
   for (const s of m.systems) out[systemFile(s.id)] = json({ ...s, format: PLAN_FORMAT })
   for (const e of m.encounters) out[encounterFile(e.id)] = json({ ...e, format: PLAN_FORMAT })
@@ -130,11 +151,13 @@ export function planTexts(model: ModModel): Record<string, string> {
   if (m.events?.length) out['sagaforge/events.json'] = list('events', m.events)
   if (m.progress?.length) out['sagaforge/progress.json'] = list('progress', m.progress)
   if (m.scatter?.length) out['sagaforge/scatter.json'] = list('scatter', m.scatter)
+  if (m.bounties?.length) out['sagaforge/bounties.json'] = list('bounties', m.bounties)
+  if (Object.keys(m.nexerelin ?? {}).length || m.nexerelinPlayer) out[NEX_PLAN] = json({ format: PLAN_FORMAT, factions: m.nexerelin ?? {}, ...(m.nexerelinPlayer ? { player: m.nexerelinPlayer } : {}) })
   return out
 }
 
 /** Plan files Saga Forge manages (others under sagaforge/, like backups and releases, are left alone). */
-const MANAGED = /^sagaforge\/(project\.json|people\.json|items\.json|phrases\.json|test-profiles\.json|factions\.json|descriptions\.json|names\.json|types\.json|fleets\.json|pools\.json|events\.json|progress\.json|scatter\.json|quests\/.+\.quest\.json|locations\/.+\.system\.json|encounters\/.+\.encounter\.json)$/
+const MANAGED = /^sagaforge\/(project\.json|people\.json|items\.json|phrases\.json|test-profiles\.json|factions\.json|descriptions\.json|names\.json|types\.json|fleets\.json|pools\.json|events\.json|progress\.json|scatter\.json|bounties\.json|nexerelin\.json|quests\/.+\.quest\.json|locations\/.+\.system\.json|encounters\/.+\.encounter\.json)$/
 
 /** Text of a faction file for this edit, keeping the existing file's formatting where there is one. */
 export function factionText(f: FactionEdit, oldText: string | undefined): string {

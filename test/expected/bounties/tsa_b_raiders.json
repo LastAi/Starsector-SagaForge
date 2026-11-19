@@ -1,0 +1,53 @@
+{
+  "json": {
+    "trigger_market_id": [
+      "tsa_station_market",
+      "tsa_station"
+    ],
+    "job_name": "Test 27 (a): Kasimir's raiders",
+    "job_description": "Range Control 27 wants ==$name== gone from $location in $system. Pay: $reward. (Test 27 (a).)",
+    "job_comm_reply": "\"Range Control sent you? $firstName Kasimir doesn't run.\" (Test 27 (a): the comm reply comes from the encounter's comm dialog.)",
+    "job_intel_success": "Range Control 27 pays out. (Test 27 (a): success.)",
+    "job_intel_expired": "Someone else got Kasimir first.",
+    "job_forFaction": "independent",
+    "job_deadline": 90,
+    "job_credit_reward": 15000,
+    "job_reputation_reward": 5,
+    "job_type": "assassination",
+    "job_show_type": true,
+    "job_show_captain": true,
+    "job_show_fleet": "all",
+    "job_show_distance": "system",
+    "job_show_arrow": true,
+    "job_difficultyDescription": "auto",
+    "target_first_name": "Vell",
+    "target_last_name": "Kasimir",
+    "target_portrait": "graphics/portraits/portrait_pirate02.png",
+    "target_gender": "FEMALE",
+    "target_rank": "spaceCaptain",
+    "target_post": "fleetCommander",
+    "target_personality": "reckless",
+    "fleet_faction": "pirates",
+    "fleet_name": "Kasimir's Raiders",
+    "fleet_flagship_variant": "enforcer_d_pirates_Strike",
+    "fleet_preset_ships": {
+      "hound_d_pirates_Overdriven": 2,
+      "cerberus_d_pirates_Standard": 1
+    },
+    "fleet_composition_faction": "pirates",
+    "fleet_composition_quality": 0.3,
+    "fleet_behavior": "AGGRESSIVE",
+    "fleet_attitude": "HOSTILE",
+    "fleet_no_retreat": true,
+    "location_entitiesID": [
+      "tsa_rock"
+    ]
+  },
+  "notes": [
+    {
+      "level": "info",
+      "field": "deadline",
+      "message": "The 90-day deadline counts from acceptance, and only if the player turned on \"Enable Bounty Deadlines\" in LunaLib's MagicLib settings (off by default). Otherwise the bounty never expires."
+    }
+  ]
+}

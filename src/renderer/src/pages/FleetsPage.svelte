@@ -2,7 +2,7 @@
   /**
    * Fleets (Phase 5; DESIGN-PHASE5.md): the mod's named fleets (R27: ships, ship names, flagship,
    * captain; reused by encounters), fleet type names for every faction (R22), and a preview of what
-   * a faction's doctrine makes (R4).
+   * a faction's doctrine makes (R4); #63: Nexerelin's new-game ready-made fleets.
    */
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
@@ -13,6 +13,9 @@
   import { slug } from '../../../shared/quest'
   import { getPath } from '../../../shared/faction'
   import type { FleetTemplateDef } from '../../../shared/model'
+  import NexFleets from '../factions/NexFleets.svelte'
+  import { NEX_PLAYER, NEX_PLAYER_CONFIG, nexConfigPath, nexConfigured, startFleets, type NexConfig } from '../../../shared/nexconfig'
+  import { nexListed } from '../../../shared/modlist'
 
   const index = $derived(app.index!)
   const m = $derived(project.m)
@@ -70,6 +73,27 @@
   const preview = $derived(doctrineOf ? doctrinePreview(doctrineOf) : null)
   const pct = (x: number) => `${Math.round(x * 100)}%`
   let showTypes = $state(app.smokeArg === 'types')
+
+  // ---- #63: Nexerelin's new-game ready-made fleets ("nex=<faction>" / "nex=player"): the mod's own
+  // factions with a Nexerelin config, and fleets added to the player faction (free start, own faction)
+  const nexSel = $derived(sel?.startsWith('nex=') ? sel.slice(4) : null)
+  const nexOwn = $derived(m ? nexConfigured(m) : [])
+  const showNex = $derived(!!m && (nexListed(m.project) || nexOwn.length > 0 || !!m.nexerelinPlayer))
+  const nexCount = (c: NexConfig | undefined) => (c ? Object.values(startFleets(c)).reduce((a, l) => a + l.length, 0) : 0)
+  const nexName = (id: string) => { const f = m?.factions.find((x) => x.id === id); return f?.kind === 'addition' ? String(f.raw.displayName ?? id) : id }
+  const nexConfigOf = $derived(nexSel === NEX_PLAYER ? (m?.nexerelinPlayer ?? {}) : nexSel ? (m?.nexerelin?.[nexSel] ?? null) : null)
+  function editNexFleets(fn: (c: NexConfig) => void) {
+    const id = nexSel
+    if (!id) return
+    project.change((mm) => {
+      if (id === NEX_PLAYER) {
+        const c = (mm.nexerelinPlayer ??= {})
+        fn(c)
+        if (!Object.keys(c).length) delete mm.nexerelinPlayer
+      } else { const c = mm.nexerelin?.[id]; if (c) fn(c) }
+    })
+  }
+  const pick = (id: string) => { app.selected.fleets = id; previewFaction = null; showTypes = false }
 </script>
 
 <div class="page">
@@ -88,6 +112,16 @@
         <li class:on={previewFaction === f.id}><button class="li" onclick={() => { previewFaction = f.id; showTypes = false }}>{f.kind === 'addition' ? String(f.raw.displayName ?? f.id) : index.factions.find((x) => x.id === f.id)?.name ?? f.id}<span class="sub">{f.kind === 'addition' ? 'new' : 'override'}</span></button></li>
       {:else}<li class="muted small pad">No factions in this mod.</li>{/each}
     </ul>
+    {#if showNex}
+      <div class="sect" title="Nexerelin's new-game fleet choice: the ready-made fleets a player can start with">New-game fleets (Nexerelin)</div>
+      <ul class="list">
+        <li class:on={nexSel === NEX_PLAYER && !previewFaction && !showTypes}><button class="li" onclick={() => pick(`nex=${NEX_PLAYER}`)}>Player (free start, own faction)<span class="sub">{nexCount(m?.nexerelinPlayer) ? `+${nexCount(m?.nexerelinPlayer)}` : 'none'}</span></button></li>
+        {#each nexOwn as id (id)}
+          <li class:on={nexSel === id && !previewFaction && !showTypes}><button class="li" onclick={() => pick(`nex=${id}`)}>{nexName(id)}<span class="sub">{nexCount(m?.nexerelin?.[id]) || 'none'}</span></button></li>
+        {/each}
+        {#if !nexOwn.length}<li class="muted small pad">Your factions get fleets here once they have a Nexerelin config (Factions › Nexerelin).</li>{/if}
+      </ul>
+    {/if}
   </aside>
 
   <section class="main">
@@ -129,6 +163,18 @@
           <tr><td colspan="4"><IdInput value="" options={fleetTypeOptions} placeholder="+ fleet type (vanilla's or your own id)" width="260px" clearOnCommit onCommit={(id) => { if (id) project.change((mm) => { mm.fleets ??= { templates: [], typeNames: {} }; mm.fleets.typeNames[id] = gameName(id) || id }) }} /></td></tr>
         </tbody>
       </table>
+    {:else if nexSel && nexConfigOf}
+      {#if nexSel === NEX_PLAYER}
+        <h2>Player faction: ready-made fleets (Nexerelin)</h2>
+        <p class="muted small">The fleets offered on Nexerelin's new-game fleet choice for <b>free start</b> and <b>own faction</b>, which use Nexerelin's player faction. Yours are <b>added after Nexerelin's own</b> (e.g. Frigate 1/5 becomes 1/6): Export writes them to <span class="mono">{NEX_PLAYER_CONFIG}</span> in your mod, which the game merges into Nexerelin's, appending the lists. Nexerelin's fleets can't be removed. They show for every player of your mod, with or without your factions; without Nexerelin nothing reads the file.</p>
+      {:else}
+        <h2>{nexName(nexSel)}: ready-made fleets (Nexerelin)</h2>
+        <p class="muted small">The fleets offered on Nexerelin's new-game fleet choice when the player joins {nexName(nexSel)} at the start, next to Nexerelin's <b>Custom</b> button (a fleet built from the faction's known ships). Part of its Nexerelin config, <span class="mono">{nexConfigPath(nexSel)}</span>. <button class="linkish" onclick={() => { app.go('factions', nexSel) }}>Its other Nexerelin settings (Factions › Nexerelin)</button></p>
+      {/if}
+      <div class="box"><NexFleets config={nexConfigOf} variantOptions={index.variants ?? []} onEdit={editNexFleets} /></div>
+      <p class="muted small">Each fleet is a list of variant ids, by type (Frigate (classic), Combat (small), …, as Nexerelin's screen names them). A type with several fleets gets &lt; &gt; buttons in game; types without fleets aren't offered.</p>
+    {:else if nexSel}
+      <div class="center muted">{nexSel} has no Nexerelin config. Add one on Factions › Nexerelin.</div>
     {:else if tpl}
       {@const users = templateUsers(m?.encounters ?? [], tpl.id)}
       <h2>{tpl.name || tpl.id} <span class="mono muted small">{tpl.id}</span></h2>
@@ -172,7 +218,7 @@
       {:else}<p class="muted small">No encounter uses it yet: on the Encounters page, set Fleet › Size to "a named fleet".</p>{/if}
       <p><button class="mini danger" onclick={remove}>Delete named fleet</button></p>
     {:else}
-      <div class="center muted">Pick a named fleet, the fleet type names, or a faction's doctrine preview.</div>
+      <div class="center muted">Pick a named fleet, the fleet type names, a faction's doctrine preview{#if showNex} or its new-game fleets{/if}.</div>
     {/if}
   </section>
 </div>

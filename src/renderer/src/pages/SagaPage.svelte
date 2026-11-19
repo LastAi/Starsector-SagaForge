@@ -15,6 +15,12 @@
   import ScatterPanel from '../saga/ScatterPanel.svelte'
   import EventsPanel from '../saga/EventsPanel.svelte'
   import ProgressPanel from '../saga/ProgressPanel.svelte'
+  import ModsPanel from '../saga/ModsPanel.svelte'
+  import SettingsPanel from '../saga/SettingsPanel.svelte'
+  import AchievementsPanel from '../saga/AchievementsPanel.svelte'
+  import QuestSkipPanel from '../saga/QuestSkipPanel.svelte'
+  import { nexListed, useOf } from '../../../shared/modlist'
+  import { MAGICLIB_ID } from '../../../shared/achievements'
   import IdInput from '../ui/IdInput.svelte'
   import Field from '../ui/Field.svelte'
   import { conditionTemplates } from '../quests/edit'
@@ -22,11 +28,13 @@
   import { inactiveQuests } from '../../../shared/inactive'
 
   // screenshot mode: "saga::<tab>"
-  let tab = $state<'board' | 'timeline' | 'flags' | 'profiles' | 'phrases' | 'pools' | 'scatter' | 'events' | 'progress'>(((app.smoke ? app.smokeArg : null) ?? app.selected.sagaTab ?? 'board') as 'board')
+  let tab = $state<'board' | 'timeline' | 'flags' | 'profiles' | 'phrases' | 'pools' | 'scatter' | 'events' | 'progress' | 'mods' | 'settings' | 'achievements' | 'questskip'>(((app.smoke ? app.smokeArg : null) ?? app.selected.sagaTab ?? 'board') as 'board')
   $effect(() => { app.selected.sagaTab = tab })
+  // #60: the header pill and Problems open Saga › Mods while this page is open
+  $effect(() => { const want = app.selected.sagaOpen; if (want) { tab = want as typeof tab; app.selected.sagaOpen = null } })
   // screenshot mode: "saga:<item id>:<tab>" selects that item in the tab (pool, profile, event scheduler, progress event, scatter)
   if (app.smoke && app.selected.saga) {
-    const key = ({ pools: 'pool', profiles: 'profile', events: 'eventScheduler', progress: 'progressEvent', scatter: 'scatterItem' } as Record<string, string>)[app.smokeArg ?? '']
+    const key = ({ pools: 'pool', profiles: 'profile', events: 'eventScheduler', progress: 'progressEvent', scatter: 'scatterItem', settings: 'setting' } as Record<string, string>)[app.smokeArg ?? '']
     if (key) app.selected[key] = app.selected.saga
   }
   const m = $derived(project.m)
@@ -128,6 +136,11 @@
       <button class:on={tab === 'scatter'} onclick={() => (tab = 'scatter')} title="Objects placed at new game">Scatter ({m?.scatter?.length ?? 0})</button>
       <button class:on={tab === 'events'} onclick={() => (tab = 'events')} title="World events: things that happen without the player">Events ({m?.events?.length ?? 0})</button>
       <button class:on={tab === 'progress'} onclick={() => (tab = 'progress')} title="Progress events: the mod's own event bars">Progress ({m?.progress?.length ?? 0})</button>
+      <button class:on={tab === 'mods'} onclick={() => (tab = 'mods')} title="The other mods this mod has content for: required, optional, incompatible">Mods ({m?.project.mods?.length ?? 0})</button>
+      <button class:on={tab === 'settings'} onclick={() => (tab = 'settings')} title="The mod's settings page in LunaLib's menu: options players change, read by quests and conditions">Settings ({m?.project.settings?.length ?? 0})</button>
+      <!-- #65: mod-specific tools, shown when the mod lists the mod (Saga › Mods) or already uses them (PLAN.md §10.1) -->
+      {#if m && (['required', 'optional'].includes(useOf(m.project, MAGICLIB_ID)) || m.project.achievements?.length || tab === 'achievements')}<button class:on={tab === 'achievements'} onclick={() => (tab = 'achievements')} title="MagicLib achievements: quest endings unlock them (MagicLib's list, shared by every save)">Achievements ({m.project.achievements?.length ?? 0})</button>{/if}
+      {#if m && (nexListed(m.project) || m.project.questSkip?.length || tab === 'questskip')}<button class:on={tab === 'questskip'} onclick={() => (tab = 'questskip')} title="Nexerelin's new-game &quot;skip quests&quot; screen: the mod's quest chains and what skipping each quest means">Quest skip ({m.project.questSkip?.length ?? 0})</button>{/if}
     </div>
     <span class="muted small">{tab === 'board' ? 'Solid arrows: prerequisites. Dashed: a flag one quest sets and another reads. Drag cards; double-click opens the quest.' : ''}</span>
   </div>
@@ -160,7 +173,7 @@
           {#each flagRows as e (e.key)}
             {@const pr = problemFor(e.key)}
             <tr class:warn={pr.some((p) => p.level === 'warning')}>
-              <td class="mono">{e.key}{#if e.generated} <span class="badge">generated</span>{/if}</td>
+              <td class="mono">{e.key}{#if e.generated} <span class="badge">generated</span>{/if}{#if e.setting} <button class="badge setb" title="One of the mod's settings ({e.setting}): SagaLib sets it on every load, the player changes it in LunaLib's menu. Open Saga › Settings." onclick={() => (tab = 'settings')}>setting</button>{/if}</td>
               <td>{#each e.setBy.slice(0, 4) as u, i (i)}<button class="lnk" onclick={() => go(u.quest, u.node)}>{u.where}{u.node ? ` · ${u.node}` : ''}</button>{/each}{#if e.external}<span class="muted">{e.external === 'starsector-core' ? 'vanilla' : e.external}</span>{/if}{#if e.setBy.length > 4}<span class="muted"> +{e.setBy.length - 4}</span>{/if}</td>
               <td>{#each e.readBy.slice(0, 4) as u, i (i)}<button class="lnk" onclick={() => go(u.quest, u.node)}>{u.where}{u.node ? ` · ${u.node}` : ''}</button>{/each}{#if e.readBy.length > 4}<span class="muted"> +{e.readBy.length - 4}</span>{/if}</td>
               <td class="muted">{[...e.types].join(', ')}</td>
@@ -250,6 +263,14 @@
     <EventsPanel />
   {:else if tab === 'progress'}
     <ProgressPanel />
+  {:else if tab === 'mods'}
+    <ModsPanel />
+  {:else if tab === 'settings'}
+    <SettingsPanel />
+  {:else if tab === 'achievements'}
+    <AchievementsPanel />
+  {:else if tab === 'questskip'}
+    <QuestSkipPanel />
   {:else if tab === 'phrases'}
     <div class="scroll pad">
       <p class="muted small">Phrases used by any text of the mod. A character's own phrases are on the People page; one-off variations are added inside a Dialog node. SagaLib fills them in, in game.</p>
@@ -283,6 +304,7 @@
   tr.warn td { background: #2a1f10; }
   .lnk { display: block; border: none; background: none; padding: 0; color: var(--accent); font-size: 12px; text-align: left; }
   .badge { font-size: 10px; padding: 0 5px; border-radius: 8px; border: 1px solid var(--border); color: var(--muted); }
+  .setb { border-color: var(--good); color: var(--good); background: none; cursor: pointer; }
   .split { display: grid; grid-template-columns: 260px 1fr; min-height: 0; }
   .side { background: var(--panel); border-right: 1px solid var(--border); overflow: auto; }
   .sect { padding: 8px 10px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }

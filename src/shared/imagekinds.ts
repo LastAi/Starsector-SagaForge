@@ -5,7 +5,7 @@
  */
 import { slug } from './quest'
 
-export type ImageKindId = 'flag' | 'crest' | 'portrait' | 'cargoIcon' | 'missionIcon' | 'illustration' | 'entitySprite' | 'mapIcon' | 'planetTexture'
+export type ImageKindId = 'flag' | 'crest' | 'portrait' | 'cargoIcon' | 'missionIcon' | 'illustration' | 'entitySprite' | 'mapIcon' | 'planetTexture' | 'modIcon' | 'achievementIcon'
 
 export interface ImageKind {
   id: ImageKindId
@@ -28,7 +28,11 @@ export const IMAGE_KINDS: ImageKind[] = [
   // the mod's own celestial types (R21; DESIGN-PHASE3.md §6)
   { id: 'entitySprite', label: 'Station / entity sprite', folder: 'graphics/stations', w: 160, h: 160, help: 'A station or other object of the mod\'s own entity types, in the campaign view (vanilla\'s station sprites are 160×160, drawn at 80).' },
   { id: 'mapIcon', label: 'Map icon', folder: 'graphics/icons/map', w: 64, h: 64, help: 'The small icon of the mod\'s own entity type on the map (optional; without one it uses its base type\'s).' },
-  { id: 'planetTexture', label: 'Planet / star texture', folder: 'graphics/planets', w: 1024, h: 512, help: 'The surface of the mod\'s own planet or star type, wrapped around the sphere (vanilla\'s are 1024×512).' }
+  { id: 'planetTexture', label: 'Planet / star texture', folder: 'graphics/planets', w: 1024, h: 512, help: 'The surface of the mod\'s own planet or star type, wrapped around the sphere (vanilla\'s are 1024×512).' },
+  // #62: LunaLib draws it next to the mod's name in its settings menu (40×40 shows unscaled; any square works)
+  { id: 'modIcon', label: 'Mod icon (LunaLib menu)', folder: 'graphics/icons/mod', w: 40, h: 40, help: 'The mod\'s icon next to its name in LunaLib\'s settings menu (Saga › Settings).' },
+  // #65: MagicLib draws achievement images square at 48×48 (MagicAchievementIntel)
+  { id: 'achievementIcon', label: 'Achievement image (MagicLib)', folder: 'graphics/icons/achievements', w: 64, h: 64, help: 'A MagicLib achievement once unlocked, in MagicLib\'s achievement list (drawn at 48×48; Saga › Achievements).' }
 ]
 
 export const imageKind = (id: ImageKindId): ImageKind => IMAGE_KINDS.find((k) => k.id === id)!

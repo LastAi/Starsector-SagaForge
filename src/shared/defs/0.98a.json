@@ -4713,7 +4713,10 @@
      {
       "name": "scope",
       "type": "enum",
-      "values": ["object", "global"]
+      "values": [
+       "object",
+       "global"
+      ]
      }
     ]
    ],
@@ -4748,12 +4751,49 @@
      {
       "name": "part",
       "type": "enum",
-      "values": ["person", "spawned"]
+      "values": [
+       "person",
+       "spawned"
+      ]
      }
     ]
    ],
    "display": "none",
    "summary": "SagaLib 1.2: the dialog is at the quest's random target (its entity, its market, or anything in a system target); with \"person\": talking to the target's person; with \"spawned\": at what SF_SpawnAtTarget placed."
+  },
+  {
+   "name": "SF_HasMod",
+   "use": "condition",
+   "className": "lastai.sagalib.rulecmd.SF_HasMod",
+   "provider": "sagalib",
+   "forms": [
+    [
+     {
+      "name": "mod",
+      "type": "string",
+      "rest": true
+     }
+    ]
+   ],
+   "display": "none",
+   "summary": "SagaLib 1.3: every listed mod counts: enabled when this game started and still enabled. Negate with !SF_HasMod <id>. Saga Forge writes it for \"Only with / Only without\" (Saga › Mods)."
+  },
+  {
+   "name": "SF_HasAnyMod",
+   "use": "condition",
+   "className": "lastai.sagalib.rulecmd.SF_HasAnyMod",
+   "provider": "sagalib",
+   "forms": [
+    [
+     {
+      "name": "mod",
+      "type": "string",
+      "rest": true
+     }
+    ]
+   ],
+   "display": "none",
+   "summary": "SagaLib 1.3: at least one of the listed mods counts (enabled when this game started and still enabled). Saga Forge writes it for an \"any of\" list."
   },
   {
    "name": "SF_SpawnAtTarget",
@@ -4773,7 +4813,10 @@
      {
       "name": "kind",
       "type": "enum",
-      "values": ["entity", "derelict"]
+      "values": [
+       "entity",
+       "derelict"
+      ]
      },
      {
       "name": "type",
@@ -4792,7 +4835,10 @@
      {
       "name": "kind",
       "type": "enum",
-      "values": ["entity", "derelict"]
+      "values": [
+       "entity",
+       "derelict"
+      ]
      },
      {
       "name": "type",
@@ -4801,7 +4847,15 @@
      {
       "name": "where",
       "type": "enum",
-      "values": ["ORBITING_PARAM", "ORBITING_PLANET", "ORBITING_PLANET_OR_STAR", "HIDDEN", "HIDDEN_NOT_NEAR_STAR", "UNCOMMON", "ANY"]
+      "values": [
+       "ORBITING_PARAM",
+       "ORBITING_PLANET",
+       "ORBITING_PLANET_OR_STAR",
+       "HIDDEN",
+       "HIDDEN_NOT_NEAR_STAR",
+       "UNCOMMON",
+       "ANY"
+      ]
      }
     ]
    ],

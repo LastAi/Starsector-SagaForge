@@ -10,7 +10,11 @@ describe('image kinds', () => {
       flag: 'graphics/factions 410x256', crest: 'graphics/factions 256x256', portrait: 'graphics/portraits 128x128',
       cargoIcon: 'graphics/icons/cargo 80x80', missionIcon: 'graphics/icons/missions 64x64', illustration: 'graphics/illustrations 480x300',
       // Phase 3 (R21): vanilla's station sprites and planet textures
-      entitySprite: 'graphics/stations 160x160', mapIcon: 'graphics/icons/map 64x64', planetTexture: 'graphics/planets 1024x512'
+      entitySprite: 'graphics/stations 160x160', mapIcon: 'graphics/icons/map 64x64', planetTexture: 'graphics/planets 1024x512',
+      // #62: the mod's icon in LunaLib's settings menu (LunaLib: 40×40 shows unscaled)
+      modIcon: 'graphics/icons/mod 40x40',
+      // #65: MagicLib's achievement list draws them square at 48×48
+      achievementIcon: 'graphics/icons/achievements 64x64'
     })
   })
 

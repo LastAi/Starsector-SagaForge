@@ -45,10 +45,30 @@ export function newNode(type: NodeType, id: string, x: number, y: number): QNode
   }
 }
 
+/** A Wait node on a MagicLib bounty's end (SagaLib 1.3): its outputs, MagicLib's end states. */
+export const BOUNTY_WAIT_OUTCOMES = ['succeeded', 'failed', 'expired', 'dismissed'] as const
+
+/**
+ * Switches a Wait node's mode and keeps its links: into "bounty" the one output becomes
+ * "succeeded"; out of it "succeeded" becomes the one output and the other outcomes' links go.
+ */
+export function setWaitMode(q: QuestPlan, nodeId: string, mode: 'arrive' | 'days' | 'bounty'): void {
+  const n = q.nodes.find((x) => x.id === nodeId)
+  if (n?.type !== 'wait' || n.mode === mode) return
+  const was = n.mode
+  n.mode = mode
+  if (mode === 'bounty') { for (const e of q.edges) if (e.from === nodeId && e.handle === 'next') e.handle = 'succeeded' }
+  else if (was === 'bounty') {
+    q.edges = q.edges.filter((e) => e.from !== nodeId || e.handle === 'succeeded')
+    for (const e of q.edges) if (e.from === nodeId) e.handle = 'next'
+  }
+}
+
 /** Output handles of a node, in order (Dialog: one per option). */
 export function handlesOf(n: QNode): { id: string; label: string }[] {
   switch (n.type) {
-    case 'start': case 'action': case 'stage': case 'wait': return [{ id: 'next', label: '' }]
+    case 'wait': return n.mode === 'bounty' ? BOUNTY_WAIT_OUTCOMES.map((id) => ({ id, label: id[0].toUpperCase() + id.slice(1) })) : [{ id: 'next', label: '' }]
+    case 'start': case 'action': case 'stage': return [{ id: 'next', label: '' }]
     case 'dialog': return n.options.length ? n.options.map((o) => ({ id: o.id, label: o.text })) : [{ id: 'next', label: '(continue)' }]
     case 'branch': return [...n.cases.map((c) => ({ id: c.id, label: c.label })), { id: 'else', label: 'otherwise' }]
     case 'encounter': return [{ id: 'next', label: 'after spawning' }, { id: 'defeated', label: 'Defeated' }, { id: 'avoided', label: 'Avoided' }]
@@ -102,11 +122,49 @@ export function stageGroups(q: QuestPlan): { stage: string; nodes: string[] }[] 
   return out
 }
 
+/** #71: a node that starts this quest (SF_Start or SF_Step for it): a Stage node, a Start-quest action of itself, a script line. */
+export function startsQuest(q: QuestPlan, n: QNode): boolean {
+  const own = (l: string) => new RegExp(`^\\s*SF_(Start|Step)\\s+${q.id}(\\s|$)`).test(l)
+  if (n.type === 'stage') return true
+  if (n.type === 'action') return n.ops.some((o) => (o.op === 'startQuest' && o.quest === q.id) || (o.op === 'line' && own(o.line)))
+  if (n.type === 'dialog') return n.script.some(own)
+  return false
+}
+
+/**
+ * #71: the nodes the player reaches from the Start node before the quest starts (an offer, a
+ * briefing before the first Stage node). A Dialog that starts it in its script still shows its
+ * text first (the script runs after the text), so it is one of them; a Stage or Action that starts
+ * it isn't, and nothing after it is. Links to a node of this quest are followed.
+ */
+export function beforeStart(q: QuestPlan): Set<string> {
+  const byId = new Map(q.nodes.map((n) => [n.id, n]))
+  const start = q.nodes.find((n) => n.type === 'start')
+  const out = new Set<string>()
+  const seen = new Set<string>()
+  const stack = start ? q.edges.filter((e) => e.from === start.id).map((e) => e.to) : []
+  while (stack.length) {
+    const id = stack.pop()!
+    if (seen.has(id)) continue
+    seen.add(id)
+    const n = byId.get(id)
+    if (!n || n.type === 'note' || n.type === 'start') continue
+    const starts = startsQuest(q, n)
+    if (!starts || n.type === 'dialog') out.add(id)
+    if (starts) continue
+    if (n.type === 'link') { if (n.mode === 'node') stack.push(n.target); continue }
+    for (const e of q.edges) if (e.from === id) stack.push(e.to)
+  }
+  return out
+}
+
 /** Node ids reachable from the start (for "unreachable" problems and Play's fading). */
 export function reachable(q: QuestPlan): Set<string> {
   const start = q.nodes.find((n) => n.type === 'start')
   const out = new Set<string>()
   const stack = start ? [start.id] : []
+  // #61: the Stage node "If a market of this quest changes owner" goes to is reached from SagaLib's daily check
+  if (q.ownerChange?.do === 'stage') for (const n of q.nodes) if (n.type === 'stage' && n.stage === q.ownerChange.stage) stack.push(n.id)
   while (stack.length) {
     const id = stack.pop()!
     if (out.has(id)) continue

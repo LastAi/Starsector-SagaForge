@@ -6,6 +6,7 @@ import { UndoDoc } from '../history.svelte'
 import { modelFromProject, modelToWrites, type ModModel } from '../../../shared/serialize'
 import type { ProjectState, WriteResult } from '../../../shared/project'
 import { app, cleanError } from './app.svelte'
+import { savedByNewer } from '../../../shared/checks/appversions'
 
 class ProjectStore {
   loaded = $state.raw<ProjectState | null>(null)
@@ -61,6 +62,8 @@ class ProjectStore {
   /** Write every changed plan file and faction file. Returns false on conflicts or errors. */
   async save(): Promise<boolean> {
     if (!this.doc || !this.loaded) return false
+    const newer = savedByNewer(this.doc.snapshot())
+    if (newer && !confirm(`This mod was made with a newer Saga Forge (${newer}). Saving with this version could drop what the newer one added. Save anyway?`)) return false
     const writes = modelToWrites(this.doc.snapshot(), this.loaded, this.deletedFactionFiles)
     if (!writes.length && !this.pendingCopies.length) { this.doc.markSaved(this.doc.snapshot()); app.flash('Nothing to save.'); return true }
     this.saving = true

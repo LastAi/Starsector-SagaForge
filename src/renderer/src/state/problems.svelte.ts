@@ -1,6 +1,7 @@
 /** Problems: live checks of the open mod, the index's file problems, and Check mod results. */
 import type { Problem } from '../../../shared/api'
 import { checkModel } from '../../../shared/checks'
+import { withoutOptionalPass } from '../../../shared/checks/mods'
 import { imagePaths } from '../../../shared/checks/items'
 import { renameFlag } from '../../../shared/flags'
 import { applySaveFix } from '../../../shared/release'
@@ -59,7 +60,10 @@ class ProblemsStore {
       for (const k of IMAGE_KINDS) for (const f of await window.api.listImages(k.folder)) if (f.sourceId === own) mine.add(f.path)
       const imageSizes = await window.api.imageSizes([...mine])
       for (const c of project.pendingCopies) files[c.to] = true
-      this.full = checkModel({ model, index, defs: app.defs, loaded, rules, styleChecks: app.settings.styleChecks, files, imageSizes, version: versionCtx() })
+      const ctx = { model, index, defs: app.defs, loaded, rules, styleChecks: app.settings.styleChecks, files, imageSizes, version: versionCtx() }
+      const first = checkModel(ctx)
+      // #60: a second pass without the optional mods (what still depends on them without a condition)
+      this.full = [...first, ...withoutOptionalPass(ctx, first, checkModel)]
       app.go('problems')
     } catch (e) {
       app.error = cleanError(e)
@@ -83,6 +87,9 @@ export function applyProblemFix(action: string, arg: unknown): boolean {
 }
 
 function applyFix(action: string, arg: unknown): boolean {
+  // #60: Saga › Mods
+  if (action === 'modAdd') { const a = arg as { id: string; name: string; use: 'required' | 'optional' }; project.change((m) => { const l = (m.project.mods ??= []); const x = l.find((y) => y.id === a.id); if (x) x.use = a.use; else l.push({ id: a.id, name: a.name, use: a.use }) }); app.flash(`${a.name} is in the mod's list as ${a.use}.`); return true }
+  if (action === 'setSortString') { project.change((m) => { m.project.sortString = String(arg) }); app.flash('The sortString is written into mod_info.json on the next export.'); return true }
   if (action === 'renameFlag') { const a = arg as { from: string; to: string }; project.change((m) => renameFlag(m, a.from, a.to)); return true }
   if (action === 'listFaction') { project.change((m) => { const f = m.factions.find((x) => x.id === arg); if (f?.kind === 'addition') f.listed = true }); return true }
   if (action === 'aliasStage' || action === 'addToExisting') { project.change((m) => { applySaveFix(m, action, arg) }); return true }
@@ -98,6 +105,8 @@ function applyFix(action: string, arg: unknown): boolean {
     return true
   }
   if (action === 'linkToMenu' || action === 'spawnAt') { project.change((m) => { applyPatternFix(m, action, arg) }); return true }
+  // #61: Nexerelin's invasions
+  if (action === 'protectInvasion') { project.change((m) => { for (const s of m.systems) for (const e of s.entities) if (e.id === arg && e.market) e.market.protectFromInvasion = true }); app.flash('The market is protected from invasion (Nexerelin never invades it).'); return true }
   // #47: version problems
   if (action === 'versionRemove') { const a = arg as { cat: DiffCategory; id: string }; let n = 0; project.change((m) => { n = replaceRefs(m, a.cat, a.id, null) }); app.flash(`Removed ${n} use${n === 1 ? '' : 's'} of ${a.id}.`); return true }
   if (action === 'versionReplace') { replacing.req = arg as { cat: DiffCategory; id: string }; return true }

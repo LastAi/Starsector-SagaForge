@@ -108,6 +108,8 @@ are kept for a forum post draft that is coming later; they do nothing yet.
 2. Check **Mod version** (1.0.0 for a first release; raise it for an update).
 3. Read the file list: what is new or changed is what you edited. Leave **Translatable texts** and
    **Add SagaLib to mod_info.json dependencies** ticked.
+   If your mod has required mods (see [Saga › Work with another mod](saga.md#work-with-another-mod)),
+   leave **Add the required mods to mod_info.json dependencies** ticked too.
 4. If errors are listed, Export is blocked: fix them first (see
    [Problems › Fix a problem](problems.md#fix-a-problem)). Read the warnings.
 5. **Export**. The dialog lists the files it wrote (here 4: the changed descriptions, the dialog
@@ -141,6 +143,10 @@ new dialog.
    a new game with it.
 5. Upload the zip where players download it. If you use Version Checker, upload the new
    `.version` file to its address as well.
+
+With other mods in [Saga › Mods](saga.md#mods), a `release notes.txt` goes next to the zip:
+**Requires**, **Works with (optional)** with "Add or remove these mods only before starting a new
+game.", and **Known conflicts** with your reasons. Copy it into your release page.
 
 If the version is already marked, Saga Forge asks before replacing its snapshot and zip. If
 Mark as released refuses, the reason is shown in red under it (to-dos left, or the exported

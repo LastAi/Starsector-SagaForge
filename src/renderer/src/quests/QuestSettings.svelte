@@ -5,11 +5,16 @@
   import { uniqueId } from '../../../shared/quest'
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
-  import { editQuest, conditionTemplates } from './edit'
+  import { editQuest, editQuestBase, conditionTemplates, bountyChoices } from './edit'
+  import { slug } from '../../../shared/quest'
   import LinesInput from './LinesInput.svelte'
   import IdInput from '../ui/IdInput.svelte'
   import ImageView from '../ui/ImageView.svelte'
   import Field from '../ui/Field.svelte'
+  import ModsCond from '../ui/ModsCond.svelte'
+  import ScaleInput from '../ui/ScaleInput.svelte'
+  import { isValueSetting, settingKey } from '../../../shared/settings'
+  import { questWatch } from '../../../shared/nexerelin'
   import { chooseImages } from '../state/imagepicker.svelte'
   import { later } from '../ui/later'
   import { DEFAULT_QUEST_ICON, CONTACT_TIMEOUT, BAR_DURATION, BAR_TIMEOUT, BAR_ACCEPTED_TIMEOUT } from '../../../shared/export/runtime'
@@ -19,9 +24,18 @@
   const qid = $derived(quest.id)
   const ed = (fn: (q: QuestPlan) => void) => editQuest(qid, fn)
   const m = $derived(project.m!)
+  /** #64: not part of a version (the quest's kind, on/off, mod conditions). */
+  const edBase = (fn: (q: QuestPlan) => void) => editQuestBase(qid, fn)
+  /** #64: other Saga Forge mods' quests, for "after Mod1's quest X" (their mod becomes a condition by itself). */
+  // #62: the mod's value settings, for "a setting" prerequisites (quest-line switches)
+  const settingDefs = $derived((m.project.settings ?? []).filter(isValueSetting))
+  const settingOf = (flag: string) => settingDefs.find((s) => settingKey(s.id) === flag.replace(/^!/, ''))
+  const otherQuests = $derived((app.index?.sagaQuests ?? []).filter((x) => x.kind === 'quest' && !m.quests.some((q) => q.id === x.id)))
+  const srcName = (id: string) => app.index?.sources.find((s) => s.id === id)?.name ?? id
+  const allPlaces = $derived([...m.systems.flatMap((s) => s.entities.map((e) => ({ id: e.id, name: `${e.name} (${s.name})` }))), ...(app.index?.places ?? []).map((x) => ({ id: x.id, name: `${x.name} (${srcName(x.definedBy)})` })), ...(app.index?.markets.flatMap((x) => x.entities.map((id) => ({ id, name: x.name }))) ?? [])])
   const people = $derived([...m.people.map((p) => ({ id: p.id, name: `${p.name.first} ${p.name.last}` })), ...(app.index?.people ?? [])])
   const factions = $derived([...m.factions.filter((f) => f.kind === 'addition').map((f) => f.id), ...(app.index?.factions.map((f) => f.id) ?? [])])
-  const templates = $derived(conditionTemplates(quest, factions, m.quests))
+  const templates = $derived(conditionTemplates(quest, factions, m.quests, bountyChoices(quest)))
   const items = $derived([...m.items.map((i) => ({ id: i.id, name: i.name })), ...(app.index?.items ?? [])])
   const dropGroupOptions = $derived(dropGroupChoices(m.pools ?? [], app.index))
   // R10: inactive because its named contact is
@@ -66,12 +80,15 @@
     <input id="qs-t" type="text" value={quest.title} onchange={(e) => { const v = e.currentTarget.value; ed((q) => { q.title = v }) }} />
   </Field>
   <Field label="Kind" for="qs-k" help="A quest has a journal entry with stages, a map marker and rewards (runs on SagaLib). A conversation only adds dialog, with nothing in the journal.">
-    <select id="qs-k" value={quest.kind} onchange={(e) => { const v = e.currentTarget.value as 'quest' | 'dialog'; ed((q) => { q.kind = v }) }}>
+    <select id="qs-k" value={quest.kind} onchange={(e) => { const v = e.currentTarget.value as 'quest' | 'dialog'; edBase((q) => { q.kind = v }) }}>
       <option value="quest">Quest (journal, stages; runs on SagaLib)</option><option value="dialog">Conversation only (no SagaLib unless it uses SF_ commands)</option>
     </select>
   </Field>
   <Field label="Inactive" for="qs-in" help={contactOff ? `Not exported: its contact is inactive (People page). Planned content stays in the editor; its problems are warnings.` : 'Planned but not ready: not exported, so not in the game. Its problems become warnings, and its to-dos don\'t hold back a release.'}>
-    <input id="qs-in" type="checkbox" checked={!!quest.inactive || contactOff} disabled={contactOff && !quest.inactive} onchange={(e) => { const v = e.currentTarget.checked; ed((q) => { if (v) q.inactive = true; else delete q.inactive }) }} />
+    <input id="qs-in" type="checkbox" checked={!!quest.inactive || contactOff} disabled={contactOff && !quest.inactive} onchange={(e) => { const v = e.currentTarget.checked; edBase((q) => { if (v) q.inactive = true; else delete q.inactive }) }} />
+  </Field>
+  <Field label="Mods" help="Only with / Only without optional mods (Saga › Mods). With conditions, SagaLib never offers or starts it otherwise, and its start rule tests them. It spreads to the quests that need this one and to what only this questline uses (shown greyed there).">
+    <ModsCond value={quest.mods} itemKey={`quest:${quest.id}`} onChange={(v) => edBase((q) => { if (v) q.mods = v; else delete q.mods })} />
   </Field>
   <Field label="Template" help="Keep a copy of this quest as a template. New quest › Start from offers it in every mod, with the id replaced. Kept in Saga Forge's own data folder, not in the mod.">
     <span><button class="mini" onclick={onSaveTemplate}>Save as template…</button></span>
@@ -85,6 +102,20 @@
     </Field>
     <Field label="Time limit" for="qs-tl" help="Days the player has after accepting; the intel shows the days left, and the quest fails when they run out. Empty: no limit.">
       <span class="row"><input id="qs-tl" type="number" min="0" value={quest.timeLimitDays ?? ''} placeholder="none" onchange={(e) => { const v = e.currentTarget.value; ed((q) => { q.timeLimitDays = v ? Number(v) : undefined }) }} /><span class="muted">days</span></span>
+    </Field>
+    <!-- #61 (PLAN.md §10.3): invasions, rebellions, sales: SagaLib compares the owners once a day -->
+    {@const watched = project.m ? questWatch(quest, project.m, app.index) : []}
+    <Field label="If a market of this quest changes owner" for="qs-oc" help={`When the quest starts, SagaLib remembers who owns the quest's markets (the giver's market, stage markers, Arrive places, named places and random targets that are markets) and checks them once a day: a Nexerelin invasion, a rebellion, a sale or another mod. Every choice except "don't watch" sets $global.${quest.id}_ownerChanged (the market id) and $global.${quest.id}_newOwner (the faction), so dialog and a Branch can react. Watched now: ${watched.length ? watched.join(', ') : 'none (a mission still watches its giver\'s market)'}.`}>
+      <span class="row">
+        <select id="qs-oc" value={quest.ownerChange?.do ?? ''} onchange={(e) => { const v = e.currentTarget.value as '' | 'keep' | 'fail' | 'stage'; ed((q) => { if (!v) delete q.ownerChange; else q.ownerChange = { do: v, ...(v === 'stage' ? { stage: q.ownerChange?.stage ?? q.stages.find((s) => s.kind === 'normal')?.id ?? '' } : {}) } }) }}>
+          <option value="">keep going (don't watch)</option><option value="keep">keep going (set the keys)</option><option value="fail">fail the quest</option><option value="stage">go to a stage</option>
+        </select>
+        {#if quest.ownerChange?.do === 'stage'}
+          <select value={quest.ownerChange.stage ?? ''} title="The quest moves to this stage; what follows its Stage node in the chart runs (a Branch can test the keys)" onchange={(e) => { const v = e.currentTarget.value; ed((q) => { if (q.ownerChange) q.ownerChange.stage = v }) }}>
+            {#each quest.stages as s (s.id)}<option value={s.id}>{s.title || s.id}</option>{/each}
+          </select>
+        {/if}
+      </span>
     </Field>
   {/if}
 </div>
@@ -212,15 +243,42 @@
   {/if}
 </div>
 
-<div class="sect">Prerequisites <select value="" onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; if (v === 'flag') ed((q) => { q.requires.push({ flag: '$global.' }) }); else if (v) ed((q) => { q.requires.push({ quest: v, ended: 'success' }) }) }}>
+<!-- #64: named places: one place used in several spots (start, markers, Arrive), changed once (also in a version) -->
+<div class="sect">Places <button class="mini" onclick={() => ed((q) => { const ids = (q.places ?? []).map((x) => x.id); let n = 1; while (ids.includes(`place${n}`)) n++; (q.places ??= []).push({ id: `place${n}`, name: `Place ${n}`, entity: '' }) })}>+ Place</button></div>
+<p class="f-help">A named place stands for an object wherever the quest uses it: pick <span class="mono">named place …</span> as a stage's map marker, an Arrive node's place or a picture, or write <span class="mono">place:&lt;id&gt;</span> in a condition (<span class="mono">$id == place:dock</span>). Change the object here once, also in a version (the versions strip).</p>
+{#each quest.places ?? [] as pl, i (pl.id)}
+  <div class="row">
+    <input type="text" value={pl.name} title="Its name in the pickers" style="width:120px" onchange={(e) => { const v = e.currentTarget.value; ed((q) => { q.places![i].name = v }) }} />
+    <span class="mono muted small" title="How the quest refers to it">place:{pl.id}</span>
+    <IdInput value={pl.entity} options={allPlaces} placeholder="object or market id" onCommit={(v) => ed((q) => { q.places![i].entity = v })} />
+    <button class="mini" title="Rename the id (every use follows)" onclick={async () => { const to = slug((await app.ask('New id of the place (every use follows)', pl.id, 'Rename')) ?? ''); if (!to || to === pl.id) return; ed((q) => { const old = `place:${pl.id}`; const fix = (o: unknown): unknown => typeof o === 'string' ? o.split(old).join(`place:${to}`) : Array.isArray(o) ? o.map(fix) : o && typeof o === 'object' ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, fix(v)])) : o; const nq = fix(q) as QuestPlan; Object.assign(q, nq); q.places![i].id = to }) }}>Id…</button>
+    <button class="mini" onclick={() => ed((q) => { q.places!.splice(i, 1); if (!q.places!.length) delete q.places })}>✕</button>
+  </div>
+{/each}
+
+<div class="sect">Prerequisites <select value="" onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; if (v === 'flag') ed((q) => { q.requires.push({ flag: '$global.' }) }); else if (v.startsWith('setting:')) { const s = settingDefs.find((x) => x.id === v.slice(8)); if (s) ed((q) => { q.requires.push(s.type === 'Boolean' ? { flag: settingKey(s.id) } : { flag: settingKey(s.id), is: s.type === 'Radio' ? (s.choices ?? [])[0] ?? s.default : s.default }) }) } else if (v) ed((q) => { q.requires.push({ quest: v, ended: 'success' }) }) }}>
   <option value="">+ add…</option><option value="flag">a flag is set</option>{#each m.quests.filter((x) => x.id !== qid) as o (o.id)}<option value={o.id}>"{o.title}" ended</option>{/each}
+  {#if settingDefs.length}<optgroup label="A setting (Saga › Settings): a switch for this quest and the quests after it">{#each settingDefs as s (s.id)}<option value={`setting:${s.id}`}>{s.type === 'Boolean' ? `"${s.label}" is on` : `"${s.label}" is …`}</option>{/each}</optgroup>{/if}
+  {#if otherQuests.length}<optgroup label="Other Saga Forge mods' quests">{#each otherQuests as o (o.id)}<option value={o.id}>"{o.title}" ended ({srcName(o.definedBy)})</option>{/each}</optgroup>{/if}
 </select></div>
 <p class="f-help">All must be true before the quest is offered or starts. A flag line is a memory key (and optionally the value it must have).</p>
 {#each quest.requires as r, i (i)}
   <div class="row">
     {#if 'quest' in r}
-      <span>{m.quests.find((x) => x.id === r.quest)?.title ?? r.quest}</span>
+      {@const ext = app.index?.sagaQuests?.find((x) => x.id === r.quest && !m.quests.some((q) => q.id === x.id))}
+      <span>{m.quests.find((x) => x.id === r.quest)?.title ?? ext?.title ?? r.quest}{#if ext}<span class="muted small"> · {srcName(ext.definedBy)}'s quest (only with that mod)</span>{/if}</span>
       <select value={r.ended} onchange={(e) => { const v = e.currentTarget.value as 'success' | 'fail' | 'any'; ed((q) => { (q.requires[i] as { ended: string }).ended = v }) }}><option value="success">succeeded</option><option value="fail">failed</option><option value="any">ended</option></select>
+    {:else if settingOf(r.flag)}
+      <!-- #62: a setting as a switch for the quest line (players turn it off in LunaLib's menu) -->
+      {@const s = settingOf(r.flag)!}
+      <span title={`${r.flag}: one of the mod's settings. While it doesn't hold, the quest isn't offered, so the quests that need this one don't start either. A quest already running goes on.`}>Setting <b>{s.label || s.id}</b></span>
+      {#if s.type === 'Boolean'}
+        <select value={r.flag.startsWith('!') ? 'false' : 'true'} onchange={(e) => { const v = e.currentTarget.value; ed((q) => { const x = q.requires[i] as { flag: string; is?: string }; x.flag = (v === 'false' ? '!' : '') + settingKey(s.id); delete x.is }) }}><option value="true">is on</option><option value="false">is off</option></select>
+      {:else if s.type === 'Radio'}
+        <span class="muted">is</span><select value={r.is ?? ''} onchange={(e) => { const v = e.currentTarget.value; ed((q) => { (q.requires[i] as { is?: string }).is = v || undefined }) }}>{#each s.choices ?? [] as c (c)}<option value={c}>{c}</option>{/each}</select>
+      {:else}
+        <span class="muted">is</span><input type="text" class="mono short" value={r.is ?? ''} placeholder="(set)" onchange={(e) => { const v = e.currentTarget.value; ed((q) => { (q.requires[i] as { is?: string }).is = v || undefined }) }} />
+      {/if}
     {:else}
       <input type="text" class="mono" value={r.flag} title="Memory key, e.g. $global.vgc_signal_heard" onchange={(e) => { const v = e.currentTarget.value; ed((q) => { (q.requires[i] as { flag: string }).flag = v }) }} />
       <span class="muted">is</span>
@@ -241,6 +299,12 @@
       <Field label="Credits" for={`rw-c-${i}`} help="Added to the player's credits.">
         <input id={`rw-c-${i}`} type="number" value={r.credits ?? 0} onchange={(e) => { const v = Number(e.currentTarget.value); edReward(i, (x) => { x.credits = v || undefined }) }} />
       </Field>
+      {#if r.credits || r.creditsScale}
+        <!-- #62 (SagaLib 1.3): difficulty-style settings scale the credits when the reward is paid -->
+        <Field label="Scaled by" for={`rw-cs-${i}`} help="One of the mod's settings (Saga › Settings) multiplies the credits when the reward is paid, e.g. a difficulty choice or a percent. Text shown elsewhere (like an offer saying the amount) isn't changed. Needs SagaLib 1.3.">
+          <ScaleInput id={`rw-cs-${i}`} value={r.creditsScale} onChange={(v) => edReward(i, (x) => { if (v) x.creditsScale = v; else delete x.creditsScale })} />
+        </Field>
+      {/if}
       <Field label="XP" for={`rw-x-${i}`} help="Experience points for the player.">
         <input id={`rw-x-${i}`} type="number" value={r.xp ?? 0} onchange={(e) => { const v = Number(e.currentTarget.value); edReward(i, (x) => { x.xp = v || undefined }) }} />
       </Field>

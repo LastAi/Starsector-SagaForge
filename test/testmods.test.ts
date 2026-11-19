@@ -15,6 +15,12 @@ import { DROP_MERGE_TEST } from './fixtures/dropmerge'
 import { EIGHT_A } from './fixtures/phase8/eight_a'
 import { EIGHT_C } from './fixtures/phase8/eight_c'
 import { EIGHT_D } from './fixtures/phase8/eight_d'
+import { SIXTY_A } from './fixtures/sixty'
+import { TWENTYSEVEN_A } from './fixtures/twentyseven'
+import { SIXTYONE_A } from './fixtures/sixtyone'
+import { SIXTYTWO_A } from './fixtures/sixtytwo'
+import { SIXTYTHREE_A } from './fixtures/sixtythree'
+import { SIXTYFIVE_A } from './fixtures/sixtyfive'
 import { checkModel } from '../src/shared/checks'
 import { planTexts } from '../src/shared/serialize'
 import { buildIndex, detectInstall } from '../src/main/gameindex'
@@ -22,7 +28,7 @@ import { defsFor } from '../src/shared/defs'
 import type { ValidInstall } from '../src/shared/api'
 import { realDir } from './realdir'
 
-const MODS: [TestModDef, string][] = [[SEVEN_A, '1.2.0'], [SEVEN_B, '1.2.0'], [SEVEN_C, '1.2.0'], [SEVEN_D, '1.2.0'], [SEVEN_E, '1.2.0'], [DROP_MERGE_TEST, '1.2.0'], [EIGHT_A, '1.2.0'], [EIGHT_C, '1.2.0'], [EIGHT_D, '1.2.0']]
+const MODS: [TestModDef, string][] = [[SEVEN_A, '1.2.0'], [SEVEN_B, '1.2.0'], [SEVEN_C, '1.2.0'], [SEVEN_D, '1.2.0'], [SEVEN_E, '1.2.0'], [DROP_MERGE_TEST, '1.2.0'], [EIGHT_A, '1.2.0'], [EIGHT_C, '1.2.0'], [EIGHT_D, '1.2.0'], [SIXTY_A, '1.3.0'], [TWENTYSEVEN_A, '1.3.0'], [SIXTYONE_A, '1.3.0'], [SIXTYTWO_A, '1.3.0'], [SIXTYTHREE_A, '1.3.0'], [SIXTYFIVE_A, '1.3.0']]
 
 describe.each(MODS)('test mod %s', (def, lib) => {
   it('builds, depends on the SagaLib it tests and teleports to its test range', () => {
@@ -40,7 +46,7 @@ describe.each(MODS)('test mod %s', (def, lib) => {
     const cache = await buildIndex(install, { mode: 'workspace', workspaceDir: null, activeModDir: null })
     const m = def.model()
     const probs = checkModel({ model: m, index: cache.index, defs: defsFor(install.gameVersion), loaded: testModState(def, m, planTexts(m)), rules: cache.rules, styleChecks: false })
-    expect(probs.filter((p) => p.level === 'error' || p.level === 'warning').map((p) => p.message)).toEqual([])
+    expect(probs.filter((p) => p.level === 'error' || p.level === 'warning').map((p) => p.message).filter((msg) => !(def.expectedWarnings ?? []).some((r) => r.test(msg)))).toEqual([])
   }, 120_000)
 })
 

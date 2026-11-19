@@ -56,7 +56,15 @@ what happened (which rules fired, what was set).
 they talk to (a person id), the faction, the place (a colony, its bar, a planet with ruins, a
 derelict …), credits, story points, and values for memory keys the rule checks. It is only for
 the preview and is never exported. When a rule's conditions don't hold with the current Test
-context, the preview says which ones (*conditions not met with this Test context*).
+context, the preview says which ones (*conditions not met with this Test context*). People with
+a Presence rule (People tab) get a "<name> is away" switch under **People away**.
+
+`SF_FactionRep <faction A> <faction B> <level>` (SagaLib 1.3) tests how two factions stand with
+each other, for example `SF_FactionRep $faction.id hegemony NEUTRAL`: the owner of the market
+you're at is at least Neutral with the Hegemony (vanilla's `RepIsAtWorst` is the player's
+standing). Levels are Vengeful … Cooperative, or `notHostile`. The preview knows the relations your
+mod sets on the Factions tab; for other pairs it asks under *Conditions the editor can't
+evaluate*.
 
 The same preview and Test context are on the Quests tab, where they play your own quests (see
 [Quests › Test a quest in Play mode](quests.md#test-a-quest-in-play-mode)). Rules your own mod

@@ -136,8 +136,10 @@ In game: the system is on the hyperspace map of every new game (and of loaded sa
    Choose…** (the **Stations** filter shows vanilla's station pictures).
 3. Scroll down to **Market** and press **+ Add a market**.
 4. Fill in the market: **Name**, **Faction** (who owns it: its flag, patrols, prices and who may
-   dock), **Size** (population 1–10; vanilla colonies are 3–8), **Free port**, and **Never
-   decivilises** for a colony a quest needs to keep.
+   dock), **Size** (population 1–10; vanilla colonies are 3–8), **Free port**, **Never
+   decivilises** for a colony a quest needs to keep, and **Protect from invasion** for a place the
+   story can't lose (Nexerelin never invades it, the player's invasions included; without
+   Nexerelin it does nothing).
 5. Add **Conditions**, **Industries** (population, spaceport, military base, orbital station…)
    and **Submarkets** (open market, black market, military market, storage) with the **+ add**
    boxes.

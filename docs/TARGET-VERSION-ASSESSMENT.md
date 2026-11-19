@@ -65,7 +65,7 @@ are easy to revisit.
 ## 2. What differs between versions, and where the editor finds it
 
 Measured between 0.98a-RC8 and 0.98.5a-RC5. The script is in
-`.cache/sf-version-probe/manifest_probe.py`.
+`scripts/defs/manifest_probe.py`.
 
 | Kind | Source once both installs are set | 0.98a → 0.98.5a |
 |---|---|---|

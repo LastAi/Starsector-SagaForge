@@ -4,6 +4,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { loadConfig, saveConfig, type AppConfig } from './config'
 import { buildIndex, type IndexCache } from './gameindex'
+import { clearSnapshot, importSnapshot, loadStoredSnapshot } from './snapshotstore'
 import { detectInstall, isFile, modsRootFor } from './install'
 import { loadProject, snapshotMod, writeFiles } from './modproject'
 import { createMod, samePath, workspaceProblem, type WriteRules } from './workspace'
@@ -94,7 +95,7 @@ function cacheFor(install: InstallInfo | null, reload: boolean, withActiveMod: b
   let p = caches.get(key)
   if (!p || reload) {
     const promise = (async () => {
-      const c = await buildIndex(install, { mode: config.modsMode, workspaceDir: config.workspaceDir, activeModDir: active })
+      const c = await buildIndex(install, { mode: config.modsMode, workspaceDir: config.workspaceDir, activeModDir: active, snapshot: loadStoredSnapshot(app.getPath('userData'), install.root) })
       await runExtensionIndex(c, enabled)
       return c
     })()
@@ -329,10 +330,10 @@ function registerIpc(): void {
   })
 
   // R32: the release zip and forum post draft, in the releases folder (never in a mod or the game)
-  ipcMain.handle('packRelease', async (_e, req: { version: string; forumPost: string; overwrite?: boolean }) => {
+  ipcMain.handle('packRelease', async (_e, req: { version: string; forumPost: string; overwrite?: boolean; notes?: string }) => {
     const { src } = await activeSource()
     if (!src?.writable) throw new Error('No active mod.')
-    return packRelease({ modDir: src.dir, releasesDir: releasesDir(), version: String(req?.version ?? ''), forumPost: String(req?.forumPost ?? ''), overwrite: !!req?.overwrite, rules: rules() })
+    return packRelease({ modDir: src.dir, releasesDir: releasesDir(), version: String(req?.version ?? ''), forumPost: String(req?.forumPost ?? ''), overwrite: !!req?.overwrite, rules: rules(), notes: String(req?.notes ?? '') })
   })
   ipcMain.handle('showInFolder', async (_e, file: string) => {
     const p = path.resolve(String(file))
@@ -373,6 +374,20 @@ function registerIpc(): void {
   })
 
   // R31: translations. Other mods are only read; a new translation mod is a new folder in the mods folder
+  // #64: a sector snapshot as a source "seen in game" (per install; the game's file is only read)
+  ipcMain.handle('importSnapshot', async (_e, file?: string | null) => {
+    const inst = currentInstall()
+    if (!inst?.ok) throw new Error('Starsector folder is not set')
+    importSnapshot(app.getPath('userData'), inst.root, file ? String(file) : null)
+    resetCaches()
+    return (await getCache(true)).index.snapshot ?? null
+  })
+  ipcMain.handle('clearSnapshot', async () => {
+    const inst = currentInstall()
+    if (inst?.ok) clearSnapshot(app.getPath('userData'), inst.root)
+    resetCaches()
+    return null
+  })
   ipcMain.handle('translatableMods', async () => translatableMods((await getCache()).sources))
   ipcMain.handle('modTexts', async (_e, modId: string) => {
     const src = (await getCache()).sources.find((s) => s.id === String(modId) && !s.isCore)

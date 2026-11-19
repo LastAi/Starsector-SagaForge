@@ -27,6 +27,10 @@ export interface TestContext {
   place?: PlacePreset
   /** The place's id ($id / $entity.id when no one is spoken to), e.g. one of the mod's planets. */
   entity?: string
+  /** #70: people with a presence rule who are away (sets $global.sagaforge_away_<id> true; the others false). */
+  away?: string[]
+  /** #62: the mod's settings as the player set them in LunaLib's menu (id → value); missing = the default. */
+  settings?: Record<string, string>
 }
 
 export type PlacePreset = 'none' | 'market' | 'bar' | 'planet' | 'ruins' | 'ruinsExplored' | 'deciv' | 'derelict'
@@ -115,6 +119,8 @@ export function contextFrom(t: TestContext, defs: GameDefinitions, look: Lookup)
   for (const [k, v] of Object.entries(PLACE_PRESETS.find((p) => p.id === t.place)?.memory ?? {})) mem.set(k, parseValue(v))
   mem.set('$player.credits', t.credits)
   if (t.commission) { mem.set('$player.commissionFactionId', t.commission); mem.set('$global.commissionFaction', t.commission) }
+  // #70: SagaLib's away flags (the memory fields below can still override them)
+  for (const id of t.away ?? []) mem.set(`$global.sagaforge_away_${id}`, true)
   for (const [k, v] of Object.entries(t.memory)) mem.set(k.startsWith('$') ? k : `$${k}`, parseValue(v))
   ctx.assume = { ...t.assume }
   return ctx

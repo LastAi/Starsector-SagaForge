@@ -44,10 +44,17 @@ export const clone = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stri
 
 /** A scripted change a merge file can't express; applied by SagaLib on load (data/sagaforge/factions.json). */
 export interface ScriptedFactionChange {
-  op: 'remove'
+  /**
+   * remove: a value from a list; hideFromIntelTab (#60, SagaLib 1.3): FactionAPI.setShowInIntelTab(false), path and value unused.
+   * #64 (SagaLib 1.3): set (displayName, displayNameWithArticle, logo, crest, secondaryColor "r,g,b,a", doctrine.<field>),
+   * add (knownShips.hulls, knownWeapons.weapons, knownFighters.fighters, illegalCommodities; remove undoes illegal), showInIntelTab.
+   */
+  op: 'remove' | 'hideFromIntelTab' | 'set' | 'add' | 'showInIntelTab'
   /** Dotted path to a list, e.g. "knownShips.hulls". */
   path: string
   value: string
+  /** #60: only with / only without these mods (e.g. hide a faction that only matters with a mod). */
+  mods?: import('./model').ModsCondition
 }
 
 /** This mod's patch to a faction defined elsewhere. Only `patch` is ever written to the .faction file. */

@@ -17,11 +17,15 @@ import { factionKeySurvey } from '../shared/factionkeys'
 import { procgenData, typeInfos } from '../shared/celestial'
 import { parseSystemsJava } from '../shared/javasystems'
 import type { RuleRow } from '../shared/rules/types'
+import type { PlaceInfo, SagaQuestInfo, SectorSnapshot, SnapshotInfo } from '../shared/api'
+import { idPrefix, mergeSnapshot } from '../shared/snapshot'
 
 export const detectInstall = _detect
 
 export interface IndexOptions extends ModsOptions {
   activeModDir: string | null
+  /** #64: an imported sector snapshot ("seen in game") and where it came from. */
+  snapshot?: { data: SectorSnapshot; file: string; imported: string } | null
 }
 
 /** One source's version of a faction file. */
@@ -105,6 +109,11 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
   const ruleCounts: Record<string, number> = {}
   const ruleFiles: string[] = []
   const ownRuleFiles = new Map<string, string[]>()
+  // #64: other Saga Forge mods' content (their content.csv)
+  const places = new Map<string, PlaceInfo>()
+  const sagaQuests = new Map<string, SagaQuestInfo>()
+  const sagaEncounters = new Map<string, NamedEntry>()
+  const sagaPools = new Map<string, NamedEntry>()
   let settings: Record<string, unknown> = {}
 
   const readText = async (f: string): Promise<string | null> => {
@@ -349,6 +358,41 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
       } catch (e) { problems.push({ level: 'warning', area: 'Index', sourceId: S, file: slash(path.relative(src.dir, file)), message: errText(e) }) }
     }
 
+    // ---- #64: other Saga Forge mods' systems, markets, places, quests, encounters and pools (the files their content.csv lists)
+    const isActiveSrc = !!opts.activeModDir && src.writable && src.writeDir === opts.activeModDir
+    if (!src.isCore && !isActiveSrc) {
+      for (const row of await csvRows(src, 'data/config/sagaforge/content.csv')) {
+        const type = (row.type ?? '').trim(), rel = (row.path ?? '').trim()
+        if (!rel || !['system', 'quest', 'encounter', 'pool'].includes(type)) continue
+        const v = await json(src, rel)
+        if (!v) continue
+        const id = String(v.id ?? row.id ?? '')
+        if (!id) continue
+        if (type === 'quest') {
+          const stages = Array.isArray(v.stages) ? v.stages.map((x) => String((x as Record<string, unknown>).id ?? '')).filter(Boolean) : []
+          put(sagaQuests, { id, title: String(v.title ?? id), kind: String(v.kind ?? 'quest'), stages, ...own }, true)
+        } else if (type === 'encounter') put(sagaEncounters, { id, name: String(v.name ?? id), ...own }, true)
+        else if (type === 'pool') put(sagaPools, { id, name: String(v.name ?? id), ...own }, true)
+        else {
+          const hs = Array.isArray(v.hyperspace) ? v.hyperspace : null
+          if (v.kind !== 'existing') put(systems, { id, name: String(v.name ?? titleCase(id)), x: hs ? num(hs[0]) : null, y: hs ? num(hs[1]) : null, ...own }, true)
+          for (const e of Array.isArray(v.entities) ? v.entities : []) {
+            const eo = e as Record<string, unknown>
+            const eid = String(eo.id ?? '')
+            if (!eid) continue
+            const mk = eo.market as Record<string, unknown> | undefined
+            put(places, { id: eid, name: String(eo.name ?? titleCase(eid)), system: id, kind: String(eo.kind ?? 'custom'), ...(mk ? { faction: String(mk.faction ?? ''), market: String(mk.id ?? eid) } : {}), ...own }, true)
+            if (mk) {
+              put(markets, {
+                id: eid, name: String(mk.name ?? eo.name ?? titleCase(eid)), entities: String(mk.id ?? eid) === eid ? [eid] : [eid, String(mk.id)], faction: String(mk.faction ?? ''), size: num(mk.size), system: id,
+                conditions: strList(mk.conditions), industries: strList(mk.industries), submarkets: strList(mk.submarkets), ...own
+              }, true)
+            }
+          }
+        }
+      }
+    }
+
     if (st) ownRuleFiles.set(S, ruleFileList(st))
   }
 
@@ -398,9 +442,38 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
   const types = typeInfos(planetTypes, planetRaw, customEntityTypes, entityRaw)
   const codeSystems = codeFiles.flatMap((f) => parseSystemsJava(f.text, f.file, f.sourceId, (id) => systems.has(id)))
 
+  // ---- #64: the imported sector snapshot: what the files and Java sources don't show, tied to its mod
+  let snapshot: SnapshotInfo | null = null
+  if (opts.snapshot) {
+    const prefixes = new Map<string, string[]>()
+    for (const f of factions.values()) {
+      const pf = idPrefix(f.id)
+      if (!pf || f.definedBy === 'starsector-core') continue
+      const l = prefixes.get(f.definedBy) ?? []
+      if (!l.includes(pf)) l.push(pf)
+      prefixes.set(f.definedBy, l)
+    }
+    // a mod's whole id as a prefix ("sixtyfour_j_"): its first part alone can be shared (sixtyfour_a, sixtyfour_j)
+    for (const src of sources) { if (src.isCore) continue; const pf = `${src.id}_`; const l = prefixes.get(src.id) ?? []; if (!l.includes(pf)) l.push(pf); prefixes.set(src.id, l) }
+    const knownPlaces = new Set([...places.keys(), ...codeSystems.flatMap((c) => [...(c.star?.id ? [c.star.id] : []), ...c.bodies.map((x) => x.id).filter(Boolean)])])
+    const mg = mergeSnapshot(opts.snapshot.data, {
+      systems: new Set([...systems.keys(), ...codeSystems.map((c) => c.id)]), places: knownPlaces, markets: new Set([...markets.values()].flatMap((x) => [x.id, ...x.entities])), people: new Set(people.keys()),
+      factionSource: (id) => factions.get(id)?.definedBy, modPrefixes: prefixes,
+      exclude: sources.find((s) => !!opts.activeModDir && s.writable && s.writeDir === opts.activeModDir)?.id ?? null
+    })
+    for (const x of mg.systems) systems.set(x.id, x)
+    for (const x of mg.places) places.set(x.id, x)
+    for (const x of mg.markets) markets.set(x.id, x)
+    for (const x of mg.people) people.set(x.id, x)
+    const d = opts.snapshot.data
+    snapshot = { file: opts.snapshot.file, imported: opts.snapshot.imported, gameVersion: d.gameVersion ?? '', day: d.day ?? '', mods: (d.mods ?? []).map((m) => ({ id: m.id, name: m.name ?? m.id, version: m.version ?? '' })), added: mg.added, skipped: mg.skipped }
+  }
+
+
   const modsRoot = modsRootFor(install, opts)
   const active = opts.activeModDir ? sources.find((s) => s.writable && s.writeDir === opts.activeModDir) : undefined
   const sortByName = <T extends { name: string }>(m: Map<string, T>) => [...m.values()].sort((a, b) => a.name.localeCompare(b.name))
+  const sortByName2 = (l: SagaQuestInfo[]) => l.sort((a, b) => a.title.localeCompare(b.title))
 
   const index: GameIndex = {
     install, modsMode: opts.mode, workspaceDir: opts.workspaceDir, modsRoot, activeSourceId: active?.id ?? null, sources,
@@ -411,6 +484,7 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
     procgen: procgenData(procStars, [...procRows.values()]), codeSystems,
     sectorSize: [Number(settings.sectorWidth) || 164000, Number(settings.sectorHeight) || 104000],
     dropGroups,
+    places: [...places.values()].sort((a, b) => a.name.localeCompare(b.name)), sagaQuests: sortByName2([...sagaQuests.values()]), sagaEncounters: sortByName(sagaEncounters), sagaPools: sortByName(sagaPools), snapshot,
     sounds: [...sounds].sort(), music: [...music].sort(), ruleCounts, ruleFiles, ui, problems,
     nameCategories: [...nameCats.values()].sort((a, b) => a.id.localeCompare(b.id)),
     shipNameLists: [...shipLists.values()].sort((a, b) => a.id.localeCompare(b.id)),

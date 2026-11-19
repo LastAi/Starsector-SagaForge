@@ -1,4 +1,6 @@
 <script lang="ts">
+  import VersionStrip from '../ui/VersionStrip.svelte'
+  import { itemVer } from '../state/itemver.svelte'
   /**
    * Saga › Pools (Phase 7a, DESIGN-PHASE7.md): the mod's named random pools. A Random branch can
    * roll one (Branch › Pool); loot, random encounters and scatter use them in later steps.
@@ -9,6 +11,7 @@
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
   import Field from '../ui/Field.svelte'
+  import ModsCond from '../ui/ModsCond.svelte'
   import LinesInput from '../quests/LinesInput.svelte'
   import IdInput from '../ui/IdInput.svelte'
   import { dropGroupChoices } from '../../../shared/pools'
@@ -19,7 +22,8 @@
   const m = $derived(project.m!)
   const pools = $derived(m.pools ?? [])
   const sel = $derived(app.selected.pool ?? pools[0]?.id ?? null)
-  const pool = $derived(pools.find((p) => p.id === sel) ?? null)
+  // #64: the pool as in the open version (the versions strip; not for loot pools, which the game loads)
+  const pool = $derived(((p) => (p?.use === 'loot' ? p : itemVer.view('pool', p?.id, p)))(pools.find((p) => p.id === sel) ?? null))
   const ch = $derived(pool ? Object.fromEntries(chances(pool).map((c) => [c.id, c.chance])) : {})
   /** Random branches that roll this pool. */
   const users = $derived(pool ? m.quests.flatMap((q) => q.nodes.filter((n) => n.type === 'branch' && n.random?.pool === pool.id).map((n) => ({ quest: q, node: n.id }))) : [])
@@ -34,7 +38,7 @@
     branch: "Rolled by quests' Random branches (Branch › Picks: at random › Pool), with conditions and limits. SagaLib 1.2."
   }
 
-  const edPool = (fn: (p: PoolPlan) => void) => { const id = sel; project.change((mm) => { const p = mm.pools?.find((x) => x.id === id); if (p) fn(p) }) }
+  const edPool = (fn: (p: PoolPlan) => void) => { const id = sel; if (!id) return; if (pool?.use === 'loot') { project.change((mm) => { const p = mm.pools?.find((x) => x.id === id); if (p) fn(p) }); return } itemVer.edit<PoolPlan>('pool', id, (p) => fn(p)) }
   const edEntry = (i: number, fn: (e: PoolEntryPlan) => void) => edPool((p) => fn(p.entries[i]))
   function newPool() {
     const id = uniqueId(`${m.project.prefix}pool`, pools.map((p) => p.id))
@@ -59,11 +63,15 @@
     <ul class="list">{#each pools as p (p.id)}<li class:on={p.id === sel}><button class="li" onclick={() => (app.selected.pool = p.id)}>{p.name || p.id}<span class="sub">{p.entries.length}</span></button></li>{/each}</ul>
     <p class="muted small pad">A named list of things that can happen, each with a weight, like a loot table or a deck of story cards. One entry is picked by weight, or nothing. A pool is for Random branches (SagaLib 1.2), a loot table (a drop group, no SagaLib) or random encounters (SagaLib 1.2).</p>
   </div>
+  {#if pool && pool.use !== 'loot'}<VersionStrip kind="pool" id={pool.id} what="this pool" />{/if}
   <div class="scroll pad">
     {#if pool}
       <div class="grid2">
         <Field label="Name" for="pl-n" help="For you and in Branch nodes' pool lists. Until a branch uses the pool, its id follows the name.">
           <input id="pl-n" type="text" value={pool.name} onchange={(e) => rename(e.currentTarget.value)} />
+        </Field>
+        <Field label="Mods" help="Only rolled with / without optional mods (Saga › Mods; SagaLib 1.3): it picks nothing otherwise. Loot pools are drop groups the game loads, so they can't have conditions.">
+          <ModsCond value={pool?.mods} itemKey={`pool:${pool?.id}`} onChange={(c) => edPool((p) => { if (c) p.mods = c; else delete p.mods })} />
         </Field>
         <Field label="Used for" for="pl-u" help={USE_HELP[use]}>
           <select id="pl-u" value={use} disabled={users.length > 0 || lootUsers.length > 0} onchange={(e) => { const v = e.currentTarget.value as 'branch' | 'loot' | 'encounters'; edPool((p) => { p.use = v === 'branch' ? undefined : v; if (v === 'encounters') { p.points ??= ['slipstream', 'outside_system']; p.frequency ??= 10 } }) }}>
@@ -95,6 +103,7 @@
       <p class="f-help">One is picked by weight (3 against 1 is three times as likely). The chance assumes every entry may be picked; conditions and limits say when one may. {#if pool.nothing}Nothing: {pct(ch.nothing)}.{/if}</p>
       {#each pool.entries as en, i (en.id)}
         <div class="entry">
+          {#if use !== 'loot'}<ModsCond compact value={en.mods} onChange={(c) => edEntry(i, (x) => { if (c) x.mods = c; else delete x.mods })} />{/if}
           <div class="row">
             <input type="text" value={en.label ?? ''} placeholder="label" title="Shown in Branch nodes as the case's name" onchange={(e) => { const v = e.currentTarget.value; edEntry(i, (x) => { x.label = v || undefined }) }} />
             {#if use === 'loot'}

@@ -13,7 +13,8 @@ Quests, people, systems and encounters are exported as JSON that the companion l
 in game, so content mods ship no code. Saga Forge's own license is MIT (see `LICENSE`). Mods made
 with it belong to their authors.
 
-**Status: 1.1** (2026-11-17), for Starsector **0.98a and 0.98.5a**; needs **SagaLib 1.2** in game.
+**Status: 1.2** (2026-11-19), for Starsector **0.98a and 0.98.5a**; needs **SagaLib 1.3** in game
+for the support of other mods (1.2 for mods that don't use it).
 Milestones M0–M8 of [docs/PLAN.md](docs/PLAN.md) and the workflow phases of
 [docs/WORK-ORDER.md](docs/WORK-ORDER.md) are built, the automated tests pass, and each step was
 checked in game ([docs/INGAME-CHECKS.md](docs/INGAME-CHECKS.md)). Changes:

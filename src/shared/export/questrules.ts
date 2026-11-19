@@ -17,6 +17,7 @@ import type { BranchNode, DialogNode, Display, OptionDef, Phrase, PoolPlan, QEdg
 import type { Problem } from '../api'
 import { paragraphs, parseCondition } from '../rules/parse'
 import { arriveTakesOver, targetPartOf, targetVarOf } from '../targets'
+import { BOUNTY_WAIT_OUTCOMES } from '../quest'
 
 export interface CompileOptions {
   /** The mod uses SagaLib (quests always do; dialog-only content may not). */
@@ -56,6 +57,33 @@ export interface Entry { trigger: string; conds: string[] }
 export const optionId = (q: QuestPlan, o: string) => `${q.id}_${o}`
 export const nodeRuleId = (q: QuestPlan, n: string) => `${q.id}_${n}`
 export const nodeTrigger = (q: QuestPlan, n: string) => `${q.id}_${n}`
+
+/**
+ * Whether two Branch cases can never both hold, so FireBest never has to choose between them: one
+ * tests $x and the other !$x, both test $x == with different values, both test one quest's step or
+ * state with different values, or both test one MagicLib bounty's state with no state in common
+ * (#59; "ended" = succeeded, failed, expired, dismissed).
+ */
+export function exclusiveCases(a: string[], b: string[]): boolean {
+  const ENDS = ['succeeded', 'failed', 'expired', 'dismissed']
+  const states = (w: string[]) => new Set(w.flatMap((x) => (x === 'ended' ? ENDS : [x])))
+  for (const x of a) for (const y of b) {
+    const l = x.trim(), r = y.trim()
+    if (l === `!${r}` || r === `!${l}`) { if (/^!?\$[\w.]+$/.test(l)) return true }
+    const eq = (s: string) => /^(\$[\w.]+)\s*==\s*(\S+)$/.exec(s)
+    const el = eq(l), er = eq(r)
+    if (el && er && el[1] === er[1] && el[2] !== er[2]) return true
+    const cmd = (s: string) => (s.startsWith('!') ? null : s.split(/\s+/))
+    const cl = cmd(l), cr = cmd(r)
+    if (!cl || !cr || cl[0] !== cr[0] || cl[1] !== cr[1]) continue
+    if ((cl[0] === 'SF_AtStep' || cl[0] === 'SF_QuestState') && cl.length === 3 && cr.length === 3 && cl[2] !== cr[2]) return true
+    if (cl[0] === 'SF_BountyState' && cl.length > 2 && cr.length > 2) {
+      const sl = states(cl.slice(2)), sr = states(cr.slice(2))
+      if (![...sl].some((s) => sr.has(s))) return true
+    }
+  }
+  return false
+}
 export const startOptionId = (q: QuestPlan) => `${q.id}_start`
 export const stepKey = (q: QuestPlan) => `$global.${q.id}_step`
 /** Where a conversation branch that shows nothing more goes: back to the person's / place's menu. */
@@ -112,7 +140,8 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
   // ---- entries
   const start = q.nodes.find((n) => n.type === 'start')
   const startEdge = start ? outOf(start.id, 'next') : undefined
-  const prereqConds = prereqConditions(q)
+  // the start rule's own tests after the designer's: the prerequisites, then (#71) the quest's state
+  const prereqConds = [...prereqConditions(q), ...startStateConditions(q)]
   const entry: Record<string, Entry> = {}
   const singleOption = (nid: string): { node: DialogNode; opt: OptionDef } | null => {
     const inc = (incoming.get(nid) ?? []).filter((e) => byId.get(e.from)?.type !== 'note')
@@ -147,8 +176,10 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     const t = byId.get(to)
     if (!t) return []
     if (t.type === 'link') return linkJump(t)
-    // an Arrive node is an event: its rule fires by itself when the player arrives (gated by the step)
-    if (t.type === 'wait' && t.mode === 'arrive') return []
+    // a Wait node is an event: its rule fires by itself when the player arrives (gated by the step),
+    // when SagaLib's timer is up, or when the MagicLib bounty ended (SagaLib fires its trigger). Jumping
+    // into a timer's rule ran what follows at once, and again when the timer fired.
+    if (t.type === 'wait') return []
     const en = entry[to]
     if (!en) return []
     if (en.trigger === 'DialogOptionSelected') {
@@ -168,7 +199,8 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     // RC-R6: a bar scene's loose end goes back to the bar (vanilla's bar waits for returnFromEvent)
     if (q.start.kind === 'barScene') return [BACK_TO_BAR]
     const how = opts.sagalib ? 'goes back to the menu, or closes where there is none (a wreck)' : 'goes back to the menu (FireAll PopulateOptions)'
-    problems.push({ level: 'info', area: 'Quest', message: `"${(n as { title?: string }).title || n.id}" is the end of a conversation branch: the dialog ${how}. Add a Dialog or a Link to show something else.`, ref: ref(n.id), key: `menuback:${q.id}:${n.id}` })
+    // a Wait comes next: the conversation ends here on purpose, the quest goes on by itself later
+    if (!(to && byId.get(to)?.type === 'wait')) problems.push({ level: 'info', area: 'Quest', message: `"${(n as { title?: string }).title || n.id}" is the end of a conversation branch: the dialog ${how}. Add a Dialog or a Link to show something else.`, ref: ref(n.id), key: `menuback:${q.id}:${n.id}` })
     // with SagaLib: at a wreck or other entity PopulateOptions adds nothing and the dialog was left open (found in game, 2026-11-11)
     if (opts.sagalib) { usesSagaLib = true; return [SAGA_BACK_TO_MENU] }
     return [BACK_TO_MENU]
@@ -252,6 +284,8 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
         usesSagaLib = true
         const script = [`SF_End ${q.id} ${n.outcome === 'abandon' ? 'fail' : n.outcome}`]
         if (n.reward) script.unshift(`SF_Reward ${q.id} ${n.reward}`)
+        // #65: a MagicLib achievement unlocked at this ending (after SF_End: MagicLib's notice follows the reward lines)
+        if (n.achievement) script.push(`SF_Achievement ${n.achievement}`)
         script.push(...cont(n))
         push({ id: nodeRuleId(q, n.id), trigger: en.trigger, conditions: en.conds.join('\n'), script: script.join('\n'), text: '', options: '' }, n.id)
         break
@@ -302,7 +336,10 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
           const tv = targetVarOf(n.entity)
           if (tv) usesSagaLib = true
           const tp = targetPartOf(n.entity)
-          const at = [tv ? `SF_IsTarget ${q.id} ${tv}${tp ? ` ${tp}` : ''}` :`$id == ${n.entity ?? ''}`, ...(stepCond ? [stepCond] : []), `!$global.${q.id}_${n.id}_done`]
+          // #61 (in game, 2026-11-18): also only while the quest runs; a quest that failed at this step
+          // (an owner change, its time limit) kept offering the arrival, whose End would complete it
+          const live = stepCond && q.kind === 'quest' ? [`$global.${q.id}_state == active`] : []
+          const at = [tv ? `SF_IsTarget ${q.id} ${tv}${tp ? ` ${tp}` : ''}` :`$id == ${n.entity ?? ''}`, ...(stepCond ? [stepCond] : []), ...live, `!$global.${q.id}_${n.id}_done`]
           const done = `$global.${q.id}_${n.id}_done = true`
           if (arriveTakesOver(q, n) || (n.entity && opts.lockedEntities?.has(n.entity))) {
             // opt-in: the scene replaces the arrival (an interaction rule at the place, while the quest is at this point)
@@ -312,6 +349,16 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
             const oid = `${q.id}_${n.id}_go`
             push({ id: `${nodeRuleId(q, n.id)}_offer`, trigger: 'PopulateOptions', conditions: at.join('\n'), script: '', text: '', options: `${ARRIVE_OPTION_ORDER}:${oid}:${n.optionText || 'Look around'}` }, n.id)
             push({ id: nodeRuleId(q, n.id), trigger: 'DialogOptionSelected', conditions: `$option == ${oid}`, script: [done, ...jumpTo(next)].join('\n'), text: n.arriveText ?? '', options: '' }, n.id)
+          }
+        } else if (n.mode === 'bounty') {
+          // SagaLib 1.3: SagaLib fires "<quest>_<node>_<outcome>" when the MagicLib bounty ended that way
+          // (quest JSON bountyWaits, from MagicLib's memory keys), in its own dialog like an encounter outcome
+          for (const out of BOUNTY_WAIT_OUTCOMES) {
+            const e = outOf(n.id, out)
+            if (!e) continue
+            const script = jumpTo(e.to)
+            if (!script.length) continue
+            push({ id: `${nodeRuleId(q, n.id)}_${out}`, trigger: `${nodeTrigger(q, n.id)}_${out}`, conditions: '', script: script.join('\n'), text: '', options: '' }, n.id)
           }
         } else {
           // time: SagaLib fires "<quest>_<node>" after the delay (quest JSON timer)
@@ -336,10 +383,11 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
         continue
       }
       const en = entry[t.id]
-      // the target answers it itself (not an Arrive node: its rule is the arrival, OpenInteractionDialog)
-      const isArrive = t.type === 'wait' && t.mode === 'arrive'
-      if (!isArrive && en && en.trigger === 'DialogOptionSelected' && en.conds[0] === `$option == ${oid}`) continue
-      // an option into an Arrive node ends the conversation here (the arrival fires by itself later)
+      // the target answers it itself (not a Wait node: its rules are the arrival, the timer or the
+      // bounty's outcomes, never the option; found in game, task #69: "no rule found for option")
+      const isWait = t.type === 'wait'
+      if (!isWait && en && en.trigger === 'DialogOptionSelected' && en.conds[0] === `$option == ${oid}`) continue
+      // an option into a Wait node ends the conversation here (the Wait goes on by itself later)
       const pick = pickScript(n, o)
       push({ id: `${q.id}_${o.id}_go`, trigger: 'DialogOptionSelected', conditions: `$option == ${oid}`, script: [...pick, ...cont(n, pick, t.id)].join('\n'), text: '', options: '' }, n.id)
     }
@@ -449,9 +497,10 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     const els = outOf(n.id, 'else')
     if (els) push({ id: `${nodeRuleId(q, n.id)}_else`, trigger: en.trigger, conditions: en.conds.join('\n'), script: jumpTo(els.to).join('\n'), text: '', options: '' }, n.id)
     else if (!n.cases.length) problems.push({ level: 'error', area: 'Quest', message: 'Branch has no cases.', ref: ref(n.id) })
-    // FireBest picks the most specific case: equal condition counts are ambiguous
-    const counts = n.cases.map((c) => c.conditions.length)
-    if (new Set(counts).size < counts.length) problems.push({ level: 'warning', area: 'Quest', message: `Branch "${n.title ?? n.id}": cases with the same number of conditions; when several match, the game picks one of them (FireBest), not the first.`, ref: ref(n.id) })
+    // FireBest picks the most specific case: equal condition counts are ambiguous, unless the two
+    // cases can't both hold (#59: other states of one bounty, $x vs !$x, == different values)
+    const ambiguous = n.cases.some((a, i) => n.cases.some((b, j) => j > i && a.conditions.length === b.conditions.length && !exclusiveCases(a.conditions, b.conditions)))
+    if (ambiguous) problems.push({ level: 'warning', area: 'Quest', message: `Branch "${n.title ?? n.id}": cases with the same number of conditions; when several match, the game picks one of them (FireBest), not the first.`, ref: ref(n.id) })
   }
 
   /**
@@ -496,6 +545,10 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
       case 'spawnAtTarget': usesSagaLib = true; return op.target && op.type ? [`SF_SpawnAtTarget ${q.id} ${op.target} ${op.kind} ${op.type}${op.where ? ` ${op.where}` : ''}`] : []
       case 'line': if (/^\s*SF_/.test(op.line)) usesSagaLib = true; return [op.line]
       case 'progress': usesSagaLib = true; return op.event ? [`SF_Progress ${op.event} ${Math.round(op.points)}${op.text?.trim() ? ` "${op.text.trim().replace(/"/g, "'")}"` : ''}`] : []
+      // #59 (SagaLib 1.3): through SagaLib's guarded MagicLib bridge
+      case 'startBounty': usesSagaLib = true; return op.bounty ? [`SF_StartBounty ${op.bounty}`] : []
+      // #65 (SagaLib 1.3): through SagaLib's guarded MagicLib bridge
+      case 'achievement': usesSagaLib = true; return op.achievement ? [`SF_Achievement ${op.achievement}`] : []
     }
   }
 
@@ -514,12 +567,25 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     r.conditions = lines.join('\n')
   }
 
+  // #61 (PLAN.md §10.3): "go to a stage" when a market changes owner: SagaLib sets the step, then
+  // fires this trigger, which runs what follows that Stage node (a Branch can test $global.<quest>_ownerChanged)
+  if (q.kind === 'quest' && q.ownerChange?.do === 'stage') {
+    const sn = q.nodes.find((n) => n.type === 'stage' && n.stage === q.ownerChange!.stage)
+    if (!q.ownerChange.stage || !q.stages.some((s) => s.id === q.ownerChange!.stage)) problems.push({ level: 'error', area: 'Quest', message: `"If a market of this quest changes owner" goes to stage "${q.ownerChange.stage ?? ''}", which isn't in the outline.`, ref: { page: 'quests', id: q.id }, key: `ownerstage:${q.id}` })
+    else if (sn && outOf(sn.id, 'next')) {
+      usesSagaLib = true
+      push({ id: `${q.id}_ownerChanged`, trigger: `${q.id}_ownerChanged`, conditions: '', script: cont(sn).join('\n'), text: '', options: '' }, sn.id)
+    }
+  }
+
   for (const r of rows) {
     if (r.conditions.split('\n').some((l) => /^\s*score\s*:/i.test(l))) {
       problems.push({ level: 'error', area: 'Quest', message: `Rule ${r.id}: a condition line that is only "score:N" makes the game crash while loading rules. Put the score at the end of another condition ("$id == x score:100").`, ref: ref(nodeOf[r.id] ?? '') })
     }
   }
 
+  // SagaLib's commands written as condition lines (SF_BountyState, SF_QuestDone … in a Branch case) need it too
+  if (!usesSagaLib && rows.some((r) => /(^|\n)\s*!?SF_\w/.test(r.conditions) || /(^|\n)\s*SF_\w/.test(r.script))) usesSagaLib = true
   return { rows, nodeOf, problems, generatedFlags, usesSagaLib, optionNode, entry }
 }
 
@@ -589,6 +655,23 @@ export function prereqConditions(q: QuestPlan): string[] {
     else out.push(r.is === undefined || r.is === '' ? r.flag : `${r.flag} == ${r.is}`)
   }
   return out
+}
+
+/** Starts whose own rule offers the quest (an option, a trigger, an interjection, a bar scene). */
+export const RULE_STARTS = new Set<QuestPlan['start']['kind']>(['option', 'trigger', 'interject', 'barScene'])
+
+/**
+ * #71 (in game, 2026-11-18): a quest whose own rule offers it (RULE_STARTS) only does so while
+ * SagaLib would start it: never started, or, when repeatable, not running now. Without it the
+ * option stayed after accepting and after the end, and picking it walked through the offer while
+ * SF_Start refused. Contacts and bars: vanilla's hub and SagaQuest.create decide that. A
+ * conversation (kind dialog) has no state. A line the designer already wrote isn't added twice.
+ */
+export function startStateConditions(q: QuestPlan): string[] {
+  if (q.kind !== 'quest' || !RULE_STARTS.has(q.start.kind)) return []
+  const line = q.repeatable ? `!SF_QuestState ${q.id} active` : `SF_QuestState ${q.id} notStarted`
+  const own = 'conditions' in q.start ? q.start.conditions.map((l) => l.replace(/\s+score:\S+\s*$/, '').trim().replace(/\s+/g, ' ')) : []
+  return own.includes(line) ? [] : [line]
 }
 
 /** "$global.<quest>_step == <stage>" of the stage a node is in (the nearest Stage node before it). */

@@ -39,6 +39,10 @@ export interface SourceInfo {
   utility: boolean
   /** mod_info.json sortString (the game sorts mods by it, else by name). */
   sortString: string
+  /** #60: made with Saga Forge (ships SagaLib's content index). */
+  sagaforge?: boolean
+  /** #60: a translation mod (Phase 8c): the id of the mod it translates. */
+  translates?: string
 }
 
 export type ProblemLevel = 'error' | 'todo' | 'warning' | 'save' | 'style' | 'info'
@@ -102,8 +106,11 @@ export interface PersonInfo extends Origin {
   faction: string
   market: string
   portrait: string
-  /** 'code' = created in Java (vanilla's ids.People, or a mod's code); 'sagalib' = another Saga Forge mod's people JSON. */
-  kind: 'code' | 'sagalib'
+  /** 'code' = created in Java (vanilla's ids.People, or a mod's code); 'sagalib' = another Saga Forge mod's people JSON; 'seen' (#64) = from a sector snapshot. */
+  kind: 'code' | 'sagalib' | 'seen'
+  /** #64: their post and rank (from a sector snapshot). */
+  post?: string
+  rank?: string
 }
 
 export interface MarketInfo extends Origin {
@@ -138,6 +145,37 @@ export interface ItemInfo extends Origin {
 }
 
 export interface NamedEntry extends Origin { id: string; name: string }
+
+/** #64: a place in the sector: an entity with an id (planet, station, jump point, custom entity). */
+export interface PlaceInfo extends Origin { id: string; name: string; system: string; kind: string; faction?: string; market?: string }
+/** #64: another Saga Forge mod's quest: SagaLib keeps its state in $global.<id>_state. */
+export interface SagaQuestInfo extends Origin { id: string; title: string; kind: string; stages: string[] }
+/** #64: the sector snapshot the editor imported (SagaLib dev menu › Write sector snapshot). */
+export interface SnapshotInfo {
+  file: string
+  imported: string
+  gameVersion: string
+  day: string
+  /** The mods enabled when it was taken. */
+  mods: { id: string; name: string; version: string }[]
+  /** What it added to the index (ids the game files and Java sources don't show), per source. */
+  added: Record<string, { systems: number; places: number; markets: number; people: number }>
+  /** Things it couldn't tie to a mod (left out: e.g. vanilla's random systems). */
+  skipped: number
+}
+
+/** #64: SagaLib's sector snapshot file (docs/FORMAT.md "Sector snapshot"). */
+export interface SectorSnapshot {
+  format: number
+  sagalib?: string
+  gameVersion?: string
+  day?: string
+  mods?: { id: string; name?: string; version?: string }[]
+  systems?: { id: string; name?: string; x?: number; y?: number }[]
+  places?: { id: string; name?: string; system?: string; kind?: string; type?: string; faction?: string; market?: string }[]
+  markets?: { id: string; entity?: string; name?: string; faction?: string; size?: number; system?: string }[]
+  people?: { id: string; first?: string; last?: string; faction?: string; market?: string; post?: string; rank?: string; portrait?: string }[]
+}
 
 /** A planets.json entry (planet type or star), merged over every source (R15, R19). */
 export interface PlanetTypeInfo extends NamedEntry { isStar: boolean; texture: string; iconColor: number[] | null; raw: Record<string, unknown> }
@@ -229,6 +267,15 @@ export interface GameIndex {
   fleetTypeNamesBase?: Record<string, string>
   /** Faction keys vanilla's factions use that the form has no field for (R7), most used first. */
   factionKeyUsage?: FactionKeyUsage[]
+  /** #64: places (entities with ids) of other Saga Forge mods' systems and from a sector snapshot. */
+  places?: PlaceInfo[]
+  /** #64: other Saga Forge mods' quests (from their content.csv), for "after Mod1's quest X". */
+  sagaQuests?: SagaQuestInfo[]
+  /** #64: other Saga Forge mods' encounters and pools. */
+  sagaEncounters?: NamedEntry[]
+  sagaPools?: NamedEntry[]
+  /** #64: the imported sector snapshot ("seen in game"), if any. */
+  snapshot?: SnapshotInfo | null
   /** Rule counts per source; the rules themselves come from getRules(). */
   ruleCounts: Record<string, number>
   /**
@@ -241,7 +288,7 @@ export interface GameIndex {
   problems: Problem[]
   stats: { filesRead: number; ms: number }
   /** Extensions and whether they are on (Settings -> Extensions). */
-  extensions: { id: string; name: string; description: string; on: boolean; available: boolean; reason?: string }[]
+  extensions: { id: string; name: string; description: string; on: boolean; available: boolean; reason?: string; /** #60: the mod it is for: its tools show in a mod only when that mod is in its list (Saga › Mods). */ requiresMod?: string }[]
   ext: Record<string, unknown>
 }
 
@@ -335,7 +382,7 @@ export interface EditorApi {
   /** #47: copy the active mod into sagaforge/backups/<stamp> <label>/ (never pruned); returns that folder. */
   snapshotMod(label: string): Promise<string>
   /** R32: pack the active mod into a release zip (+ forum post draft) in the releases folder. */
-  packRelease(req: { version: string; forumPost: string; overwrite?: boolean }): Promise<PackResult>
+  packRelease(req: { version: string; forumPost: string; overwrite?: boolean; notes?: string }): Promise<PackResult>
   /** R32: show a file in the system file manager. */
   showInFolder(file: string): Promise<void>
   setActiveMod(writeDir: string | null): Promise<GameIndex>
@@ -367,6 +414,9 @@ export interface EditorApi {
   ext<T = unknown>(extensionId: string, method: string, arg?: unknown): Promise<T>
   createMod(mod: { id: string; name: string }): Promise<GameIndex>
   /** R31: installed mods with texts to translate. */
+  /** #64: import a sector snapshot (default: the game's saves/common file); returns what it added. */
+  importSnapshot(file?: string | null): Promise<SnapshotInfo | null>
+  clearSnapshot(): Promise<null>
   translatableMods(): Promise<{ id: string; name: string; version: string; texts: number; dialog: boolean }[]>
   /** R31: an installed mod's runtime files (its texts), read only; null if it isn't installed. */
   modTexts(modId: string): Promise<RuntimeText[] | null>
