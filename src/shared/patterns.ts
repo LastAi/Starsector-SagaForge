@@ -23,16 +23,32 @@ export function questsSendingTo(quests: QuestPlan[], entityId: string): QuestPla
   return quests.filter((q) => q.kind === 'quest' && (q.stages.some((st) => st.marker === entityId) || q.nodes.some((n) => n.type === 'wait' && n.mode === 'arrive' && n.entity === entityId)))
 }
 
-/** Conversations that answer OpenInteractionDialog at the entity ("$id == <entity>"): its guards. */
+/**
+ * H2: a lock-like conversation only ever sends the player away: its nodes are dialog, branch and
+ * link nodes, and every link leaves (vanilla's "defaultLeave", "cutCommLink") or jumps within it.
+ * A scene that changes something, hands back to the place's menu or fires a trigger (a first-visit
+ * welcome at a station) isn't a lock, so its place's Arrive nodes keep their own choice.
+ */
+export function isLockLike(q: QuestPlan): boolean {
+  if (q.start.kind !== 'trigger' || q.start.trigger !== 'OpenInteractionDialog') return false
+  return q.nodes.every((n) => {
+    if (n.type === 'start' || n.type === 'note' || n.type === 'dialog' || n.type === 'branch') return true
+    if (n.type !== 'link') return false
+    return n.mode === 'node' || (n.mode === 'option' && (n.target === 'defaultLeave' || n.target === 'cutCommLink'))
+  })
+}
+
 /** Every object a lock conversation answers at (RC-F2: their Arrive nodes stay takeovers). */
 export function lockedEntityIds(quests: QuestPlan[]): Set<string> {
   const out = new Set<string>()
   for (const q of quests) {
-    if (q.start.kind !== 'trigger' || q.start.trigger !== 'OpenInteractionDialog') continue
+    if (!isLockLike(q) || q.start.kind !== 'trigger') continue
     for (const c of q.start.conditions) { const m = /^\$id\s*==\s*(\S+)/.exec(c.trim()); if (m) out.add(m[1]) }
   }
   return out
 }
+
+/** Conversations that answer OpenInteractionDialog at the entity ("$id == <entity>"): its guards. */
 
 export function guardsOf(quests: QuestPlan[], entityId: string): QuestPlan[] {
   const idCond = new RegExp(`^\\$id\\s*==\\s*${entityId}(\\s|$)`)

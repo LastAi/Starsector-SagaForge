@@ -212,7 +212,9 @@ describe('#64 test mods against the real game', () => {
 })
 
 describe('#64 the index reads other Saga Forge mods (content.csv)', () => {
-  const ws = require('node:path').resolve(__dirname, '..', '..', '..', 'mods')
+  // the throwaway test mods are archived in "old test mods" (2026-11-24); a rebuilt one is back in mods
+  const ws = [require('node:path').resolve(__dirname, '..', '..', '..', 'mods'), require('node:path').resolve(__dirname, '..', '..', '..', 'old test mods')]
+    .find((d: string) => require('node:fs').existsSync(require('node:path').join(d, 'sixtyfour_b'))) ?? require('node:path').resolve(__dirname, '..', '..', '..', 'mods')
   const have = require('node:fs').existsSync(require('node:path').join(ws, 'sixtyfour_b', 'data', 'config', 'sagaforge', 'content.csv'))
   it.skipIf(!realDir || !have)('systems, markets, places, people and quests of sixtyfour_b, with it as their origin; its dialog with its texts', async () => {
     const install = detectInstall(realDir!) as ValidInstall

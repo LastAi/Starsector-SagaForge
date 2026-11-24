@@ -7,6 +7,7 @@
 import type { GameIndex, ProblemRef } from './api'
 import type { ModModel } from './serialize'
 import type { ActionOp, Display, ModsCondition, QNode, QuestPlan, Visual } from './model'
+import { effectiveFleet } from './encounters'
 import type { ProjectState } from './project'
 import { CORE_ID, SAGALIB_ID, NEXERELIN_ID, FRAMEWORK_FILE_MODS, addCond, commonConds, effLines, isNone, noConds, originSource, optionalMods, type EffConds } from './modlist'
 import { targetVarOf } from './targets'
@@ -14,11 +15,17 @@ import { bountyIdsOf } from './bounties'
 import { hasPlayerFleets, nexConfigured } from './nexconfig'
 import { usesQuestSkip } from './questskip'
 import { achievementsOf, MAGIC_ACHIEVEMENTS_CSV } from './achievements'
+import { researchFactions, researchOf, usesVok, VOK_ID } from './research'
 
-export type RefKind = 'faction' | 'person' | 'entity' | 'system' | 'hull' | 'variant' | 'item' | 'weapon' | 'wing' | 'image' | 'entityType' | 'planetType' | 'file' | 'quest'
+export type RefKind = 'faction' | 'person' | 'entity' | 'system' | 'hull' | 'variant' | 'item' | 'weapon' | 'wing' | 'image' | 'entityType' | 'planetType' | 'file' | 'quest' | 'condition' | 'industry' | 'submarket' | 'hullmod' | 'dropGroup'
 
 /** One reference from the mod's content to an id. */
-export interface Ref { kind: RefKind; id: string; where: string; node?: string; option?: string; gameLoaded?: boolean }
+export interface Ref { kind: RefKind; id: string; where: string; node?: string; option?: string; gameLoaded?: boolean
+  /**
+   * #75: one of several alternatives (a commodity target's list, grouped by where): a use of its mod,
+   * but an automatic condition only when every alternative comes from optional mods.
+   */
+  alternative?: boolean }
 
 /** One item of the mod that can carry mod conditions. */
 export interface ScanItem {
@@ -53,6 +60,12 @@ export function sourceLookup(index: GameIndex, m: ModModel, active: string): (ki
   for (const il of index.illustrations ?? []) { add('image', il.path, il.definedBy); add('image', il.id, il.definedBy) }
   for (const t of index.customEntityTypes ?? []) add('entityType', t.id, t.definedBy)
   for (const t of index.planetTypes ?? []) add('planetType', t.id, t.definedBy)
+  // #67 U33: market conditions, industries, submarkets, hullmods and drop groups (a group belongs to its first source)
+  for (const c of index.conditions ?? []) add('condition', c.id, c.definedBy)
+  for (const i of index.industries ?? []) add('industry', i.id, i.definedBy)
+  for (const sm of index.submarkets ?? []) add('submarket', sm.id, sm.definedBy)
+  for (const h of index.hullmods ?? []) add('hullmod', h.id, h.definedBy)
+  for (const d of index.dropGroups ?? []) add('dropGroup', d.group, d.definedBy)
   // the mod's own content wins over the index (it may not be saved or exported yet)
   const own = (k: RefKind, id: string) => { let mm = maps.get(k); if (!mm) maps.set(k, (mm = new Map())); mm.set(id, active) }
   for (const f of m.factions) if (f.kind === 'addition') own('faction', f.id)
@@ -93,7 +106,7 @@ function displayRefs(d: Display, where: string, node: string): Ref[] {
     case 'weapon': return [{ kind: 'weapon', id: d.id, where, node }]
     case 'fighter': return [{ kind: 'wing', id: d.id, where, node }]
     case 'ship': return [{ kind: 'variant', id: d.variant, where, node }]
-    case 'rep': return d.faction ? [{ kind: 'faction', id: d.faction, where, node }] : d.person ? [{ kind: 'person', id: d.person, where, node }] : []
+    case 'rep': return d.faction ? [{ kind: 'faction', id: d.faction, where, node }] : d.person && d.person !== '$person' ? [{ kind: 'person', id: d.person, where, node }] : []
     case 'faction': return [{ kind: 'faction', id: d.faction, where, node }]
     case 'shipList': return d.variants.map((id) => ({ kind: 'variant' as const, id, where, node }))
     case 'cargo': case 'cost': return d.items.map((x) => ({ kind: 'item' as const, id: x.item, where, node }))
@@ -105,7 +118,7 @@ function displayRefs(d: Display, where: string, node: string): Ref[] {
 
 export function opRefs(op: ActionOp, where: string, node?: string): Ref[] {
   switch (op.op) {
-    case 'rep': return op.faction ? [{ kind: 'faction', id: op.faction, where, node }] : op.person ? [{ kind: 'person', id: op.person, where, node }] : []
+    case 'rep': return op.faction ? [{ kind: 'faction', id: op.faction, where, node }] : op.person && op.person !== '$person' ? [{ kind: 'person', id: op.person, where, node }] : []
     case 'item': return [{ kind: 'item', id: op.item, where, node }]
     case 'placeEntity': case 'removeEntity': return op.entity ? [{ kind: 'entity', id: op.entity, where, node }] : []
     case 'removePerson': return op.person ? [{ kind: 'person', id: op.person, where, node }] : []
@@ -124,6 +137,8 @@ export function questRefs(q: QuestPlan): Ref[] {
   // #64: named places
   for (const pl of q.places ?? []) if (pl.entity && !targetVarOf(pl.entity)) out.push({ kind: 'entity', id: pl.entity, where: `named place "${pl.name || pl.id}"` })
   for (const st of q.stages) if (st.marker && !targetVarOf(st.marker)) out.push({ kind: 'entity', id: st.marker, where: `stage "${st.title || st.id}" marker` })
+  // #75: a commodity target's chosen commodities (another mod's commodity makes that mod used)
+  for (const v of q.variables) if (v.type === 'target' && v.target?.pick === 'commodity' && v.target.commodity?.which === 'list') for (const id of v.target.commodity.ids ?? []) out.push({ kind: 'item', id, where: `random target ${v.name} (commodities)`, alternative: true })
   for (const r of q.rewards) {
     for (const x of r.rep ?? []) out.push({ kind: 'faction', id: x.faction, where: `reward ${r.id}` })
     for (const x of r.personRep ?? []) out.push({ kind: 'person', id: x.person, where: `reward ${r.id}` })
@@ -166,17 +181,25 @@ export function scanItems(m: ModModel): ScanItem[] {
       const er: Ref[] = []
       if (e.orbit.focus && e.orbit.focus !== 'star' && !own.has(e.orbit.focus)) er.push({ kind: 'entity', id: e.orbit.focus, where: 'its orbit' })
       if (e.market?.faction) er.push({ kind: 'faction', id: e.market.faction, where: 'its market' })
+      // #67 U33: the market's and the planet's conditions, industries and submarkets, and its loot groups
+      for (const c of [...(e.market?.conditions ?? []), ...(e.conditions ?? [])]) er.push({ kind: 'condition', id: c, where: 'its conditions', gameLoaded: true })
+      for (const i of e.market?.industries ?? []) er.push({ kind: 'industry', id: i, where: 'its industries', gameLoaded: true })
+      for (const sm of e.market?.submarkets ?? []) er.push({ kind: 'submarket', id: sm, where: 'its submarkets', gameLoaded: true })
+      for (const l of e.loot ?? []) er.push({ kind: 'dropGroup', id: l.group, where: 'its loot', gameLoaded: true })
       if (e.kind === 'planet') er.push({ kind: 'planetType', id: e.type, where: 'its type' })
       else if (e.kind === 'custom' || e.kind === 'station' || e.kind === 'derelict') er.push({ kind: 'entityType', id: e.type, where: 'its type' })
       out.push({ key: `entity:${e.id}`, label: `Object "${e.name || e.id}" in ${s.name || s.id}`, ref: { page: 'locations', id: s.id, sub: e.id }, own: e.mods, refs: er })
     }
   }
   for (const e of m.encounters) {
-    const refs: Ref[] = [{ kind: 'faction', id: e.fleet.faction, where: 'its fleet' }]
-    for (const v of e.fleet.variants ?? []) refs.push({ kind: 'variant', id: v, where: 'its ships' })
+    // #67 U42: the fleet as used (a named fleet's own faction and ships; not a hidden earlier choice)
+    const ef = effectiveFleet(e, m)
+    const refs: Ref[] = [{ kind: 'faction', id: ef.faction, where: 'its fleet' }]
+    for (const v of ef.variants ?? []) refs.push({ kind: 'variant', id: v, where: 'its ships' })
+    for (const g of ef.extras ?? []) for (const s of g.ships) refs.push({ kind: 'variant', id: s.variant, where: 'its extra ships' })
     const t = e.fleet.size === 'template' ? m.fleets?.templates.find((x) => x.id === e.fleet.template) : null
     if (t) { refs.push({ kind: 'faction', id: t.faction, where: `named fleet ${t.id}` }); for (const sh of t.ships) refs.push({ kind: 'variant', id: sh.variant, where: `named fleet ${t.id}` }) }
-    if (e.fleet.flagshipCommander) refs.push({ kind: 'person', id: e.fleet.flagshipCommander, where: 'its commander' })
+    if (ef.flagshipCommander) refs.push({ kind: 'person', id: ef.flagshipCommander, where: 'its commander' })
     for (const at of [e.spawn.at, e.spawn.to, e.travelTo]) if (at && !targetVarOf(at)) refs.push({ kind: 'entity', id: at, where: 'where it spawns or goes' })
     out.push({ key: `encounter:${e.id}`, label: `Encounter "${e.name || e.id}"`, ref: { page: 'encounters', id: e.id }, own: e.mods, refs })
   }
@@ -207,6 +230,8 @@ export function scanItems(m: ModModel): ScanItem[] {
         ...list('priorityShips.hulls').map((id) => ({ kind: 'hull' as const, id, where: 'priority ships', gameLoaded: true })),
         ...list('knownWeapons.weapons').map((id) => ({ kind: 'weapon' as const, id, where: 'known weapons', gameLoaded: true })),
         ...list('knownFighters.fighters').map((id) => ({ kind: 'wing' as const, id, where: 'known fighters', gameLoaded: true })),
+        // #67 U33: hullmods the faction knows
+        ...list('knownHullMods.hullMods').map((id) => ({ kind: 'hullmod' as const, id, where: 'known hullmods', gameLoaded: true })),
         ...[...list('portraits.standard_male'), ...list('portraits.standard_female')].map((id) => ({ kind: 'image' as const, id, where: 'portraits', gameLoaded: true }))
       ]
       out.push({ key: `faction:${f.id}`, label: `Faction "${f.id}"`, ref: { page: 'factions', id: f.id }, refs })
@@ -246,8 +271,19 @@ export function modUses(m: ModModel, index: GameIndex, loaded: Pick<ProjectState
     const ids = achievementsOf(q)
     if (ids.length) put('MagicLib', { key: `file:questachievement:${q.id}`, label: `Quest "${q.title}"`, ref: { page: 'quests', id: q.id }, where: `unlocks MagicLib achievements (${[...new Set(ids.map((x) => x.id))].join(', ')})`, kind: 'file', id: ids[0].id })
   }
+  // #77: Vaults of Knowledge research: techs, faction stances, quests that unlock, grant or test research (only VoK reads the files; SagaLib's bridge is guarded: optional fits)
+  const res = m.research
+  if (res?.techs.length) put(VOK_ID, { key: 'file:research', label: 'Saga › Research', ref: { page: 'saga', id: 'research' }, where: 'its techs (aotd_tech_options.csv)', kind: 'file', id: 'research' })
+  for (const id of researchFactions(m)) put(VOK_ID, { key: `file:research:${id}`, label: `Faction ${id}`, ref: { page: 'factions', id }, where: 'its research stance (Factions › Research, aotd_faction_behaviour.csv)', kind: 'file', id })
+  for (const q of m.quests) {
+    const r = researchOf(q)
+    const ids = [...new Set([...r.unlocks, ...r.grants, ...r.tests])]
+    if (ids.length) put(VOK_ID, { key: `file:questresearch:${q.id}`, label: `Quest "${q.title}"`, ref: { page: 'quests', id: q.id }, where: `unlocks, grants or tests research (${ids.join(', ')})`, kind: 'file', id: ids[0] })
+  }
+  const vokContent = usesVok(m)
   for (const f of loaded.frameworkFiles ?? []) {
     const fw = FRAMEWORK_FILE_MODS[f]
+    if (fw && vokContent && fw.mod === VOK_ID) continue
     if (fw && lunaPage && fw.mod === 'lunalib') continue
     if (fw && skip && f === 'data/config/exerelin/questSkip.json') continue
     if (fw && ach && f === MAGIC_ACHIEVEMENTS_CSV) continue
@@ -295,10 +331,18 @@ export function effectiveConds(m: ModModel, index: GameIndex | null, active: str
     get(it.key)
     if (it.own) add(it.key, addCond(noConds(), it.own))
     if (!optional.size) continue
+    const alts = new Map<string, (string | null)[]>()
     for (const r of it.refs) {
       if (r.node || r.gameLoaded) continue
       const src = look(r.kind, r.id)
+      // #75: alternatives (a commodity list) are grouped: only when none is available without an optional mod
+      if (r.alternative) { const l = alts.get(r.where) ?? []; l.push(src && optional.has(src) ? src : null); alts.set(r.where, l); continue }
       if (src && optional.has(src)) add(it.key, { with: [src], without: [], any: [] }, `uses ${names(src)}`)
+    }
+    for (const l of alts.values()) {
+      if (!l.length || l.some((x) => x === null)) continue
+      const mods = [...new Set(l as string[])]
+      add(it.key, mods.length === 1 ? { with: mods, without: [], any: [] } : { with: [], without: [], any: [mods] }, `uses ${mods.map(names).join(' or ')}`)
     }
   }
   // spreading (a few rounds: prerequisites chain; users before the things they use)

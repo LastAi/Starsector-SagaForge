@@ -4,6 +4,7 @@ import type { CodeBody, CodeSystem, Problem, SystemInfo } from './api'
 import type { CheckContext } from './checks'
 import { prefixProblem, ID_PATTERN } from './checks'
 import { isTodoActive } from './todo'
+import { fullName } from './personname'
 
 export const ENTITY_KINDS: { kind: string; label: string; type: string; radius?: number }[] = [
   { kind: 'planet', label: 'Planet', type: 'barren', radius: 120 },
@@ -191,7 +192,9 @@ export function locationProblems(ctx: CheckContext): Problem[] {
         if (code?.bodies.length && !code.bodies.some((b) => b.id === e.orbit.focus) && code.star?.id !== e.orbit.focus) out.push({ level: 'warning', area: 'Location', message: `"${e.name}" orbits "${e.orbit.focus}", which isn't one of ${s.name}'s bodies read from its source (it may be made elsewhere in code; SagaLib skips the entity if it can't find it).`, ref: ref(e.id), key: `focus:${e.id}` })
       }
       if ((e.kind === 'planet' || e.kind === 'moon') && e.type && !ctx.index.planetTypes.some((t) => t.id === e.type) && !m.types?.planets.some((t) => t.id === e.type)) out.push({ level: 'error', area: 'Location', message: `"${e.name}": unknown planet type "${e.type}".`, ref: ref(e.id) })
-      if (['station', 'commRelay', 'navBuoy', 'sensorArray', 'derelict', 'custom'].includes(e.kind) && e.type && !ctx.index.customEntityTypes.some((t) => t.id === e.type) && !m.types?.entities.some((t) => t.id === e.type)) out.push({ level: 'error', area: 'Location', message: `"${e.name}": unknown custom entity type "${e.type}".`, ref: ref(e.id) })
+      // H1: a derelict's type is a ship variant (SagaLib's SystemBuilder), or "wreck" for a random hull
+      if (e.kind === 'derelict' && e.type && e.type !== 'wreck' && !(ctx.index.variants ?? []).some((v) => v.id === e.type)) out.push({ level: 'error', area: 'Location', message: `"${e.name}": unknown ship variant "${e.type}" (a derelict's type is a variant id, or "wreck" for a random hull).`, ref: ref(e.id) })
+      if (['station', 'commRelay', 'navBuoy', 'sensorArray', 'custom'].includes(e.kind) && e.type &&!ctx.index.customEntityTypes.some((t) => t.id === e.type) && !m.types?.entities.some((t) => t.id === e.type)) out.push({ level: 'error', area: 'Location', message: `"${e.name}": unknown custom entity type "${e.type}".`, ref: ref(e.id) })
       const mk = e.market
       if (mk) {
         if (vanillaMarkets.has(mk.id)) out.push({ level: 'error', area: 'Location', message: `Market id "${mk.id}" is also used by the game or another mod.`, ref: ref(e.id) })
@@ -200,7 +203,7 @@ export function locationProblems(ctx: CheckContext): Problem[] {
         for (const p of mk.people) {
           const person = m.people.find((x) => x.id === p)
           if (!person) out.push({ level: 'error', area: 'Location', message: `${mk.name}: no person "${p}" in this mod.`, ref: ref(e.id) })
-          else if (person.placement.at === 'market' && person.placement.market !== mk.id) out.push({ level: 'warning', area: 'Location', message: `${mk.name} lists ${person.name.first} ${person.name.last}, but their placement is the market "${person.placement.market}". SagaLib keeps them there; remove them from one of the two.`, ref: ref(e.id), key: `twomarkets:${p}` })
+          else if (person.placement.at === 'market' && person.placement.market !== mk.id) out.push({ level: 'warning', area: 'Location', message: `${mk.name} lists ${fullName(person.name)}, but their placement is the market "${person.placement.market}". SagaLib keeps them there; remove them from one of the two.`, ref: ref(e.id), key: `twomarkets:${p}` })
         }
         if (!mk.conditions.some((c) => /^population_\d+$/.test(c))) out.push({ level: 'warning', area: 'Location', message: `${mk.name}: add a population_<size> condition, as vanilla markets have.`, ref: ref(e.id) })
       }
@@ -222,11 +225,11 @@ export function locationProblems(ctx: CheckContext): Problem[] {
   for (const p of m.people) {
     if (p.placement.at === 'market' && p.placement.market) {
       const own = m.systems.some((s) => s.entities.some((e) => e.market?.id === (p.placement as { market: string }).market))
-      if (!own && !vanillaMarkets.has(p.placement.market)) out.push({ level: 'error', area: 'Person', message: `${p.name.first} ${p.name.last}: no market "${p.placement.market}".`, ref: { page: 'people', id: p.id } })
+      if (!own && !vanillaMarkets.has(p.placement.market)) out.push({ level: 'error', area: 'Person', message: `${fullName(p.name)}: no market "${p.placement.market}".`, ref: { page: 'people', id: p.id } })
     }
     const pp = prefixProblem(m.project.prefix, p.id, 'Person', { page: 'people', id: p.id })
     if (pp) out.push(pp)
-    if (!p.portrait && !isTodoActive(p, 'portrait')) out.push({ level: 'warning', area: 'Person', message: `${p.name.first} ${p.name.last} has no portrait.`, ref: { page: 'people', id: p.id } })
+    if (!p.portrait && !isTodoActive(p, 'portrait')) out.push({ level: 'warning', area: 'Person', message: `${fullName(p.name)} has no portrait.`, ref: { page: 'people', id: p.id } })
   }
   return out
 }

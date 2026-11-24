@@ -38,6 +38,18 @@ export interface FactionField {
   template?: Record<string, unknown>
 }
 
+/** #67 U34: the reference section that explains a field's options (the ⓘ next to its label). */
+export function factionFieldRef(f: FactionField): string | undefined {
+  if (f.source === 'tags') return 'factions-blueprint-tags'
+  if (f.source === 'skills') return 'factions-skills'
+  if (f.source === 'fleetTypes') return 'factions-fleet-types'
+  if (f.source === 'music') return 'general-music'
+  if (f.source === 'stations') return 'locations-industries'
+  if (f.path === 'ranks.ranks') return 'people-rank'
+  if (f.path === 'ranks.posts') return 'people-post'
+  return undefined
+}
+
 export interface FactionTab { id: string; label: string; fields: FactionField[] }
 
 const list = (path: string, label: string, source: IdSource, help?: string): FactionField => ({ path, label, kind: 'idlist', source, help })
@@ -73,7 +85,7 @@ export const FACTION_TABS: FactionTab[] = [
     ]
   },
   {
-    id: 'ships', label: 'Ships & weapons', fields: [
+    id: 'ships', label: 'Ships', fields: [
       list('knownShips.hulls', 'Known ships · hulls', 'hulls', 'Hulls its fleets and markets can use, from the game index (your Ship Editor hulls too). In an override, added hulls join the faction\'s own.'),
       list('knownShips.tags', 'Known ships · blueprint tags', 'tags', 'Every hull with one of these tags is known, e.g. lowtech_bp. The easy way to give a whole family of ships.'),
       list('priorityShips.hulls', 'Priority ships · hulls', 'hulls', 'Hulls its fleets pick first when they fit the doctrine.'),
@@ -107,7 +119,7 @@ export const FACTION_TABS: FactionTab[] = [
     ]
   },
   {
-    id: 'names', label: 'Names & ranks', fields: [
+    id: 'names', label: 'Names', fields: [
       weights('names', 'Person name sets', 'nameSets', 'Name categories its generated people (officers, administrators, contacts) are named from, with weights: vanilla\'s (modern, world, future, myth, …), other mods\' and this mod\'s own name lists. A category without first or last names for a gender borrows them from a random category.'),
       weights('shipNameSources', 'Ship name sources', 'shipNames', 'Ship name lists its ships are named from, with weights: vanilla\'s (GREEK, CELTIC, SPACE, GENERAL, …), other mods\' and this mod\'s own name lists.'),
       list('portraits.standard_male', 'Portraits · male', 'portraits', 'Portraits its generated men use (officers, administrators, contacts).'),

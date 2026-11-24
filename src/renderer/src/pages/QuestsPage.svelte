@@ -1,5 +1,8 @@
 <script lang="ts">
   /** Quest planner (PLAN.md §5, mock-up quest.html): flow chart, inspector, dialog preview, Play mode, Rules view. */
+  import RefButton from '../ui/RefButton.svelte'
+  import { openReference } from '../ui/reference'
+  import { fullName } from '../../../shared/personname'
   import ModsChip from '../ui/ModsChip.svelte'
   import { mods } from '../state/mods.svelte'
   import { SvelteFlow, Background, Controls, MiniMap, type Node, type Edge, type Connection } from '@xyflow/svelte'
@@ -23,6 +26,9 @@
   import VersionStrip from '../ui/VersionStrip.svelte'
   import { play, world, allPhrases, playModel } from '../quests/play.svelte'
   import QNodeView from '../graph/QNodeView.svelte'
+  import { tokenHub } from '../state/tokens.svelte'
+  import NodeGroupsPanel from '../quests/NodeGroupsPanel.svelte'
+  import { ensureInMod, groupLib, groupMenu } from '../state/nodegroups.svelte'
   import FlowApi, { type FlowHandle } from '../graph/FlowApi.svelte'
   import { autoLayout } from '../graph/layout'
   import NodeInspector from '../quests/NodeInspector.svelte'
@@ -58,12 +64,21 @@
   let center = $state<'chart' | 'script' | 'rules'>(app.smokeModal === 'script' || app.smokeModal === 'rules' ? app.smokeModal : 'chart')
   let dockTab = $state<'preview' | 'problems' | 'log'>('preview')
   let flow: FlowHandle | null = null
+  // #67 U10: each quest's chart opens with a readable view (FlowApi.opening), also when the quest changes
+  let openedFor: string | null = null
+  const openChart = (api: FlowHandle) => setTimeout(() => { openedFor = qid; api.opening() }, 150)
+  $effect(() => {
+    const id = qid
+    if (!id || id === openedFor) return
+    const t = setTimeout(() => { if (flow && openedFor !== id) { openedFor = id; flow.opening() } }, 150)
+    return () => clearTimeout(t)
+  })
   // walk F30: the inspector starts at the top for each node (it kept the last panel's scroll)
   let rightEl = $state<HTMLElement>()
   $effect(() => { void app.selected.questNode; void app.selected.quests; if (rightEl) rightEl.scrollTop = 0 })
   const phrases = $derived([...(m?.phrases ?? []), ...(m?.people.flatMap((p) => p.phrases) ?? [])])
   // #60: the Rules view shows the rules as exported (mod conditions folded in)
-  const compiled = $derived(quest ? compileQuest(playModel()?.quests.find((x) => x.id === quest.id) ?? quest, { sagalib: true, phrases, itemKind: itemKindLookup(m?.items ?? [], app.index?.items ?? []), lockedEntities: lockedEntityIds(m?.quests ?? []) }) : null)
+  const compiled = $derived(quest ? compileQuest(playModel()?.quests.find((x) => x.id === quest.id) ?? quest, { sagalib: true, phrases, itemKind: itemKindLookup(m?.items ?? [], app.index?.items ?? []), lockedEntities: lockedEntityIds(m?.quests ?? []), groups: m?.nodeGroups, prefix: m?.project.prefix }) : null)
   const SEVERITY = ['error', 'todo', 'warning', 'save', 'style', 'info']
   const qProblems = $derived(problems.live.filter((p) => p.ref?.page === 'quests' && p.ref.id === qid).map((p, i) => ({ p, i }))
     .sort((a, b) => SEVERITY.indexOf(a.p.level) - SEVERITY.indexOf(b.p.level) || a.i - b.i).map((x) => x.p))
@@ -74,12 +89,12 @@
     // Phase 7c: the quest's random targets ("target:<var>": the place SagaLib picked)
     ...(quest ? targetPlaces(quest) : []),
     ...(m?.systems.flatMap((s) => s.entities.flatMap((e) => [{ id: e.id, name: `${e.name} (${s.name})` }, ...(e.market && e.market.id !== e.id ? [{ id: e.market.id, name: `${e.market.name} market` }] : [])])) ?? []),
-    ...(m?.people.map((p) => ({ id: p.id, name: `${p.name.first} ${p.name.last}` })) ?? []),
-    ...(app.index?.markets.flatMap((x) => [{ id: x.id, name: `${x.name} market` }, ...x.entities.map((id) => ({ id, name: x.name }))]) ?? []),
+    ...(m?.people.map((p) => ({ id: p.id, name: fullName(p.name) })) ?? []),
+    ...(app.index?.markets.flatMap((x) => [{ id: x.id, name: `${x.name} market`, definedBy: x.definedBy }, ...x.entities.map((id) => ({ id, name: x.name, definedBy: x.definedBy }))]) ?? []),
     // #64: other Saga Forge mods' places and what a sector snapshot saw
-    ...(app.index?.places ?? []).map((x) => ({ id: x.id, name: x.name }))
+    ...(app.index?.places ?? []).map((x) => ({ id: x.id, name: x.name, definedBy: x.definedBy }))
   ])
-  const nodeLabel = (n: QNode) => (n.type === 'dialog' || n.type === 'branch' || n.type === 'action' || n.type === 'raid' ? n.title ?? '' : n.type === 'stage' ? quest?.stages.find((s) => s.id === n.stage)?.id ?? '' : '')
+  const nodeLabel = (n: QNode) => n.type === 'group' ? (n.title || m?.nodeGroups?.find((d) => d.id === n.group)?.label || n.group) : (n.type === 'dialog' || n.type === 'branch' || n.type === 'action' || n.type === 'raid' || n.type === 'plugin' || n.type === 'fight' ? n.title ?? '' : n.type === 'stage' ? quest?.stages.find((s) => s.id === n.stage)?.id ?? '' : '')
 
   // ---- chart nodes/edges, rebuilt from the plan
   let nodes = $state.raw<Node[]>([])
@@ -93,14 +108,14 @@
     const sel = selNode
     const qnodes: Node[] = q.nodes.map((n) => ({
       id: n.id, type: 'q', position: { x: n.x, y: n.y }, selected: n.id === sel, deletable: n.type !== 'start',
-      data: { node: n, quest: q, problems: nodeProblems(n.id), path: !!reach?.has(n.id), faded: !!reach && !reach.has(n.id) && n.type !== 'note', current: play.active && path[path.length - 1] === n.id, label: nodeLabel, personName }
+      data: { node: n, quest: q, problems: nodeProblems(n.id), path: !!reach?.has(n.id), faded: !!reach && !reach.has(n.id) && n.type !== 'note', current: play.active && path[path.length - 1] === n.id, label: nodeLabel, personName, groups: m?.nodeGroups ?? [] }
     }) as Node)
     // stage frames behind the nodes (PLAN.md §5)
     const COLORS = ['#a0558f', '#4fb3ff', '#6fd07a', '#f0b44c', '#c9a0ff', '#ff6b6b']
     const frames: Node[] = stageGroups(q).map((g, i) => {
       const members = q.nodes.filter((n) => g.nodes.includes(n.id))
       const x0 = Math.min(...members.map((n) => n.x)) - 18, y0 = Math.min(...members.map((n) => n.y)) - 26
-      const x1 = Math.max(...members.map((n) => n.x + 220)) + 18, y1 = Math.max(...members.map((n) => n.y + 70 + handlesOf(n).length * 24)) + 18
+      const x1 = Math.max(...members.map((n) => n.x + 220)) + 18, y1 = Math.max(...members.map((n) => n.y + 70 + handlesOf(n, m?.nodeGroups).length * 24)) + 18
       const st = q.stages.find((s) => s.id === g.stage)
       return { id: `frame:${g.stage}`, type: 'frame', position: { x: x0, y: y0 }, zIndex: -1, draggable: false, selectable: false, deletable: false, focusable: false,
         data: { label: `Stage ${g.stage}${st ? ` · ${st.title}` : ''}`, color: st?.color ?? COLORS[i % COLORS.length], w: x1 - x0, h: y1 - y0 } }
@@ -143,9 +158,12 @@
   // key: the type, or "wait:bounty" for a Wait node made for a MagicLib bounty (SagaLib 1.3)
   const NODE_MENU: { type: NodeType; label: string; key?: string }[] = [
     { type: 'dialog', label: 'Dialog' }, { type: 'branch', label: 'Branch' }, { type: 'action', label: 'Action' }, { type: 'stage', label: 'Stage' },
-    { type: 'encounter', label: 'Encounter' }, { type: 'wait', label: 'Wait / Arrive' }, { type: 'wait', key: 'wait:bounty', label: 'Wait for a MagicLib bounty' }, { type: 'raid', label: 'Raid (ground raid)' }, { type: 'end', label: 'End' }, { type: 'link', label: 'Link (into existing dialog)' }, { type: 'note', label: 'Note' }
+    { type: 'encounter', label: 'Encounter' }, { type: 'wait', label: 'Wait / Arrive' }, { type: 'wait', key: 'wait:bounty', label: 'Wait for a MagicLib bounty' }, { type: 'raid', label: 'Raid (ground raid)' }, { type: 'fight', label: 'Fight (defenders, on the spot)' }, { type: 'plugin', label: "Plugin (the mod's own Java)" }, { type: 'end', label: 'End' }, { type: 'link', label: 'Link (into existing dialog)' }, { type: 'note', label: 'Note' }
   ]
   const TYPES = NODE_MENU.map((t) => ({ ...t, key: t.key ?? t.type }))
+  // #67 U43: node groups (built-in, the library's and the mod's copies), placed as one node
+  $effect(() => { if (!groupLib.loaded) void groupLib.load() })
+  const GROUP_TYPES = $derived(groupMenu().map((e) => ({ key: `group:${e.def.id}`, label: e.def.label, title: `${e.def.description ?? ''}${e.source === 'library' ? ' (from your library)' : e.source === 'builtin' ? ' (comes with Saga Forge)' : ''}`.trim() })))
   function openMenu(ev: MouseEvent, from?: { node: string; handle: string }) {
     if (!flow || play.active) return
     const p = flow.toFlow(ev.clientX, ev.clientY)
@@ -170,9 +188,14 @@
     menu = null
     const type = (key.split(':')[0]) as NodeType
     if (!qid || !mn || !quest) return
-    const id = uniqueId(type === 'dialog' ? 'dialog' : type, quest.nodes.map((n) => n.id))
+    // #67 U43: a node group: the mod gets a copy of its definition, the node links to it
+    const gdef = type === 'group' ? groupMenu().find((e) => e.def.id === key.slice(6))?.def : undefined
+    if (type === 'group' && !gdef) return
+    if (gdef) ensureInMod(gdef)
+    const id = uniqueId(gdef ? gdef.id.split('.').pop()! : type === 'dialog' ? 'dialog' : type, quest.nodes.map((n) => n.id))
     editQuest(qid, (q) => {
       const n = newNode(type, id, Math.round(mn.fx), Math.round(mn.fy))
+      if (n.type === 'group' && gdef) n.group = gdef.id
       // SagaLib 1.3: a Wait for a MagicLib bounty, on the bounty the quest already starts or tests
       if (n.type === 'wait' && key === 'wait:bounty') { n.mode = 'bounty'; n.bounty = bountyIdsOf(q)[0] }
       // walk W4: a new Stage node takes the first stage no Stage node uses yet (not always the first one)
@@ -193,7 +216,7 @@
 
   async function doLayout() {
     if (!quest || !qid) return
-    const pos = await autoLayout(quest.nodes.filter((n) => n.type !== 'note').map((n) => ({ id: n.id, width: 220, height: 90 + handlesOf(n).length * 24, ports: handlesOf(n).map((h) => h.id) })),
+    const pos = await autoLayout(quest.nodes.filter((n) => n.type !== 'note').map((n) => ({ id: n.id, width: 220, height: 90 + handlesOf(n, m?.nodeGroups).length * 24, ports: handlesOf(n, m?.nodeGroups).map((h) => h.id) })),
       quest.edges.map((e) => ({ id: e.id, from: e.from, to: e.to, port: e.handle })), { spacing: 36 })
     editQuest(qid, (q) => { for (const n of q.nodes) { const p = pos.get(n.id); if (p) { n.x = Math.round(p.x); n.y = Math.round(p.y) } } })
     setTimeout(() => flow?.fit(), 50)
@@ -311,7 +334,7 @@
       // unless a contact or bar event creates the mission with the offer
       if (createdUpFront(e, quest, node.id)) {
         for (const v of quest.variables) if (v.type !== 'target') e.set(`$global.${quest.id}_${v.name}`, v.type === 'number' ? Number(v.initial) || 0 : v.initial)
-        applyMockTargets(e, quest)
+        applyMockTargets(e, quest, w, () => e.ctx.random())
       }
       if (rule.option) e.set('$option', rule.option)
       e.apply(rule)
@@ -384,6 +407,9 @@
     if (mo === 'stagerename' && quest.stages[0]) { stageRename = { quest: quest.id, from: quest.stages[0].id }; stageTo = quest.stages[0].id; stageHow = 'alias' }
     if (mo === 'changeid') { changeIdTo = quest.id; showChangeId = true }
     if (mo === 'savetemplate') { templateName = quest.title; showSaveTemplate = true }
+    // #67 U44: the token lookup (inside the editor in screenshot mode), and the "$" autocomplete in the dialog text
+    if (mo === 'tokens') setTimeout(() => void tokenHub.open(), 800)
+    if (mo === 'tokenac') setTimeout(() => { const el = document.querySelector('textarea[data-tokens]') as HTMLTextAreaElement | null; if (!el) return; el.focus(); el.value += ' $per'; el.setSelectionRange(el.value.length, el.value.length); tokenHub.update(el) }, 1500)
     if (mo === 'nodemenu') setTimeout(() => {
       const el = document.querySelector('.qcanvas')?.getBoundingClientRect()
       if (el && flow) { const p = flow.toFlow(el.left + el.width / 2, el.top + 60); menu = { x: el.left + el.width / 2, y: el.top + 60, fx: p.x, fy: p.y } }
@@ -403,7 +429,7 @@
     </ul>
     {#if m}
       <!-- #27: the mod's MagicLib bounties (made here) and the ones already in its files (read only) -->
-      <div class="sect">MagicLib bounties <span class="sectr">{#if quest && quest.kind === 'quest'}<button title="Make a MagicLib bounty from this quest (its encounter is the target)" onclick={() => { const nb = newBounty(m, { quest: quest.id }); project.change((mm) => { (mm.bounties ??= []).push(nb) }); bountyOpen = nb.id }}>+ From this quest</button>{/if}</span></div>
+      <div class="sect">MagicLib bounties <span class="sectr">{#if quest && quest.kind === 'quest'}<button title="Make a MagicLib bounty from this quest (its encounter is the target)" onclick={() => { const nb = newBounty(m, { quest: quest.id }); project.change((mm) => { ((mm.bounties ??= []), mm.bounties).push(nb) }); bountyOpen = nb.id }}>+ From this quest</button>{/if}</span></div>
       <ul class="list">
         {#each m.bounties ?? [] as bt (bt.id)}
           <li><button class="li" onclick={() => (bountyOpen = bt.id)}><span>{bt.name || m.quests.find((x) => x.id === bt.quest)?.title || m.encounters.find((x) => x.id === bt.encounter)?.name || bt.id}</span><span class="sub mono">{bt.id}{bt.quest ? ` · from ${bt.quest}` : bt.encounter ? ` · from ${bt.encounter}` : ''}</span></button></li>
@@ -414,6 +440,7 @@
         {#if !(m.bounties?.length) && !handBounties.length}<li class="muted small pad">None. A bounty is made from a quest (here) or an encounter (Encounters); only MagicLib reads it.</li>{/if}
       </ul>
     {/if}
+    {#if m}<NodeGroupsPanel />{/if}
     {#if quest}
       <div class="sect">Stages (journal) <button title="Add a stage (its form opens below)" onclick={() => { const id = uniqueId('stage', quest.stages.map((s) => s.id)); edQ((q) => { q.stages.push({ id, title: 'New stage', journal: '', kind: 'normal', renamedFrom: [] }) }); openStage = id }}>+</button></div>
       <div class="outline">
@@ -447,12 +474,12 @@
           </details>
         {/each}
       </div>
-      <div class="sect">Variables <button onclick={() => edQ((q) => { q.variables.push({ name: uniqueId('var', q.variables.map((v) => v.name)), type: 'number', scope: 'quest', initial: '0' }) })}>+</button></div>
+      <div class="sect">Variables<RefButton ref="quests-variables" title="Variable types: opens the reference" /> <button onclick={() => edQ((q) => { q.variables.push({ name: uniqueId('var', q.variables.map((v) => v.name)), type: 'number', scope: 'quest', initial: '0' }) })}>+</button></div>
       <div class="outline">
         {#if quest.variables.length}<div class="var vhead muted small"><span>Name</span><span>Type</span><span>Starts at</span><span></span></div>{/if}
         {#each quest.variables as v, i (v.name)}
           <div class="var">
-            <input type="text" class="mono" value={v.name} onchange={(e) => { const nv = slug(e.currentTarget.value); if (nv) edQ((q) => { q.variables[i].name = nv }) }} />
+            <input type="text" class="mono" value={v.name} onchange={(e) => { const nv = slug(e.currentTarget.value); if (nv) edQ((q) => { q.variables[i].name = nv }); else e.currentTarget.value = v.name }} />
             <select value={v.type} onchange={(e) => { const t = e.currentTarget.value as typeof v.type; edQ((q) => { q.variables[i].type = t; if (t === 'target' && !q.variables[i].target) q.variables[i].target = newTarget() }); if (t === 'target') targetOpen = v.name }}><option>number</option><option>string</option><option>bool</option><option>entity</option><option>person</option><option value="target">random target</option></select>
             {#if v.type === 'target'}
               <button class="mini init" title="What SagaLib picks when the quest is offered" onclick={() => (targetOpen = v.name)}>{v.target ? `${v.target.pick} · ${v.target.require.length + v.target.prefer.length} criteria` : 'set up…'}</button>
@@ -479,12 +506,13 @@
         <select value={play.profileId} onchange={(e) => (play.profileId = e.currentTarget.value)} title="Test profile applied when Play starts"><option value="">no test profile</option>{#each m?.testProfiles ?? [] as p (p.id)}<option value={p.id}>{p.name}</option>{/each}</select>
         <!-- #60: a switch per optional mod (Saga › Mods): the combination this playthrough started with; switching restarts -->
         {#each mods.optional() as x (x.id)}
-          <label class="modsw" title="Play as if {x.name} was enabled when the game started (switching restarts Play)"><input type="checkbox" checked={mods.playMods().has(x.id)} onchange={(e) => { mods.playOn[x.id] = e.currentTarget.checked; if (quest) play.start(quest) }} /> {x.name}</label>
+          {@const nw = mods.neverWith(x.id)}
+          <label class="modsw" title="Play as if {x.name} was enabled when the game started (switching restarts Play){nw.length ? `. Never played with ${nw.join(', ')}: turning it on turns those off` : ''}"><input type="checkbox" checked={mods.playMods().has(x.id)} onchange={(e) => { mods.setPlay(x.id, e.currentTarget.checked); if (quest) play.start(quest) }} /> {x.name}</label>
         {/each}
       {:else}
         <select value="" disabled={!quest} onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; if (v && flow) { const el = document.querySelector('.qcanvas')!.getBoundingClientRect(); menu = { x: 0, y: 0, ...(() => { const p = flow!.toFlow(el.left + el.width / 2, el.top + el.height / 2); return { fx: p.x, fy: p.y } })() }; addNode(v) } }}>
-          <option value="">+ Node</option>{#each TYPES as t (t.key)}<option value={t.key}>{t.label}</option>{/each}
-        </select>
+          <option value="">+ Node</option>{#each TYPES as t (t.key)}<option value={t.key}>{t.label}</option>{/each}{#if GROUP_TYPES.length}<optgroup label="Node groups">{#each GROUP_TYPES as t (t.key)}<option value={t.key} title={t.title}>{t.label}</option>{/each}</optgroup>{/if}
+        </select><RefButton ref="quests-node-types" title="What each node does: opens the reference" />
         <button onclick={doLayout} disabled={!quest}>Auto-layout</button>
         <button onclick={() => (showFind = !showFind)} disabled={!quest}>Find Ctrl+F</button>
         {#if showFind}<input type="search" placeholder="text, option or id…" bind:value={find} />{#each found.slice(0, 8) as f (f)}<button class="mini" onclick={() => { app.selected.questNode = f; flow?.fit([f]) }}>{f}</button>{/each}{/if}
@@ -528,7 +556,7 @@
       {:else}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="flowwrap" ondblclick={(e) => { if ((e.target as HTMLElement).classList.contains('svelte-flow__pane')) openMenu(e) }}>
-          <SvelteFlow bind:nodes bind:edges {nodeTypes} colorMode="dark" fitView fitViewOptions={{ maxZoom: 1 }} minZoom={0.15} zoomOnDoubleClick={false}
+          <SvelteFlow bind:nodes bind:edges {nodeTypes} colorMode="dark" minZoom={0.15} zoomOnDoubleClick={false}
             nodesDraggable={!play.active} nodesConnectable={!play.active} deleteKey={play.active ? null : ['Delete', 'Backspace']}
             onnodeclick={({ node: n }) => { if (!n.id.startsWith('frame:')) app.selected.questNode = n.id }} onpaneclick={() => { app.selected.questNode = null; menu = null }}
             onnodedragstop={({ nodes: ns }) => onDragStop({ nodes: ns })} onconnect={onConnect} ondelete={onDelete}
@@ -537,7 +565,7 @@
             <Background gap={20} />
             <Controls showLock={false} />
             <MiniMap pannable zoomable width={170} height={100} />
-            <FlowApi onReady={(api) => (flow = api)} />
+            <FlowApi onReady={(api) => { flow = api; openChart(api) }} />
           </SvelteFlow>
         </div>
         {#if !play.active}<div class="help">Drag from an option's dot into empty space to add the next node · double-click the canvas for a new node · Delete removes · Ctrl+Z/Y undo · Ctrl+D duplicate</div>{/if}
@@ -566,7 +594,7 @@
                 {:else}<span class="muted small" title={pb.state === 'unavailable' ? 'MagicLib is off (Play mode switches), or MagicLib skips this bounty' : ''}>Bounty {pb.id}: {pb.state}</span>{/if}
               {/each}
               <!-- #61: a watched market changes owner (an invasion, a rebellion, SagaLib's dev menu) -->
-              {#each play.watched as wm (wm.id)}<span class="small" title="SagaLib checks the owners of the quest's markets once a day">{wm.id} ({wm.owner}):</span><select class="mini" value="" onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; play.changeOwner(wm.id, v) }}><option value="">changes owner to…</option>{#each (app.index?.factions ?? []).filter((f) => f.id !== wm.owner) as f (f.id)}<option value={f.id}>{f.name || f.id}</option>{/each}</select>{/each}
+              {#each play.watched as wm (wm.id)}<span class="small" title="SagaLib checks the owners of the quest's markets once a day">{wm.id} ({wm.owner}):</span><select class="mini" value="" onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; play.changeOwner(wm.id, v) }}><option value="">changes owner to…</option>{#each mods.filter('play:owners', app.index?.factions ?? [], (f) => f.definedBy).filter((f) => f.id !== wm.owner) as f (f.id)}<option value={f.id}>{f.name || f.id}</option>{/each}</select>{/each}
               <!-- #70: a person with a presence rule leaves or comes back (their market's owner, a war, peace) -->
               {#each play.presence as pp (pp.id)}<label class="small chk" title="SagaLib's $global.sagaforge_away_{pp.id}: while away they're hidden from the comm directory and their quests aren't offered"><input type="checkbox" checked={pp.away} onchange={(e) => play.setAway(pp.id, e.currentTarget.checked)} /> {pp.name} is away</label>{/each}
               <!-- #62: the mod's settings as in LunaLib's menu: a change applies at once (quests read it at the next offer or Branch) -->
@@ -631,7 +659,9 @@
 {#if menu && menu.x}
   <div class="menu" style="left:{menu.x}px;top:{menu.y}px">
     {#each TYPES as t (t.key)}<button onclick={() => addNode(t.key)}>{t.label}</button>{/each}
+    {#if GROUP_TYPES.length}<div class="msect">Node groups</div>{#each GROUP_TYPES as t (t.key)}<button title={t.title} onclick={() => addNode(t.key)}>{t.label}</button>{/each}{/if}
     <button class="muted" onclick={() => (menu = null)}>Cancel</button>
+    <button class="muted" onclick={() => { menu = null; openReference('quests-node-types') }}>ⓘ What each node does</button>
   </div>
 {/if}
 
@@ -783,6 +813,7 @@
   .menu { position: fixed; z-index: 70; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,.6); }
   .menu button { border: none; background: none; text-align: left; padding: 4px 12px; font-size: 12px; }
   .menu button:hover { background: var(--accent-2); color: #fff; }
+  .menu .msect { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 6px 12px 2px; border-top: 1px solid var(--border); margin-top: 2px; }
   .mini { padding: 0 8px; font-size: 11px; }
   .danger:hover { border-color: var(--bad); color: var(--bad); }
   .small { font-size: 11px; }

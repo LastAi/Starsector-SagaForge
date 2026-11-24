@@ -4,14 +4,17 @@
   import type { QNode, QuestPlan } from '../../../shared/model'
   import { handlesOf } from '../../../shared/quest'
   import { branchPool, chances } from '../../../shared/pools'
+  import { groupSummary, type NodeGroupDef } from '../../../shared/nodegroups'
 
   interface Props {
-    data: { node: QNode; quest: QuestPlan; problems: { level: string; message: string }[]; path?: boolean; faded?: boolean; current?: boolean; label: (n: QNode) => string; personName: (id: string) => string }
+    data: { node: QNode; quest: QuestPlan; problems: { level: string; message: string }[]; path?: boolean; faded?: boolean; current?: boolean; label: (n: QNode) => string; personName: (id: string) => string; groups?: NodeGroupDef[] }
     selected?: boolean
   }
   let { data, selected = false }: Props = $props()
   const n = $derived(data.node)
-  const handles = $derived(handlesOf(n))
+  const handles = $derived(handlesOf(n, data.groups))
+  /** #67 U43: a placed node group's definition (the mod's copy). */
+  const gdef = $derived(n.type === 'group' ? data.groups?.find((d) => d.id === n.group) : undefined)
   /** Phase 7a: a Random branch's chances per handle (its own cases; "else" is the nothing share). */
   const chance = $derived.by((): Record<string, number> => {
     if (n.type !== 'branch' || !n.random || n.random.pool) return {}
@@ -23,15 +26,15 @@
   })
   const COLORS: Record<string, string> = {
     start: '#3c8d5a', dialog: '#2b7fc4', branch: '#b07a2a', action: '#4d8a8a', stage: '#a0558f', encounter: '#b84a4a', raid: '#9a5a2a',
-    wait: '#5a6f8f', end: '#555f6e', link: '#3a4452', note: '#6b6440'
+    wait: '#5a6f8f', end: '#555f6e', link: '#3a4452', note: '#6b6440', plugin: '#6b5fa8', fight: '#c0392b', group: '#2f6f73'
   }
-  const TITLES: Record<string, string> = { start: 'Start', dialog: 'Dialog', branch: 'Branch', action: 'Action', stage: 'Stage', encounter: 'Encounter', raid: 'Raid', wait: 'Wait / Arrive', end: 'End', link: 'Link', note: 'Note' }
+  const TITLES: Record<string, string> = { start: 'Start', dialog: 'Dialog', branch: 'Branch', action: 'Action', stage: 'Stage', encounter: 'Encounter', raid: 'Raid', wait: 'Wait / Arrive', end: 'End', link: 'Link', note: 'Note', plugin: 'Plugin', fight: 'Fight', group: 'Group' }
   const errs = $derived(data.problems.filter((p) => p.level === 'error').length)
   const warns = $derived(data.problems.filter((p) => p.level !== 'error').length)
   const opt = (id: string) => (n.type === 'dialog' ? n.options.find((o) => o.id === id) : undefined)
 </script>
 
-<div class="node" class:sel={selected} class:ro={n.type === 'link'} class:path={data.path} class:faded={data.faded} class:current={data.current} class:note={n.type === 'note'}
+<div class="node" class:sel={selected} class:ro={n.type === 'link'} class:path={data.path} class:faded={data.faded} class:current={data.current} class:note={n.type === 'note'} class:group={n.type === 'group'}
   title={data.problems.map((p) => p.message).join('\n')}>
   {#if n.type !== 'start' && n.type !== 'note'}<Handle type="target" position={Position.Left} />{/if}
   <div class="nh" style="background:{COLORS[n.type]}"><span>{TITLES[n.type]}{data.label(n) ? ` · ${data.label(n)}` : ''}</span><span class="mono id">{n.id}</span></div>
@@ -40,6 +43,8 @@
       {#if n.speaker}<div class="who">{data.personName(n.speaker)}</div>{/if}
       <div class="q">{n.text || '(no text)'}</div>
       {#if n.displays.length}<div class="muted small">{n.displays.length} display{n.displays.length === 1 ? '' : 's'}</div>{/if}
+      <!-- #67 U6: the text shown when the player comes back -->
+      {#if n.repeat?.text.trim()}<div class="muted small q1" title={n.repeat.text}>↺ {n.repeat.text}</div>{/if}
     {:else if n.type === 'start'}
       {@const s = data.quest.start}
       <div>{s.kind === 'contact' ? (s.person ? `contact: ${data.personName(s.person)}` : s.tagsAll || s.tagsAny ? `any contact tagged ${[s.tagsAll, s.tagsAny].filter(Boolean).join(' / ')}` : 'contact: ?') : s.kind === 'bar' ? 'bar event' : s.kind === 'option' ? `option: ${s.optionText}` : s.kind === 'trigger' ? `trigger: ${s.trigger}` : s.kind === 'barScene' ? `bar scene: ${s.optionText}` : s.kind === 'interject' ? `cuts into ${s.option}` : 'started by another quest'}</div>
@@ -47,13 +52,16 @@
     {:else if n.type === 'branch'}
       <div class="muted small">{n.random ? (n.random.pool ? `at random from pool ${n.random.pool}` : `at random by weight${n.random.scope === 'global' ? ' (world)' : ''}`) : 'matching case with the most conditions (FireBest)'}</div>
     {:else if n.type === 'action'}
-      {#each n.ops.slice(0, 4) as op, i (i)}<div class="mono small">{op.op === 'set' ? `${op.key} = ${op.value}` : op.op === 'line' ? op.line : `${op.op} ${Object.values(op).slice(1).join(' ')}`}</div>{/each}
+      {#each n.ops.slice(0, 4) as op, i (i)}<div class="mono small">{op.op === 'set' ? `${op.key} = ${op.value}` : op.op === 'line' ? op.line : op.op === 'plugin' ? `plugin ${op.className.trim().split('.').pop() || '?'}${op.args.length ? ` (${op.args.filter((a) => a.key.trim()).map((a) => `${a.key}=${a.value}`).join(', ')})` : ''}` : `${op.op} ${Object.values(op).slice(1).join(' ')}`}</div>{/each}
       {#if !n.ops.length}<div class="muted small">(nothing yet)</div>{/if}
     {:else if n.type === 'stage'}
       {@const st = data.quest.stages.find((s) => s.id === n.stage)}
       <div>{st ? st.title : '(pick a stage)'}</div>{#if st?.journal}<div class="muted small q">{st.journal}</div>{/if}
     {:else if n.type === 'encounter'}
       <div class="mono">{n.encounter || '(pick an encounter)'}</div>
+    {:else if n.type === 'fight'}
+      <!-- #67 U3: a fight on the spot (SF_Fight) -->
+      <div>{n.fleet.name || n.fleet.faction || '(faction)'}</div><div class="muted small">{n.fleet.size === 'fp' ? `${n.fleet.points ?? 0} fleet points` : n.fleet.size === 'template' ? `named fleet ${n.fleet.template || '?'}` : `${n.fleet.variants?.length ?? 0} ships`}</div>
     {:else if n.type === 'raid'}
       <div>{n.objective || '(objective)'}</div><div class="muted small">danger {n.danger.toLowerCase()}{n.difficulty > 0 ? ` · strength ${n.difficulty}` : " · the colony's defences"}</div>
     {:else if n.type === 'wait'}
@@ -61,9 +69,16 @@
     {:else if n.type === 'end'}
       <div class:good={n.outcome === 'success'} class:bad={n.outcome !== 'success'}>{n.outcome}{n.reward ? ` · reward ${n.reward}` : ''}</div>
     {:else if n.type === 'link'}
-      <div class="mono small">{n.mode === 'menu' ? 'back to the menu (or close)' : n.mode === 'bar' ? 'back to the bar' : n.mode === 'trigger' ? `${n.fire ?? 'FireAll'} ${n.target}` : n.mode === 'option' ? `→ option ${n.target}` : `→ node ${n.target}`}</div>
+      <div class="mono small">{n.mode === 'menu' ? 'back to the menu (or close)' : n.mode === 'close' ? (n.toFleet ? 'cut the comm link (fleet screen)' : 'close the dialog') : n.mode === 'bar' ? 'back to the bar' : n.mode === 'trigger' ? `${n.fire ?? 'FireAll'} ${n.target}` : n.mode === 'option' ? `→ option ${n.target}` : `→ node ${n.target}`}</div>
+    {:else if n.type === 'group'}
+      <!-- #67 U43: a placed node group: its normal nodes underneath -->
+      {#if gdef}<div>{groupSummary(n, gdef) || gdef.label}</div><div class="muted small">group {gdef.id}{gdef.version ? ` v${gdef.version}` : ''}</div>{:else}<div class="bad">missing group {n.group}</div>{/if}
     {:else if n.type === 'note'}
       <div class="notetext">{n.text || 'Note'}</div>
+    {:else if n.type === 'plugin'}
+      <!-- #79: the mod's own Java (SF_RunPlugin) -->
+      <div class="mono small" title={n.className}>{n.className.trim() ? n.className.trim().split('.').pop() : '(pick a class)'}</div>
+      {#if n.args.some((a) => a.key.trim())}<div class="muted small q">{n.args.filter((a) => a.key.trim()).map((a) => `${a.key}=${a.value}`).join(', ')}</div>{/if}
     {/if}
   </div>
   {#each handles as h (h.id)}
@@ -86,10 +101,12 @@
   .node.current { box-shadow: 0 0 0 2px var(--good), 0 0 18px rgba(111,208,122,.4); }
   .node.faded { opacity: .35; }
   .node.note { background: #26241a; border-color: #4a4630; }
+  .node.group { border: 1px solid #2f6f73; box-shadow: 3px 3px 0 -1px var(--panel), 3px 3px 0 0 #2f6f73, 0 4px 12px rgba(0,0,0,.4); }
   .nh { padding: 3px 8px; border-radius: 5px 5px 0 0; font-size: 11px; font-weight: 600; color: #fff; display: flex; justify-content: space-between; gap: 6px; }
   .nh .id { font-weight: normal; opacity: .75; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80px; }
   .nb { padding: 5px 8px; }
   .who { color: var(--accent); font-size: 11px; }
+  .q1 { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .q { color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; }
   .notetext { color: #d8d0a0; white-space: pre-wrap; }
   .opt { position: relative; padding: 3px 12px 3px 8px; border-top: 1px solid var(--border); display: flex; gap: 4px; align-items: center; }

@@ -13,10 +13,40 @@
  *
  * Paths: segments joined by "."; a segment is a key, or `key[x]` = the element of the array `key`
  * whose "id" (else "token") is x (the same as translation keys). `null` removes the key.
+ *
+ * #67 U18 (SagaLib 1.4): a version's `mods` may also hold setting tokens `setting:<id>=<value>`:
+ * the version needs that value of one of the mod's own LunaLib settings (marked for versions),
+ * recorded when the game started. They go through everything that works on `mods` (keys, cells,
+ * resolution); SagaLib's files carry them as `settingsWith: ["<id>=<value>"]`.
  */
 
+/** The prefix of a setting token in a version's `mods`. */
+export const SETTING_TOKEN = 'setting:'
+/** `setting:<id>=<value>`. */
+export const settingToken = (id: string, value: string): string => `${SETTING_TOKEN}${id}=${value}`
+export const isSettingToken = (x: string): boolean => x.startsWith(SETTING_TOKEN)
+/** The setting and value of a token (null for a mod id or a token without "="). */
+export function parseSettingToken(x: string): { id: string; value: string } | null {
+  if (!isSettingToken(x)) return null
+  const rest = x.slice(SETTING_TOKEN.length)
+  const i = rest.indexOf('=')
+  return i > 0 ? { id: rest.slice(0, i), value: rest.slice(i + 1) } : null
+}
+/** The setting a token is about ('' for a mod). */
+const tokenSetting = (x: string): string => (isSettingToken(x) ? (parseSettingToken(x)?.id ?? x) : '')
+/** The mods of a combination (no setting tokens). */
+export const modsOnly = (l: Iterable<string>): string[] => [...l].filter((x) => !isSettingToken(x))
+/** The setting tokens of a combination. */
+export const tokensOnly = (l: Iterable<string>): string[] => [...l].filter(isSettingToken)
+/** False when the combination holds two values of one setting (they never hold together). */
+export function tokensPossible(l: Iterable<string>): boolean {
+  const seen = new Set<string>()
+  for (const x of l) { const s = tokenSetting(x); if (!s) continue; if (seen.has(s)) return false; seen.add(s) }
+  return true
+}
+
 export interface ItemVersion {
-  /** The optional mods that must count for this version (sorted). */
+  /** The optional mods that must count for this version (sorted); may hold setting tokens (#67 U18). */
   mods: string[]
   /** Path → value (null = removed). */
   set: Record<string, unknown>
@@ -30,7 +60,19 @@ export interface RtVersion {
   modsWith?: string[]
   modsWithout?: string[]
   modsAny?: string[][]
+  /** #67 U18 (SagaLib 1.4): "<setting id>=<value>": the value recorded when the game started. */
+  settingsWith?: string[]
   set: Record<string, unknown>
+}
+
+/** A version's settingsWith as tokens of the on-set. */
+export const rtTokens = (v: RtVersion): string[] => (v.settingsWith ?? []).map((s) => `${SETTING_TOKEN}${s}`)
+
+/** A runtime version for exactly these mods and setting tokens (never a token in modsWith). */
+export function rtVersion(c: string[], set: Record<string, unknown>): RtVersion {
+  const ms = modsOnly(c)
+  const ts = tokensOnly(c).map((t) => t.slice(SETTING_TOKEN.length))
+  return { id: comboKey(c), ...(ms.length || !ts.length ? { modsWith: ms } : {}), ...(ts.length ? { settingsWith: ts } : {}), set }
 }
 
 type Obj = Record<string, unknown>
@@ -162,9 +204,9 @@ export function diffPaths(before: unknown, after: unknown, prefix = ''): Record<
 
 const has = (on: Set<string>, id: string) => on.has(id)
 export function versionHolds(v: RtVersion, on: Set<string>): boolean {
-  return (v.modsWith ?? []).every((id) => has(on, id)) && (v.modsWithout ?? []).every((id) => !has(on, id)) && (v.modsAny ?? []).every((g) => g.some((id) => has(on, id)))
+  return (v.modsWith ?? []).every((id) => has(on, id)) && (v.modsWithout ?? []).every((id) => !has(on, id)) && (v.modsAny ?? []).every((g) => g.some((id) => has(on, id))) && rtTokens(v).every((t) => has(on, t))
 }
-export const specificity = (v: RtVersion): number => (v.modsWith?.length ?? 0) + (v.modsWithout?.length ?? 0) + (v.modsAny?.length ?? 0)
+export const specificity = (v: RtVersion): number => (v.modsWith?.length ?? 0) + (v.modsWithout?.length ?? 0) + (v.modsAny?.length ?? 0) + (v.settingsWith?.length ?? 0)
 
 export interface Resolved<T> {
   value: T
@@ -195,7 +237,7 @@ export function resolveRuntime<T extends object>(item: T & { versions?: RtVersio
 }
 
 /** The plan's versions in SagaLib's form. */
-export const asRuntime = (vs: ItemVersion[] | undefined): RtVersion[] => (vs ?? []).map((v) => ({ id: comboKey(v.mods), modsWith: [...v.mods], set: v.set }))
+export const asRuntime = (vs: ItemVersion[] | undefined): RtVersion[] => (vs ?? []).map((v) => rtVersion([...v.mods], v.set))
 
 /** A plan item resolved for the mods that count (the versions mentioned and not in `on` don't apply). */
 export function resolveItem<T extends Versioned>(item: T, on: Iterable<string>): Resolved<T> {
@@ -204,17 +246,29 @@ export function resolveItem<T extends Versioned>(item: T, on: Iterable<string>):
   return r as Resolved<T>
 }
 
-/** Every mod an item's versions mention, sorted. */
+/** Every mod (and #67 U18 setting token) an item's versions mention, sorted. */
 export function mentionedMods(item: Versioned | null | undefined): string[] {
   return [...new Set((item?.versions ?? []).flatMap((v) => v.mods))].sort()
 }
 
-/** Every subset of the mods, smallest first (the base first). */
+/**
+ * Every subset of the mods, smallest first (the base first). At most `max` mods; #67 U18: setting
+ * tokens aren't counted in `max`, and a subset never holds two values of one setting.
+ */
 export function subsets(mods: string[], max = 6): string[][] {
-  const l = [...new Set(mods)].sort().slice(0, max)
+  const all = [...new Set(mods)].sort()
+  const l = [...modsOnly(all).slice(0, max), ...tokensOnly(all)]
   const out: string[][] = []
-  for (let k = 0; k < 1 << l.length; k++) out.push(l.filter((_, i) => k & (1 << i)))
+  for (let k = 0; k < 1 << l.length; k++) { const c = l.filter((_, i) => k & (1 << i)); if (tokensPossible(c)) out.push(c.sort()) }
   return out.sort((a, b) => a.length - b.length || a.join('+').localeCompare(b.join('+')))
+}
+
+/** #67 U18: how many combinations SagaLib parses for these mods and tokens (each mod on/off, each setting one of its mentioned values or another). */
+export function combinationCount(mentioned: string[]): number {
+  const l = [...new Set(mentioned)]
+  const per = new Map<string, number>()
+  for (const t of tokensOnly(l)) { const s = tokenSetting(t); per.set(s, (per.get(s) ?? 1) + 1) }
+  return [...per.values()].reduce((a, b) => a * b, 2 ** modsOnly(l).length)
 }
 
 // ---------------------------------------------------------------- editing a version
@@ -224,8 +278,13 @@ export function versionOf(item: Versioned, mods: string[], create = false): Item
   const key = comboKey(mods)
   let v = item.versions?.find((x) => comboKey(x.mods) === key) ?? null
   if (!v && create) {
-    v = { mods: comboOf(key), set: {} }
-    ;(item.versions ??= []).push(v)
+    // #67 (found by the user, 2026-11-21): in the app the item is Svelte state, which keeps a reactive
+    // copy of what is assigned to it. `((item.versions ??= []), item.versions).push(v)` pushed into the plain array
+    // (the value of the assignment), not the one the state holds, so an item's first version was lost
+    // (empty, then pruned: the edit vanished). Read the list and the new element back through the item.
+    if (!item.versions) item.versions = []
+    item.versions.push({ mods: comboOf(key), set: {} })
+    v = item.versions[item.versions.length - 1]
   }
   return v
 }
@@ -321,7 +380,7 @@ export function emitRuntimeVersions(mods: string[], jsonFor: (on: string[]) => O
     const want = jsonFor(c)
     const cur = resolveRuntime({ ...base, versions }, c).value
     const d = diffPaths(cur, want)
-    if (Object.keys(d).length) versions.push({ id: comboKey(c), modsWith: c, set: d })
+    if (Object.keys(d).length) versions.push(rtVersion(c, d))
   }
   return { base, versions }
 }
@@ -332,8 +391,9 @@ export function withRuntimeVersions(mods: string[], jsonFor: (on: string[]) => O
   const { base, versions } = emitRuntimeVersions(mods, jsonFor)
   // SagaLib picks the version (and sets a quest's $global.sfv_ flags) from the mods the file names:
   // a mod whose versions change only what lives elsewhere (dialog rules) still gets an empty one
-  const named = new Set(versions.flatMap((v) => v.modsWith ?? []))
-  for (const m of [...new Set(mods)].sort()) if (!named.has(m)) versions.push({ id: m, modsWith: [m], set: {} })
+  // (#67 U18: a setting token likewise, as settingsWith)
+  const named = new Set(versions.flatMap((v) => [...(v.modsWith ?? []), ...rtTokens(v)]))
+  for (const m of [...new Set(mods)].sort()) if (!named.has(m)) versions.push(rtVersion([m], {}))
   return versions.length ? { ...base, versions } : base
 }
 

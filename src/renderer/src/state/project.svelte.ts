@@ -18,7 +18,7 @@ class ProjectStore {
   lastSave = $state<WriteResult | null>(null)
   /** Images picked from outside the mod, copied into it on save: absolute source → path in the mod. */
   /** Images waiting for Save: a picked file (`from`), or processed PNG bytes from the import dialog (R5). */
-  pendingCopies = $state<{ from?: string; to: string; bytes?: Uint8Array; replace?: boolean }[]>([])
+  pendingCopies = $state<{ from?: string; to: string; bytes?: Uint8Array; replace?: boolean; /** #67 U38: delete this image of the mod on Save (backed up). */ remove?: boolean }[]>([])
 
   get m(): ModModel | null { return this.doc?.value ?? null }
   get dirty(): boolean { return !!this.doc?.dirty || this.deletedFactionFiles.length > 0 || this.pendingCopies.length > 0 }
@@ -46,14 +46,33 @@ class ProjectStore {
   }
 
   /** Copy a picked image into the mod on the next save; returns its game path. */
-  copyIn(abs: string, to: string): string {
-    this.pendingCopies = [...this.pendingCopies.filter((c) => c.to !== to), { from: abs, to }]
+  copyIn(abs: string, to: string, replace = false): string {
+    this.pendingCopies = [...this.pendingCopies.filter((c) => c.to !== to), { from: abs, to, ...(replace ? { replace } : {}) }]
     return to
+  }
+  /**
+   * #67 U38: delete images of the mod on Save (each backed up in sagaforge/backups). One only waiting
+   * for Save is simply dropped.
+   */
+  deleteImages(paths: string[], onDisk: Set<string>): void {
+    const drop = new Set(paths)
+    this.pendingCopies = [...this.pendingCopies.filter((c) => !drop.has(c.to)), ...paths.filter((p) => onDisk.has(p)).map((to) => ({ to, remove: true }))]
   }
   /** An imported image (cropped, resized, PNG) written on Save; `replace` overwrites a file already in the mod (backed up). */
   addImage(to: string, bytes: Uint8Array, replace = false): string {
     this.pendingCopies = [...this.pendingCopies.filter((c) => c.to !== to), { to, bytes, replace }]
     return to
+  }
+
+  /**
+   * #67 U48 (user, 2026-11-24): throw away the unsaved changes and reload the mod from disk (also the
+   * way out after a save refused because files changed outside Saga Forge).
+   */
+  async discard(): Promise<void> {
+    if (!this.loaded) return
+    if (this.dirty && !confirm('Throw away your unsaved changes and reload the mod from disk?')) return
+    await this.load()
+    app.flash('Changes discarded; the mod was reloaded from disk.')
   }
 
   undo(): void { this.doc?.undo() }
@@ -72,7 +91,7 @@ class ProjectStore {
       const r = await window.api.writeFiles({ writes, backup: true, copies })
       this.lastSave = r
       if (r.conflicts.length) {
-        app.error = `These files were changed outside Saga Forge since they were opened, so nothing was saved:\n${r.conflicts.join('\n')}\nReload the mod (your unsaved changes will be lost) or copy your changes first.`
+        app.error = `These files were changed outside Saga Forge since they were opened, so nothing was saved:\n${r.conflicts.join('\n')}\nClick Discard (next to Save) to reload the mod from disk; your unsaved changes will be lost, so copy anything you need first.`
         return false
       }
       const keep = this.doc.snapshot()

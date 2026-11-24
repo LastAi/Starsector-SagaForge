@@ -8,7 +8,7 @@ import { planExport } from '../../src/shared/export'
 import { modelToWrites, type ModModel } from '../../src/shared/serialize'
 import { hashText } from '../../src/main/install'
 import { newQuest } from '../../src/shared/quest'
-import type { ProjectState } from '../../src/shared/project'
+import type { JarInfo, ProjectState } from '../../src/shared/project'
 import type { BranchCase, BranchNode, DialogNode, QEdge, QNode, QuestPlan } from '../../src/shared/model'
 
 export const TEST_GAME = '0.98.5a-RC5'
@@ -22,6 +22,8 @@ export interface TestModDef {
   model(): ModModel
   /** Hand-written files the editor would not make (a test of something outside Saga Forge), path → text. */
   extraFiles?: Record<string, string>
+  /** #77: hand-written files the mod has before the export, which the export keeps (rows outside its blocks), path → text. */
+  handFiles?: Record<string, string>
   /** mod_info.json dependencies written by hand (a translation mod needs the mod it translates). */
   dependencies?: { id: string; name: string; version?: string }[]
   /** The game version it is for (default TEST_GAME); #60's test mod needs the 0.98a install, where the other mods are. */
@@ -30,10 +32,12 @@ export interface TestModDef {
   indexStub?: Record<string, unknown>
   /** Warnings the mod has on purpose (#27: a criterion MagicLib can't use, to show its note). */
   expectedWarnings?: RegExp[]
+  /** #79: the mod's own jars (mod_info.json "jars") and what they hold; the jar itself is built by the mod's build.sh. */
+  jars?: JarInfo[]
 }
 
 function modInfoText(d: TestModDef): string {
-  return `{\n\t"id": "${d.id}",\n\t"name": "${d.name}",\n\t"author": "LastAi",\n\t"version": "${d.version}",\n\t"description": "${d.description}",\n\t"gameVersion": "${d.gameVersion ?? TEST_GAME}",\n${d.dependencies ? `\t"dependencies": ${JSON.stringify(d.dependencies)},\n` : ''}}\n`
+  return `{\n\t"id": "${d.id}",\n\t"name": "${d.name}",\n\t"author": "LastAi",\n\t"version": "${d.version}",\n\t"description": "${d.description}",\n\t"gameVersion": "${d.gameVersion ?? TEST_GAME}",\n${d.jars?.length ? `\t"jars": ${JSON.stringify(d.jars.map((j) => j.path))},\n` : ''}${d.dependencies ? `\t"dependencies": ${JSON.stringify(d.dependencies)},\n` : ''}}\n`
 }
 
 export function testModState(d: TestModDef, m: ModModel, files: Record<string, string>): ProjectState {
@@ -42,6 +46,8 @@ export function testModState(d: TestModDef, m: ModModel, files: Record<string, s
     modInfo: { id: d.id, name: d.name, version: d.version, gameVersion: d.gameVersion ?? TEST_GAME, dependencies: [] },
     project: m.project, quests: [], people: [], items: [], systems: [], encounters: [], phrases: [], testProfiles: [], factionsRuntime: { relations: {}, scripted: {} },
     descriptions: {}, factions: [], releases: [],
+    // #79: what the mod's jars hold, as loadProject reads them
+    ...(d.jars ? { jars: d.jars } : {}),
     files: Object.fromEntries(Object.entries(files).map(([p, t]) => [p, { text: t, hash: hashText(t) }])), errors: []
   }
 }
@@ -50,7 +56,7 @@ export function testModState(d: TestModDef, m: ModModel, files: Record<string, s
 export function testModFiles(d: TestModDef): Record<string, string> {
   const m = d.model()
   m.project.target = d.gameVersion ?? TEST_GAME
-  const base: Record<string, string> = { 'mod_info.json': modInfoText(d) }
+  const base: Record<string, string> = { 'mod_info.json': modInfoText(d), ...(d.handFiles ?? {}) }
   const saved = { ...base }
   for (const w of modelToWrites(m, testModState(d, m, base))) if (!w.remove) saved[w.path] = w.text
   const plan = planExport(m, testModState(d, m, saved), { factions: [], items: [], people: [], markets: [], sources: [], ...(d.indexStub ?? {}) } as never, null, { addDependency: true, addRequired: true })

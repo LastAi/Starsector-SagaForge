@@ -10,7 +10,7 @@
   let missing = $state(false)
   $effect(() => {
     const p = path
-    const pending = p ? project.pendingCopies.find((c) => c.to === p) : undefined
+    const pending = p ? project.pendingCopies.find((c) => c.to === p && !c.remove) : undefined
     url = null
     missing = false
     if (!p) return

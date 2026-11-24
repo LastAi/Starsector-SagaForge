@@ -36,7 +36,10 @@ many rules to draw (such as `PopulateOptions`) are named under the chart instead
 
 The panel on the right shows the picked rule exactly as written: where it comes from (mod, file
 and line), **Trigger**, **Conditions**, **Script**, **Text**, **Options** and its **Score**. This
-is what you copy when your own dialog has to fit in next to it.
+is what you copy when your own dialog has to fit in next to it. The ⓘ in the rule's panel opens the
+reference of triggers, rule commands, memory keys and text tokens. The
+preview below the chart, like Play mode, runs only the rules of vanilla, your mod and the mods it
+lists in [Saga › Mods](saga.md#mods).
 
 ![A vanilla comm-link greeting: its conditions, its text with three random variants, and its script](../img/dialog-search.png)
 
@@ -44,7 +47,7 @@ A mod made with Saga Forge that exports translatable dialog keeps tokens (`$sft-
 `rules.csv` and its texts in `data/sagaforge/text.json`; the browser shows the texts, as the game
 does with SagaLib.
 
-![The Lost Convoy's offer in the Dialog browser: its text and options as the player reads them](../img/dialog-mod-rule.png)
+![The Voice in the Probe's offer in the Dialog browser: its text and options as the player reads them](../img/dialog-mod-rule.png)
 
 ### Dialog preview and Test context
 

@@ -3,20 +3,23 @@
  * mods/SagaLib/docs/FORMAT.md). Every file has "format": 1 and a "_sagaforge" header with a hash,
  * so a hand edit is noticed. Editor-only data (positions, notes) is left out.
  */
+import { effectiveFleet } from '../encounters'
 import type { ModModel } from '../serialize'
 import type { ProjectState } from '../project'
 import type { CompiledQuest } from './questrules'
 import { currentStage, prereqConditions } from './questrules'
 import { blockHash } from './blocks'
-import type { EncounterDef, PoolPlan, QuestPlan, ScatterPlan, StarSystemDef } from '../model'
+import type { EncounterDef, FleetTemplateDef, PoolPlan, QuestPlan, ScatterPlan, StarSystemDef } from '../model'
 import { branchPool, runtimePool } from '../pools'
 import { runtimeTargets, targetPartKey, targetPartOf, targetVarOf, targetVars } from '../targets'
-import { eventsRuntime } from './events'
+import { eventsRuntime, quietOps } from './events'
+import { itemKindLookup } from './items'
 import { progressRuntime } from './progress'
+import { encounterOutcomesRuntime, hasOutcomeActions } from './encounteroutcomes'
 import { gateJson, isNone, modsJson, MODS_JSON, type EffConds } from '../modlist'
 import type { ItemConds } from '../moduses'
-import { withRuntimeVersions } from '../itemversions'
-import type { VKind } from '../modelversions'
+import { modsOnly, withRuntimeVersions } from '../itemversions'
+import { usesSettingVersions, type VKind } from '../modelversions'
 import { textFile } from '../translate'
 import { bountyIdsOf } from '../bounties'
 import type { RuleStrings } from './texttokens'
@@ -28,6 +31,9 @@ import { LUNA_SETTINGS_CSV, runtimeScale, usesSettings, valueSettings } from '..
 import { nexConfigured } from '../nexconfig'
 import { skipRuntime, usesQuestSkip } from '../questskip'
 import { usesAchievements } from '../achievements'
+import { usesResearchCommands } from '../research'
+import { usesPlugins } from '../plugins'
+import { storedName, usesOneNameFirstName } from '../personname'
 
 /** #64: what runtimeFiles needs for versions (export/index.ts versionContext + the compiler). */
 export interface RuntimeVersions {
@@ -68,13 +74,26 @@ export function bountyWaitsJson(q: QuestPlan): { node: string; bounty: string; s
 }
 
 /** A quest's runtime definition: what SagaLib needs to run it as a HubMission. */
-export function questRuntime(q: QuestPlan, c: CompiledQuest, gate?: EffConds, owner: Record<string, unknown> | null = null, settings: SettingDef[] = [], skip: Record<string, unknown> | null = null): Record<string, unknown> {
+export function questRuntime(q: QuestPlan, c: CompiledQuest, gate?: EffConds, owner: Record<string, unknown> | null = null, settings: SettingDef[] = [], skip: Record<string, unknown> | null = null, templates: FleetTemplateDef[] = []): Record<string, unknown> {
   const scaled = (list: QuestPlan['rewards']) => list.map(({ creditsScale, ...r }) => { const sc = runtimeScale(creditsScale, settings); return sc ? { ...r, creditsScale: sc } : r })
   // the step a timer waits at: without it SagaLib starts the timer at the step the quest is at when
   // it first sees it active (the quest's first step), not when the quest reaches the Wait node
   const timers = q.nodes.filter((n) => n.type === 'wait' && n.mode === 'days').map((n) => { const st = currentStage(q, n.id); return { node: n.id, trigger: `${q.id}_${n.id}`, days: (n as { days?: number }).days ?? 0, ...(st ? { stage: st } : {}) } })
   const bountyWaits = bountyWaitsJson(q)
   const encounters = q.nodes.filter((n) => n.type === 'encounter').map((n) => ({ node: n.id, encounter: (n as { encounter: string }).encounter, defeated: `${q.id}_${n.id}_defeated`, avoided: `${q.id}_${n.id}_avoided` }))
+  // #67 U3 (SagaLib 1.4): Fight nodes: the fleet SF_Fight builds, and the triggers it fires afterwards
+  const fights = q.nodes.flatMap((n) => n.type !== 'fight' ? [] : [{
+    node: n.id, won: `${q.id}_${n.id}_won`, left: `${q.id}_${n.id}_left`,
+    ...(n.engageText?.trim() ? { engage: n.engageText.trim() } : {}),
+    // a named fleet is written out (its ships, names and captain), as encounters do: SagaLib has no templates
+    fleet: n.fleet.size === 'template' ? templateFleet(templates.find((t) => t.id === n.fleet.template) ?? { id: n.fleet.template ?? '', faction: '', ships: [] } as unknown as FleetTemplateDef, 'patrolMedium') : {
+      faction: n.fleet.faction, type: 'patrolMedium', size: n.fleet.size,
+      ...(n.fleet.size === 'fp' ? { points: n.fleet.points ?? 0 } : {}),
+      ...(n.fleet.size === 'explicit' ? { variants: n.fleet.variants ?? [] } : {}),
+      quality: n.fleet.quality ?? 0.5,
+      ...(n.fleet.name?.trim() ? { name: n.fleet.name.trim() } : {}),
+      ...(n.fleet.flagshipCommander ? { flagshipCommander: n.fleet.flagshipCommander } : {}) }
+  }])
   // Phase 7c: a place may be a random target ("target:<var>"): SagaLib reads its key for the picked id
   const place = (ref: string | undefined) => { const v = targetVarOf(ref); return v ? targetPartKey(q.id, v, targetPartOf(ref)) : ref }
   const markers = q.nodes.filter((n) => n.type === 'wait' && n.mode === 'arrive').map((n) => place((n as { entity?: string }).entity)).filter(Boolean)
@@ -102,6 +121,7 @@ export function questRuntime(q: QuestPlan, c: CompiledQuest, gate?: EffConds, ow
     rewards: scaled(q.rewards),
     timers,
     encounters,
+    ...(fights.length ? { fights } : {}),
     // SagaLib 1.3: Wait nodes on a MagicLib bounty's end (watched at their step through MagicLib's memory keys)
     ...(bountyWaits.length ? { bountyWaits } : {}),
     arrivals: markers,
@@ -119,6 +139,8 @@ export function questRuntime(q: QuestPlan, c: CompiledQuest, gate?: EffConds, ow
 
 export function runtimeFiles(m: ModModel, loaded: ProjectState, compiled: Record<string, CompiledQuest>, text: Record<string, unknown> | null = null, eff: Map<string, ItemConds> = new Map(), vr: RuntimeVersions | null = null, index: GameIndex | null = null): RuntimeFile[] {
   const g = (key: string) => gateJson(eff.get(key)?.eff)
+  // #67 U12: an event's item action names the item's kind (SagaLib adds a commodity or a special item)
+  const kindOf = itemKindLookup(m.items, index?.items ?? [])
   const out: RuntimeFile[] = []
   const mod = loaded.modInfo.id
   // #64: an item with versions: its JSON per combination of optional mods, written as SagaLib "versions"
@@ -129,14 +151,16 @@ export function runtimeFiles(m: ModModel, loaded: ProjectState, compiled: Record
     return withRuntimeVersions(ms, (on) => { const mm = on.length ? vr.at(on) : m; const x = on.length ? find(mm) : base; return x ? json(x, mm) : {} })
   }
   for (const q of m.quests) {
-    if (q.kind !== 'quest' && !q.nodes.some((n) => n.type === 'dialog' && n.phrases.length) && !vmods('quest', q.id).length) continue
-    const qj = versioned('quest', q.id, (mm) => mm.quests.find((x) => x.id === q.id), (x, mm) => questRuntime(x, mm === m || !vr ? compiled[q.id] : vr.compile(x), eff.get(`quest:${q.id}`)?.eff, ownerChangeJson(x, mm, index), m.project.settings ?? [], skipRuntime(m, x)), q)
+    // a conversation gets its JSON for phrases, versions or (#67 U3) a Fight node's fleet
+    if (q.kind !== 'quest' && !q.nodes.some((n) => (n.type === 'dialog' && n.phrases.length) || n.type === 'fight') && !vmods('quest', q.id).length) continue
+    const qj = versioned('quest', q.id, (mm) => mm.quests.find((x) => x.id === q.id), (x, mm) => questRuntime(x, mm === m || !vr ? compiled[q.id] : vr.compile(x), eff.get(`quest:${q.id}`)?.eff, ownerChangeJson(x, mm, index), m.project.settings ?? [], skipRuntime(m, x), mm.fleets?.templates ?? []), q)
     out.push({ path: `data/sagaforge/quests/${q.id}.json`, text: stamp(qj), summary: `${q.kind === 'dialog' ? 'conversation' : 'quest'} "${q.title}" for SagaLib${qj.versions ? ' (with versions)' : ''}`, type: 'quest', id: q.id })
   }
   // #70: presence with its faction filled in (default: their own); only for a person placed at a market (SagaLib ignores it otherwise)
   const presenceJson = (p: Pick<ModModel['people'][number], 'presence' | 'placement' | 'faction'>) => (p.presence && p.placement.at === 'market'
     ? { presence: { faction: p.presence.faction || p.faction, atLeast: p.presence.atLeast, ...(p.presence.elsewhere ? { elsewhere: p.presence.elsewhere } : {}) } } : {})
-  const personJson = ({ notes: _n, todo: _t, inactive: _i, mods: _m, versions: _v, presence: _p, ...p }: ModModel['people'][number]) => ({ ...p, ...presenceJson({ ...p, presence: _p }), ...g(`person:${p.id}`) })
+  // #79 (SagaLib 1.4): a one-name person: the one name in the last-name slot, the first empty, and the flag
+  const personJson = ({ notes: _n, todo: _t, inactive: _i, mods: _m, versions: _v, presence: _p, oneName, ...p }: ModModel['people'][number]) => ({ ...p, ...(oneName ? { name: storedName({ name: p.name, oneName }), oneName: true } : {}), ...presenceJson({ ...p, presence: _p }), ...g(`person:${p.id}`) })
   if (m.people.length || m.phrases.length) {
     out.push({
       path: `data/sagaforge/people/${mod}_people.json`, type: 'people', id: `${mod}_people`,
@@ -150,13 +174,13 @@ export function runtimeFiles(m: ModModel, loaded: ProjectState, compiled: Record
     out.push({ path: 'data/sagaforge/factions.json', type: 'factions', id: `${mod}_factions`, text: stamp(versioned('factions', 'factions', (mm) => mm, (_x, mm) => ({ format: RUNTIME_FORMAT, ...factionsRuntimeJson(mm, eff) }), m)), summary: `starting relations and scripted faction changes${facMods.length ? ' (with versions)' : ''}${nex.length ? `; with Nexerelin, ${nex.join(', ')}'s are left to it` : ''}` })
   }
   for (const s of m.systems) out.push({ path: `data/sagaforge/systems/${s.id}.json`, type: 'system', id: s.id, text: stamp(versioned('system', s.id, (mm) => mm.systems.find((x) => x.id === s.id), (x) => ({ ...systemRuntime(x, eff, vr?.movablePeople), format: RUNTIME_FORMAT }), s)), summary: `system "${s.name}"` })
-  for (const e of m.encounters) out.push({ path: `data/sagaforge/encounters/${e.id}.json`, type: 'encounter', id: e.id, text: stamp(versioned('encounter', e.id, (mm) => mm.encounters.find((x) => x.id === e.id), (x, mm) => ({ ...encounterRuntime(x, mm), ...g(`encounter:${e.id}`), format: RUNTIME_FORMAT }), e)), summary: `encounter "${e.name}"` })
+  for (const e of m.encounters) out.push({ path: `data/sagaforge/encounters/${e.id}.json`, type: 'encounter', id: e.id, text: stamp(versioned('encounter', e.id, (mm) => mm.encounters.find((x) => x.id === e.id), (x, mm) => ({ ...encounterRuntime(x, mm, kindOf), ...g(`encounter:${e.id}`), format: RUNTIME_FORMAT }), e)), summary: `encounter "${e.name}"` })
   // random pools (SagaLib 1.2): the named ones and each Random branch's own cases
   for (const p of usedPools(m)) out.push({ path: `data/sagaforge/pools/${p.id}.json`, type: 'pool', id: p.id, text: stamp(versioned('pool', p.id, (mm) => (mm.pools ?? []).find((x) => x.id === p.id), (x) => ({ ...runtimePool(x), ...g(`pool:${p.id}`), format: RUNTIME_FORMAT }), p)), summary: `random pool "${p.name}" (${p.entries.length} entr${p.entries.length === 1 ? 'y' : 'ies'})` })
   // Phase 8d (RC-R12): world event schedulers
-  for (const s of m.events ?? []) out.push({ path: `data/sagaforge/events/${s.id}.json`, type: 'events', id: s.id, text: stamp(versioned('events', s.id, (mm) => (mm.events ?? []).find((x) => x.id === s.id), (x) => ({ ...eventsRuntime(x), ...g(`events:${s.id}`) }), s)), summary: `event scheduler "${s.name}" (${s.events.length} event${s.events.length === 1 ? '' : 's'})` })
+  for (const s of m.events ?? []) out.push({ path: `data/sagaforge/events/${s.id}.json`, type: 'events', id: s.id, text: stamp(versioned('events', s.id, (mm) => (mm.events ?? []).find((x) => x.id === s.id), (x) => ({ ...eventsRuntime(x, kindOf), ...g(`events:${s.id}`) }), s)), summary: `event scheduler "${s.name}" (${s.events.length} event${s.events.length === 1 ? '' : 's'})` })
   // Phase 8d-3 (RC-R12 b): progress events
-  for (const p of m.progress ?? []) out.push({ path: `data/sagaforge/progress/${p.id}.json`, type: 'progress', id: p.id, text: stamp({ ...progressRuntime(p), ...g(`progress:${p.id}`) }), summary: `progress event "${p.name}" (${p.stages.length} stage${p.stages.length === 1 ? '' : 's'})` })
+  for (const p of m.progress ?? []) out.push({ path: `data/sagaforge/progress/${p.id}.json`, type: 'progress', id: p.id, text: stamp({ ...progressRuntime(p, kindOf), ...g(`progress:${p.id}`) }), summary: `progress event "${p.name}" (${p.stages.length} stage${p.stages.length === 1 ? '' : 's'})` })
   // Phase 7e (RC-R10): scatter at new game
   for (const sc of m.scatter ?? []) out.push({ path: `data/sagaforge/scatter/${sc.id}.json`, type: 'scatter', id: sc.id, text: stamp({ ...scatterRuntime(sc), ...g(`scatter:${sc.id}`) }), summary: `scatter "${sc.name}" (${sc.count} ${sc.entity.type})` })
   // R31: the texts translations replace (dialog tokens, item names, descriptions, faction names)
@@ -189,9 +213,11 @@ export function runtimeFiles(m: ModModel, loaded: ProjectState, compiled: Record
  * descriptions, over its own paths (items.<id>.name, descriptions.<id>|<TYPE>.text1, …).
  */
 export function textVersions(m: ModModel, vr: RuntimeVersions, text: Record<string, unknown>): Record<string, unknown> {
-  const ms = [...new Set([...m.items.flatMap((i) => vr.mods('item', i.id)), ...Object.keys(m.descriptions).flatMap((k) => vr.mods('description', k))])].sort()
+  // #67 U18: these follow the installed mods at startup: a setting token can't pick them (a Problem), so it's left out
+  const tm = (kind: VKind, id: string) => modsOnly(vr.mods(kind, id))
+  const ms = [...new Set([...m.items.flatMap((i) => tm('item', i.id)), ...Object.keys(m.descriptions).flatMap((k) => tm('description', k))])].sort()
   if (!ms.length) return text
-  const versionedItems = m.items.filter((i) => vr.mods('item', i.id).length)
+  const versionedItems = m.items.filter((i) => tm('item', i.id).length)
   // SagaLib takes only leaf paths here (items.<id>.name, descriptions.<key>.text1, …): a new entry is set field by field
   const flat = (set: Record<string, unknown>): Record<string, unknown> => {
     const out: Record<string, unknown> = {}
@@ -258,20 +284,32 @@ function systemRuntime(s: StarSystemDef, eff: Map<string, ItemConds> = new Map()
  * template's faction, type, ships, ship names, flagship and captain (SagaLib 1.1 reads the names,
  * the flagship, the template id for counting defeats, and whether the captain dies with it).
  */
-export function encounterRuntime(e: EncounterDef, m: ModModel): Record<string, unknown> {
+export function encounterRuntime(e: EncounterDef, m: ModModel, itemKind?: ReturnType<typeof itemKindLookup>): Record<string, unknown> {
   const o = stripNotes(e) as unknown as Record<string, unknown>
+  // #67 U46: its own outcome actions (When defeated / When avoided), as triggers and SagaLib ops
+  delete o.onDefeated; delete o.onAvoided
+  o.outcomes = encounterOutcomesRuntime(e, itemKind)
   if (e.fleet.size !== 'template') {
-    const f: Record<string, unknown> = { ...e.fleet }
-    delete f.template
+    // #67 U42: only the fields of the chosen Ships (no leftovers of an earlier choice)
+    const f: Record<string, unknown> = { ...effectiveFleet(e, m) }
     // #62 (SagaLib 1.3): only a fleet from the doctrine (fleet points) is scaled by a setting
-    const sc = e.fleet.size === 'fp' ? runtimeScale(e.fleet.sizeScale, m.project.settings ?? []) : undefined
+    // #67 U40: also the random part of an exact fleet
+    const sc = e.fleet.size === 'fp' || (e.fleet.size === 'explicit' && (e.fleet.randomPoints ?? 0) > 0) ? runtimeScale(e.fleet.sizeScale, m.project.settings ?? []) : undefined
     if (sc) f.sizeScale = sc; else delete f.sizeScale
+    if (e.fleet.size !== 'explicit' || !(e.fleet.randomPoints ?? 0)) delete f.randomPoints
+    if (!e.fleet.extras?.length) delete f.extras
     return { ...o, fleet: f }
   }
   const t = m.fleets?.templates.find((x) => x.id === e.fleet.template)
   if (!t) return { ...o, fleet: { ...e.fleet, size: 'fp', template: undefined } }
+  // #67 U40: a named fleet with a random part or extra groups
+  return { ...o, fleet: { ...templateFleet(t, t.fleetType || 'patrolMedium'), ...((e.fleet.randomPoints ?? 0) > 0 ? { randomPoints: e.fleet.randomPoints } : {}), ...(e.fleet.extras?.length ? { extras: e.fleet.extras } : {}) } }
+}
+
+/** A named fleet (Fleets page) as SagaLib builds it: its exact ships, names, flagship and captain (encounters, #67 Fight nodes). */
+export function templateFleet(t: FleetTemplateDef, type: string): Record<string, unknown> {
   const fleet: Record<string, unknown> = {
-    faction: t.faction, type: t.fleetType || e.fleet.type, size: 'explicit', points: 0,
+    faction: t.faction, type: t.fleetType || type, size: 'explicit', points: 0,
     variants: t.ships.map((s) => s.variant), shipNames: t.ships.map((s) => s.name ?? ''),
     flagship: Math.min(Math.max(0, t.flagship ?? 0), Math.max(0, t.ships.length - 1)), template: t.id
   }
@@ -279,7 +317,7 @@ export function encounterRuntime(e: EncounterDef, m: ModModel): Record<string, u
   if (t.captain) fleet.flagshipCommander = t.captain
   if (t.captainDiesOnDefeat) fleet.captainDiesOnDefeat = true
   if (t.name) fleet.name = t.name
-  return { ...o, fleet }
+  return fleet
 }
 
 /** The pools the export writes: the named pools, then each Random branch's own (not inactive quests'). */
@@ -426,6 +464,39 @@ export function needsSagaLib13(m: ModModel, eff: Map<string, ItemConds>): boolea
     nexConfiguredWithRelations(m).length > 0 ||
     // #65: Nexerelin's quest skip (SagaLib's plugin) and MagicLib achievements (SF_Achievement)
     usesQuestSkip(m) || usesAchievements(m)
+}
+
+/**
+ * #75: true when the mod uses something only SagaLib 1.4 understands: commodity targets, their
+ * cargo and credits (SF_TargetCommodity), a reward's credits from a target. #77: granting or
+ * testing VoK research (SF_GrantResearch, SF_HasResearch). #79: the mod's own plugins (SF_RunPlugin).
+ */
+export function needsSagaLib14(m: ModModel): boolean {
+  // #67 U12: world events and progress events whose actions SagaLib runs itself (no dialog)
+  const quiet = (ops: Parameters<typeof quietOps>[0]) => !!quietOps(ops)?.length
+  if ((m.events ?? []).some((s) => s.events.some((e) => quiet(e.start) || quiet(e.end)))) return true
+  if ((m.progress ?? []).some((p) => p.stages.some((s) => quiet(s.actions) || (s.outcomes ?? []).some((o) => quiet(o.actions))))) return true
+  // #67 U3: Fight nodes (SF_Fight)
+  if (m.quests.some((q) => !q.inactive && q.nodes.some((n) => n.type === 'fight'))) return true
+  // #77: SagaLib's VoK bridge (SF_GrantResearch, SF_HasResearch)
+  if (usesResearchCommands(m)) return true
+  // #79: the mod's own plugin classes (SF_RunPlugin)
+  if (usesPlugins(m)) return true
+  // #79: $personFirstName said to a one-name person (SagaLib's one-name tokens)
+  if (usesOneNameFirstName(m)) return true
+  // #67 U18: versions by a setting fixed at new game (settingsWith, the recorded values)
+  if (usesSettingVersions(m)) return true
+  // #67 U40: fleets with a random part or extra groups
+  if (m.encounters.some((e) => (e.fleet.randomPoints ?? 0) > 0 || !!e.fleet.extras?.length)) return true
+  // #67 U43: a fleet that hails (its flags set with a reason, cleared when it withdraws), and
+  // SF_Despawn without an encounter (the fleet the dialog is with; the Fleet response group)
+  if (m.encounters.some((e) => !!e.hail && !!e.commDialog)) return true
+  // #67 U46: an encounter's own outcome actions (SF_enc_<id>_defeated / _avoided)
+  if (m.encounters.some(hasOutcomeActions)) return true
+  if (m.quests.some((q) => !q.inactive && q.nodes.some((n) => n.type === 'action' && n.ops.some((o) => o.op === 'line' && /^\s*SF_Despawn\s*$/.test(o.line))))) return true
+  return m.quests.some((q) => !q.inactive && (targetVars(q).some((v) => v.target.pick === 'commodity') ||
+    q.rewards.some((r) => !!r.targetCredits) ||
+    q.nodes.some((n) => (n.type === 'action' && n.ops.some((o) => o.op === 'targetCargo' || o.op === 'targetCredits')) || /SF_TargetCommodity/.test(JSON.stringify(n)))))
 }
 
 /** #59: the quests start or test MagicLib bounties (SF_StartBounty, SF_BountyState), or a bounty tests a quest's ended key. */

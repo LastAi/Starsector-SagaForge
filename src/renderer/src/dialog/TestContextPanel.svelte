@@ -1,5 +1,7 @@
 <script lang="ts">
   /** The Test context form: sample values the previews and Play mode fill tokens and conditions from. */
+  import RefButton from '../ui/RefButton.svelte'
+  import { fullName } from '../../../shared/personname'
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
   import { testCtx, saveTestCtx } from '../state/testctx.svelte'
@@ -16,7 +18,7 @@
   }
   let { unknownConditions = [], memoryKeys = [] }: Props = $props()
 
-  const people = $derived([...(project.m?.people.map((p) => ({ id: p.id, name: `${p.name.first} ${p.name.last}` })) ?? []), ...(app.index?.people ?? [])])
+  const people = $derived([...(project.m?.people.map((p) => ({ id: p.id, name: fullName(p.name) })) ?? []), ...(app.index?.people ?? [])])
   const factions = $derived([...(project.m?.factions.filter((f) => f.kind === 'addition').map((f) => ({ id: f.id, name: String((f as { raw: Record<string, unknown> }).raw.displayName ?? f.id) })) ?? []), ...(app.index?.factions ?? [])])
   const markets = $derived(app.index?.markets ?? [])
   const places = $derived((project.m?.systems ?? []).flatMap((x) => x.entities.map((e) => ({ id: e.id, name: e.name }))))
@@ -25,7 +27,7 @@
   // #62: the mod's settings; a value equal to the default is not stored
   const settingDefs = $derived((project.m?.project.settings ?? []).filter(isValueSetting))
   const setS = (id: string, v: string, def: string) => upd(() => { const o = { ...(testCtx.settings ?? {}) }; if (v === def || v === '') delete o[id]; else o[id] = v; testCtx.settings = o })
-  const presencePeople = $derived((project.m?.people ?? []).filter((p) => !!p.presence).map((p) => ({ id: p.id, name: `${p.name.first} ${p.name.last}`.trim() || p.id })))
+  const presencePeople = $derived((project.m?.people ?? []).filter((p) => !!p.presence).map((p) => ({ id: p.id, name: fullName(p.name).trim() || p.id })))
 </script>
 
 <div class="ctx">
@@ -52,7 +54,8 @@
     <div class="h2">Optional mods and versions</div>
     <div class="f-help">Which of the mod's optional mods count here (in game: enabled when the save started, and still enabled). Content outside this setting is skipped, as SagaLib skips it, and every item with versions shows the version for these mods (names, portraits, places; Play mode uses it too).</div>
     {#each mods.optional() as x (x.id)}
-      <label class="chk"><input type="checkbox" checked={mods.playMods().has(x.id)} onchange={(e) => (mods.playOn[x.id] = e.currentTarget.checked)} /> {x.name} <span class="mono muted">{x.id}</span></label>
+      {@const nw = mods.neverWith(x.id)}
+      <label class="chk" title={nw.length ? `Never played with ${nw.join(', ')}: turning it on turns those off` : undefined}><input type="checkbox" checked={mods.playMods().has(x.id)} onchange={(e) => mods.setPlay(x.id, e.currentTarget.checked)} /> {x.name} <span class="mono muted">{x.id}</span>{#if nw.length}<span class="muted"> · never with {nw.join(', ')}</span>{/if}</label>
     {/each}
   {/if}
   {#if presencePeople.length}
@@ -70,9 +73,9 @@
     <div class="g">
       {#each settingDefs as s (s.id)}
         {@const v = testCtx.settings?.[s.id] ?? s.default}
-        <span class="lbl" title={settingKey(s.id)}>{s.label || s.id}</span>
+        <span class="lbl" title={s.versions && (s.type === 'Boolean' || s.type === 'Radio') ? `${settingKey(s.id)}; versions depend on it: Play uses this value as recorded when the game starts` : settingKey(s.id)}>{s.label || s.id}{#if s.versions && (s.type === 'Boolean' || s.type === 'Radio')}<span class="muted"> (versions)</span>{/if}</span>
         {#if s.type === 'Boolean'}<label class="chk"><input type="checkbox" checked={v === 'true'} onchange={(e) => setS(s.id, String(e.currentTarget.checked), s.default)} /> {v === s.default ? '(default)' : ''}</label>
-        {:else if s.type === 'Radio'}<select value={v} onchange={(e) => setS(s.id, e.currentTarget.value, s.default)}>{#each s.choices ?? [] as c (c)}<option value={c}>{c}{c === s.default ? ' (default)' : ''}</option>{/each}</select>
+        {:else if s.type === 'Radio'}<select value={v} onchange={(e) => setS(s.id, e.currentTarget.value, s.default)}>{#each s.choices ?? [] as c (c)}<option value={c}>{c}{c === s.default ? ' (default)' : ''}</option>{/each}{#if v && !(s.choices ?? []).includes(v)}<option value={v}>{v} (not a choice any more)</option>{/if}</select>
         {:else}<input type={s.type === 'String' ? 'text' : 'number'} value={v} placeholder={s.default} onchange={(e) => setS(s.id, e.currentTarget.value, s.default)} />{/if}
       {/each}
     </div>
@@ -88,7 +91,7 @@
     </div>
   {/if}
   {#if unknownConditions.length}
-    <div class="h2">Conditions the editor can't evaluate</div>
+    <div class="h2">Conditions the editor can't evaluate <RefButton ref="rules-commands" title="What the commands do: opens the reference" /></div>
     {#each unknownConditions as c (c)}
       <label class="chk"><input type="checkbox" checked={testCtx.assume[c] ?? true} onchange={(e) => { const v = e.currentTarget.checked; upd(() => (testCtx.assume[c] = v)) }} /> <span class="mono">{c}</span></label>
     {/each}

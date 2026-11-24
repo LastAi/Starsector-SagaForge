@@ -7,10 +7,11 @@
 import type { Problem, ProblemRef } from '../api'
 import type { CheckContext } from './index'
 import type { ModModel } from '../serialize'
-import { comboKey, mentionedMods, resolveItem, subsets } from '../itemversions'
-import { lowerPlacesModel, resolveModel, versionables, VKIND_LABEL, type VKind } from '../modelversions'
+import { combinationCount, comboKey, isSettingToken, mentionedMods, modsOnly, parseSettingToken, resolveItem, subsets, tokensOnly } from '../itemversions'
+import { tokenLabel, tokenProblem, versionSettings } from '../settings'
+import { lowerPlacesModel, resolveModel, settingKinds, versionables, VKIND_LABEL, type VKind } from '../modelversions'
 import { scanItems, sourceLookup, type RefKind } from '../moduses'
-import { CORE_ID, optionalMods, SAGALIB_ID, useOf } from '../modlist'
+import { CORE_ID, neverPairIn, neverPairs, optionalMods, possible, SAGALIB_ID, useOf } from '../modlist'
 
 const PAGE: Record<VKind, ProblemRef['page']> = { person: 'people', quest: 'quests', encounter: 'encounters', system: 'locations', events: 'saga', pool: 'saga', factions: 'factions', item: 'items', description: 'locations' }
 const refOf = (kind: VKind, id: string): ProblemRef => (kind === 'events' ? { page: 'saga', id: 'events', sub: id } : kind === 'pool' ? { page: 'saga', id: 'pools', sub: id } : kind === 'factions' ? { page: 'factions' } : { page: PAGE[kind], id })
@@ -19,21 +20,46 @@ const CHECKED: RefKind[] = ['person', 'entity', 'faction', 'system', 'quest']
 export function versionCheckProblems(ctx: CheckContext): Problem[] {
   const { model: m, index, loaded } = ctx
   const out: Problem[] = []
+  const defs = m.project.settings ?? []
+  // #67 U18: a choice holding "+" can't be part of a version's key (SagaLib joins the parts with "+")
+  for (const s of versionSettings(defs)) {
+    const bad = s.type === 'Radio' ? (s.choices ?? []).filter((c) => c.includes('+')) : []
+    if (bad.length) out.push({ level: 'error', area: 'Versions', message: `Setting "${s.label || s.id}" is marked for versions, but its choice${bad.length === 1 ? '' : 's'} ${bad.map((c) => `"${c}"`).join(', ')} hold${bad.length === 1 ? 's' : ''} a "+", which can't be part of a version. Rename ${bad.length === 1 ? 'it' : 'them'} (Saga › Settings).`, ref: { page: 'saga', id: 'settings', sub: s.id }, key: `versetplus:${s.id}` })
+  }
   const all = versionables(m).filter((v) => v.item.versions?.length)
   if (!all.length) return out
   const optional = new Set(optionalMods(m.project).map((x) => x.id))
-  const name = (id: string) => m.project.mods?.find((x) => x.id === id)?.name ?? index.sources.find((s) => s.id === id)?.name ?? id
+  const pairs = neverPairs(m.project)
+  const name =(id: string) => (isSettingToken(id) ? tokenLabel(id, defs) : m.project.mods?.find((x) => x.id === id)?.name ?? index.sources.find((s) => s.id === id)?.name ?? id)
   const cell = (c: string[]) => (c.length ? c.map(name).join(' + ') : 'Base')
+  /** A part of a version that can apply: an optional mod, or (#67 U18) a setting value a version may ask for. */
+  const counts = (kind: VKind) => (x: string) => (isSettingToken(x) ? settingKinds(kind) && tokenProblem(x, defs) === null : optional.has(x))
 
   for (const v of all) {
     const label = `${VKIND_LABEL[v.kind]} "${v.label}"`
     const ref = refOf(v.kind, v.id)
     const ment = mentionedMods(v.item)
-    for (const id of ment.filter((x) => !optional.has(x))) {
+    // #67 U18: a version asking for a setting value: the setting must exist, be marked and have that value
+    for (const t of tokensOnly(ment)) {
+      const why = !settingKinds(v.kind) ? `${VKIND_LABEL[v.kind].toLowerCase()} versions follow the mods installed when the game starts up, before any save, so a setting can't pick them` : tokenProblem(t, defs)
+      if (why) out.push({ level: 'error', area: 'Versions', message: `${label} has a version for ${parseSettingToken(t) ? tokenLabel(t, defs) : t}, but ${why}: that version never applies.`, ref, key: `versetting:${v.kind}:${v.id}:${t}` })
+    }
+    for (const ver of v.item.versions ?? []) {
+      const ids = tokensOnly(ver.mods).map((t) => parseSettingToken(t)?.id ?? t)
+      const twice = ids.find((x, i) => ids.indexOf(x) !== i)
+      if (twice && Object.keys(ver.set).length) out.push({ level: 'error', area: 'Versions', message: `${label} has a ${cell(ver.mods)} version, but a setting has one value at a time: it never applies.`, ref, key: `versettwice:${v.kind}:${v.id}:${comboKey(ver.mods)}` })
+    }
+    for (const id of modsOnly(ment).filter((x) => !optional.has(x))) {
       out.push({ level: 'warning', area: 'Versions', message: `${label} has a version for ${name(id)}, which isn't an optional mod in Saga › Mods (${useOf(m.project, id) === 'none' ? 'not in the list' : useOf(m.project, id)}): that version never applies.`, ref, key: `vermod:${v.kind}:${v.id}:${id}` })
     }
-    if (ment.length > 6) out.push({ level: 'error', area: 'Versions', message: `${label} has versions for ${ment.length} mods; SagaLib handles at most 6 per item.`, ref, key: `vermany:${v.kind}:${v.id}` })
-    for (const c of subsets(ment.filter((x) => optional.has(x)))) {
+    if (!tokensOnly(ment).length && ment.length > 6) out.push({ level: 'error', area: 'Versions', message: `${label} has versions for ${ment.length} mods; SagaLib handles at most 6 per item.`, ref, key: `vermany:${v.kind}:${v.id}` })
+    else if (combinationCount(ment) > 64) out.push({ level: 'error', area: 'Versions', message: `${label} has versions for ${modsOnly(ment).length} mods and ${tokensOnly(ment).length} setting values: ${combinationCount(ment)} combinations; SagaLib handles at most 64 per item (each mod on or off, each setting one of the values named or another).`, ref, key: `vermany:${v.kind}:${v.id}` })
+    // #76: a version for two mods that never run together never applies (the strip has no cell for it)
+    for (const ver of v.item.versions ?? []) {
+      const hit = neverPairIn(modsOnly(ver.mods), pairs)
+      if (hit && Object.keys(ver.set).length) out.push({ level: 'warning', area: 'Versions', message: `${label} has a ${cell(ver.mods)} version, but ${name(hit[0])} and ${name(hit[1])} are never played together (Saga › Mods, Never with): it never applies.`, ref, key: `vernever:${v.kind}:${v.id}:${comboKey(ver.mods)}` })
+    }
+    for (const c of subsets(ment.filter(counts(v.kind))).filter((c) => possible(modsOnly(c), pairs))) {
       const r = resolveItem(v.item, c)
       if (c.length > 1) for (const p of r.conflicts) {
         out.push({ level: 'error', area: 'Versions', message: `${label}: the ${c.map(name).join(' and ')} versions set ${p} differently. Pick the value in the ${cell(c)} version (the versions strip asks).`, ref, key: `verconflict:${v.kind}:${v.id}:${comboKey(c)}:${p}` })
@@ -46,10 +72,10 @@ export function versionCheckProblems(ctx: CheckContext): Problem[] {
   const look = sourceLookup(index, m, loaded.sourceId)
   const keyed = new Set(all.map((v) => `${v.kind === 'events' ? 'events' : v.kind}:${v.id}`))
   const baseRefs = new Map(scanItems(lowerPlacesModel(resolveModel(m, []))).map((it) => [it.key, new Set(it.refs.map((r) => `${r.kind}:${r.id}`))]))
-  const modsAll = [...new Set(all.flatMap((v) => mentionedMods(v.item)))].filter((x) => optional.has(x))
+  const modsAll = [...new Set(all.flatMap((v) => mentionedMods(v.item).filter(counts(v.kind))))]
   const seen = new Set<string>()
   for (const c of subsets(modsAll, 4)) {
-    if (!c.length) continue
+    if (!c.length || !possible(modsOnly(c), pairs)) continue
     for (const it of scanItems(lowerPlacesModel(resolveModel(m, c)))) {
       if (!keyed.has(it.key)) continue
       const base = baseRefs.get(it.key) ?? new Set()

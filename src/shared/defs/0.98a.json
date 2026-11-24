@@ -4670,12 +4670,13 @@
     [
      {
       "name": "encounter",
-      "type": "string"
+      "type": "string",
+      "optional": true
      }
     ]
    ],
    "display": "none",
-   "summary": "Removes a spawned encounter."
+   "summary": "Removes a spawned encounter. SagaLib 1.4: without an encounter, the fleet this dialog is with."
   },
   {
    "name": "SF_PlaceEntity",
@@ -9929,6 +9930,24 @@
     "baseRaidDanger": "HIGH",
     "sound id": "ui_cargo_special_tech_pickup",
     "sound id drop": "ui_cargo_special_tech_drop",
+    "plugin": "com.fs.starfarer.api.campaign.impl.items.GenericSpecialItemPlugin",
+    "plugin params": ""
+   }
+  },
+  {
+   "id": "special_trade_good",
+   "name": "Special trade good",
+   "kind": "special",
+   "columns": {
+    "tags": "",
+    "tech/manufacturer": "",
+    "rarity": "",
+    "base price": "1500",
+    "stack size": "100",
+    "cargo space": "1",
+    "baseRaidDanger": "MEDIUM",
+    "sound id": "ui_cargo_drugs",
+    "sound id drop": "ui_cargo_drugs_drop",
     "plugin": "com.fs.starfarer.api.campaign.impl.items.GenericSpecialItemPlugin",
     "plugin params": ""
    }

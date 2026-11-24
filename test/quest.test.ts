@@ -137,3 +137,17 @@ describe('quest plan → rules', () => {
     expect(handlesOf(q.nodes.find((n) => n.id === 'offer')!).map((h) => h.id)).toEqual(['accept', 'catch', 'double', 'decline'])
   })
 })
+
+describe('handing the dialog to vanilla (Heliopolis, 2026-11-20)', () => {
+  it('ends the branch after SalvageDefenderInteraction: no back-to-the-menu after the battle screen', () => {
+    const q = newQuest('tst_def', 'Defenders', 'dialog')
+    q.start = { kind: 'trigger', trigger: 'OpenInteractionDialog', conditions: ['$id == tst_rock score:1000'] }
+    q.nodes.push({ id: 'def', type: 'dialog', x: 0, y: 0, title: '', visual: { kind: 'keep' }, displays: [], highlights: [], conditions: [], phrases: [], options: [], text: 'Energy signatures rise.', script: ['$entity.salvageSpecId = station_research', 'SalvageGenFromSeed', 'SalvageDefenderInteraction'] })
+    const offer = q.nodes.find((n) => n.id === 'offer')
+    if (offer?.type === 'dialog') offer.options = [{ id: 'go', text: 'Fight' }]
+    q.edges.push({ id: 'e_go', from: 'offer', handle: 'go', to: 'def' })
+    const c = compileQuest(q, { sagalib: true, phrases: [] })
+    const def = c.rows.find((r) => r.id === 'tst_def_def')!
+    expect(def.script.split('\n')).toEqual(['$entity.salvageSpecId = station_research', 'SalvageGenFromSeed', 'SalvageDefenderInteraction'])
+  })
+})

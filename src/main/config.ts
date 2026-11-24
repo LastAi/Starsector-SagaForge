@@ -22,9 +22,11 @@ export interface AppConfig {
   target: 'main' | 'migration'
   /** R32: folder for release zips; null = Saga Forge's data folder › releases. */
   releasesDir: string | null
+  /** #67 U43: the node group library (groups used across mods); null = Saga Forge's data folder › nodegroups. */
+  nodeGroupsDir: string | null
 }
 
-const DEFAULTS: AppConfig = { starsectorDir: null, modsMode: 'workspace', workspaceDir: null, activeModDir: null, extensions: {}, styleChecks: false, migrationDir: null, target: 'main', releasesDir: null }
+const DEFAULTS: AppConfig = { starsectorDir: null, modsMode: 'workspace', workspaceDir: null, activeModDir: null, extensions: {}, styleChecks: false, migrationDir: null, target: 'main', releasesDir: null, nodeGroupsDir: null }
 
 const configFile = () => path.join(app.getPath('userData'), 'config.json')
 

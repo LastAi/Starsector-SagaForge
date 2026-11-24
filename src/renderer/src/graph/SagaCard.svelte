@@ -4,13 +4,13 @@
   import { Handle, Position } from '@xyflow/svelte'
   import type { QuestPlan } from '../../../shared/model'
 
-  interface Props { data: { quest: QuestPlan; start: string; people: string[]; problems: number; inactive?: boolean } }
-  let { data }: Props = $props()
+  interface Props { data: { quest: QuestPlan; start: string; people: string[]; problems: number; inactive?: boolean }; selected?: boolean }
+  let { data, selected = false }: Props = $props()
   const q = $derived(data.quest)
   const ends = $derived(q.nodes.filter((n) => n.type === 'end').map((n) => (n as { outcome: string }).outcome))
 </script>
 
-<div class="card" class:dialog={q.kind === 'dialog'} class:inactive={data.inactive}>
+<div class="card" class:sel={selected} class:dialog={q.kind === 'dialog'} class:inactive={data.inactive}>
   <Handle type="target" position={Position.Left} />
   <div class="h"><span>{q.title}{#if data.inactive} [Inactive]{/if}<ModsChip itemKey={`quest:${q.id}`} /></span>{#if data.problems}<span class="p">{data.problems}</span>{/if}</div>
   <div class="b">
@@ -29,6 +29,8 @@
   .card { width: 210px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; box-shadow: 0 4px 12px rgba(0,0,0,.4); color: var(--text); }
   .card.dialog { border-style: dashed; }
   .card.inactive { opacity: .45; }
+  /* #67 U19: the card selected on the storylines board */
+  .card.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 4px 12px rgba(0,0,0,.4); }
   .h { padding: 4px 8px; background: #2b7fc4; color: #fff; font-weight: 600; border-radius: 5px 5px 0 0; display: flex; justify-content: space-between; }
   .card.dialog .h { background: #3a4452; }
   .p { background: var(--bad); border-radius: 8px; padding: 0 5px; font-size: 11px; }

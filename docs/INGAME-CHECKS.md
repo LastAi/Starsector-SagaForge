@@ -311,6 +311,12 @@ against what it covered; anything it missed still needs its own check.
     - The place stands out on the map while the quest waits there (entity flags).
     - An interjection on `salExplore` at a derelict: it cuts in at its chance, at most once per
       object, and "Hand back" continues vanilla's salvage in the same dialog.
+
+## Phase 7, Phase 8 and task checks (test mods, 2026-11-16 on)
+
+Each phase or task's check list with its test mod, and the results under it, in the order they were
+written (not by number).
+
 - **Random pools (Phase 7a, SagaLib 1.2)**, with `vanguard_by_hand` 1.3.0 on 0.98.5a, its
   conversation "Dock rumours" (Haven Station › "Ask the dockmaster for rumours": a Random branch,
   weights Pirates 3 / Survivor 2 once per playthrough / Rich 4 with 100,000 credits / nothing 2):
@@ -1547,6 +1553,605 @@ Run 1 (SagaLib before the fix) and run 2 (after it): the same steps
   quest) needed the fix.
   **Run 2 passed** (2026-11-19, fixed SagaLib): the option start's red icon shows in the dialog lines,
   the contact start's blue one still does; no "can't load image" line. **Follow-up check: done.**
+
+- **Task #75: commodity targets** (PLAN.md §10.8; SagaLib 1.4.0, no bridge; **0.98a** install
+  `D:\Starsector`; dev mode, throwaway saves only). Test mod `mods\seventyfive_a` (prefix `cta_`), built
+  by `npx jiti scripts/build-test-mod.ts seventyfive_a`; it needs a junction in `D:\Starsector\mods`
+  like the other test mods (made by the user: the install is read-only). Rebuild SagaLib first (`bash
+  build.sh` in `mods\SagaLib`; it is 1.4.0 now). In "Test Range 75", Range Control 75 (independent) has
+  three repeatable delivery jobs as options: (a) vanilla goods, 0.1 economy units, a legal commodity the
+  market is short of, not crew or marines, size 4+, pay 1,000 + 1.5 × the goods' value; (b) a chosen
+  list (`IndEvo_parts`, `metals`), 0.02 economy units × the market's size, pay = the value; (c) any
+  economy commodity in surplus with some in stock, a fixed 100 cargo units, pay 500 + 2 × the value.
+  Each: Accept → a briefing with every token → "(Test) Load the goods into my hold" (gives them) or
+  "On my way" → at the picked market's menu "Test 75 (x) - deliver the goods" → "Hand over the goods"
+  (disabled without them) or "Come back later". Industrial.Evolution and AoTD ToT are listed as
+  optional; neither is needed for (a)–(d).
+  Numbers: vanilla `econUnit`s are in FORMATS.md ("Vanilla's commodity search"): (a) gives e.g. 200 food,
+  20 transplutonics, 75 supplies, 50 luxury goods; (b) metals = 40 × the market's size; IndEvo's ship
+  components (`econUnit` 300) = 6 × the size.
+
+```
+(a) Vanilla: the pick, the tokens and the amount
+  1. Enable LazyLib, SagaLib and seventyfive_a (Industrial.Evolution and AoTD off); dev mode.
+     New game, then Ctrl+F9 › "75: go to Test Range 75".
+  2. Range Control 75 › "Test 75 (a), delivery job - vanilla goods" › Accept.
+  3. starsector.log: "quest cta_haul: target goods = <market id> (<name>, <system>)" and
+     "target goods commodity = <id> x<amount> (econUnit …, base price …, market size …)".
+     amount = 0.1 × econUnit, rounded.
+  4. The briefing: every token is filled (no "$global…" left); amount, base price and value are
+     whole numbers (no ".0"); value = base price × amount; the commodity is one of the 18 vanilla
+     goods and not crew or marines.
+  5. Intel › the quest: the journal names the same goods, market, system and distance; the map
+     marker is on that market.
+  6. Pick "On my way". At the named market (fly, or dev-mode travel): its Commodities screen shows
+     the commodity short there (a shortage) and legal.
+
+(b) The cargo check, the delivery and the pay
+  1. At that market: "Test 75 (a) - deliver the goods". With fewer than the amount in cargo,
+     "Hand over the goods" is greyed out (tooltip "Needs the goods in your cargo.").
+  2. "Come back later": back to the market's menu; leave and dock again: the deliver option is back.
+  3. Buy the amount (at another market if this one has none), dock, deliver: "Hand over" is enabled.
+  4. Hand over: "Lost <amount>× <commodity>", the quest completes, "Gained <1,000 + 1.5 × value>¢".
+     Cargo of that commodity went down by exactly the amount.
+  5. Range Control 75: job (a) is offered again; accept it: a new pick (log), possibly another
+     commodity and market.
+
+(c) A chosen list and × market size; any commodity in a fixed amount; giving the goods
+  1. Range Control 75 › "Test 75 (b) …" › Accept › "(Test) Load the goods into my hold":
+     "Gained <amount>× metals" (without Industrial.Evolution only metals exists), amount = 40 × the
+     market's size (log: econUnit 2000).
+  2. Deliver at its market: "Lost …", "Gained <value>¢" (base price 30 × amount).
+  3. "Test 75 (c) …" › Accept › Load: "Gained 100× <commodity>" whatever its econUnit; at its market
+     the Commodities screen shows a surplus of it. Deliver: "Gained <500 + 2 × value>¢".
+
+(d) Industrial.Evolution on
+  1. Enable also Industrial.Evolution and its libraries (MagicLib, LunaLib, GraphicsLib); new game,
+     Ctrl+F9 › 75.
+  2. Job (b), accepted and delivered a few times (it repeats): some picks are "ship components"
+     (IndEvo_parts; log: econUnit 300, amount 6 × the size), the others metals.
+  3. Jobs (a) and (c) work as in (a)–(c); (c) may pick IndEvo_parts (an economy commodity at every
+     heavy-industry market). starsector.log: no SagaLib errors.
+
+(e) User-run: AoTD Theory of Toolbox (needs ToT's starfarer.api.jar copied over the game's by the
+    user; Saga Forge never writes to D:\Starsector; ToT and IndEvo are never played together)
+  1. With ToT's jar in place, enable ToT and its libraries (LazyLib, Ashlib, BMO), SagaLib and
+     seventyfive_a (Industrial.Evolution off). New game, Ctrl+F9 › 75.
+  2. Job (a): log "econUnit" follows ToT's units (food 200, transplutonics 2000, …), so 0.1
+     economy units is 20 food or 200 transplutonics; the market is short of it in ToT's terms.
+  3. Deliver as in (b). starsector.log: no SagaLib errors.
+  4. Saga Forge with ToT in Saga › Mods: the target editor and Play mode's log show the ToT note.
+  (Added after the first run: job (e) "economy units (ToT)" picks food, transplutonics, domestic goods
+  or crew at 0.1 economy units: vanilla 200 / 20 / 100 / 50, ToT 20 / 200 / 25 / 250.)
+```
+
+  **(a) and (b) passed** (2026-11-19, 0.98a-RC8, vanilla). Picks: rare_ore ×50 (econUnit 500) at
+  Kapteyn Starworks, supplies ×75 (econUnit 750) at Umbra, rare_ore ×50 at Chicomoztoc (twice in a row,
+  same day). Briefing tokens and whole numbers right (50 × 75 = 3,750); marker on the market; "Lost 75×
+  supplies" / "Gained 12,250¢" and "Lost 50× transplutonic ore" / "Gained 6,625¢" (1,000 + 1.5 × value);
+  job offered again after completing. The greyed-out "Hand over" without the goods (b.1) was not looked at:
+  the user judged it fine (it's the same `disabledIf` rule as other options).
+  **Found and fixed**: (1) SagaLib: the intel's journal, next-step and offer texts showed raw
+  `$global…` tokens (never filled outside dialogs since Phase 7c): `Values.fillGlobals` now fills them,
+  Play's journal too. (2) Test mod: the profile's 300 supplies passed the cargo check and a pirate market
+  (Umbra) was picked: job (a) now leaves out military goods, all jobs skip markets hostile to the player.
+  (3) Editor: job (b) wasn't offered without Industrial.Evolution: its list named `IndEvo_parts`, which
+  made the whole quest "Only with IndEvo"; a commodity list now adds that condition only when every
+  listed commodity is an optional mod's.
+  **(c) passed** (same day): job (b) metals ×200 / ×160 (40 × size 5 / 4), paid the value; job (c) crew
+  ×100 (fixed cargo units) at Citadel Arcadia, where the colony panel shows crew in surplus (green
+  icon), "Gained 100× crew" (Load), "Lost 100× crew", "Gained 10,500¢" (500 + 2 × 5,000).
+  **(d) passed** (same day, with Industrial.Evolution 4.1.b): job (b) picked metals ×200 (Nova Maxios,
+  size 5), ×160 (Citadel Arcadia, size 4) and, after a few tries, IndEvo_parts ×30 at Raesvelg (log:
+  econUnit 300, base price 120, size 5; value 3,600; the journal names "ship components"). No SagaLib
+  errors. A first new game with IndEvo crashed in IndEvo's own code (MineBeltTerrainPlugin's static
+  setup read a LunaLib setting on the game's class-preloading thread while LunaLib loaded:
+  ConcurrentModificationException; nothing of SagaLib's involved); restarting the game fixed it.
+  Test Range 75 was moved to -2500, -1750 (the middle of the map) for shorter trips.
+  **(e) passed** (2026-11-19, user swapped in ToT 1.0.13's starfarer.api.jar; ToT, Ashlib, BMO, LazyLib,
+  no IndEvo). ToT's economy ran (AoTDEconomy.nextStep in the log). Job (a) picked only lobster ×50 at
+  four markets: under ToT, "the market is short of it" (`DeficitAtLeast(1)` on ToT's numbers) plus
+  "prefer expensive" leaves almost only lobster (ToT's multiplier 1.0, so 50 as in vanilla). A job (e)
+  was added for ToT's units (food, rare_metals, domestic_goods, crew at 0.1 economy units, no shortage
+  needed): domestic_goods ×25 (econUnit 250 = 1000 × 0.25) at Culann, crew ×250 (econUnit 2500 = 500 × 5)
+  at Nomios and Ailmar, delivered and paid. No SagaLib errors. **Task #75 in-game check: done.**
+
+- **Task #77: AoTD Vaults of Knowledge research** (PLAN.md §10.8; SagaLib 1.4.0 with its VoK bridge;
+  **0.98a-RC8** install `D:\Starsector`; dev mode, throwaway saves only). Test mod `mods\seventyseven_a`
+  (prefix `rsv_`), built by `npx jiti scripts/build-test-mod.ts seventyseven_a`; its own tech icon
+  `graphics/icons/tech/rsv_relay.png` is a placeholder from `node scripts/make-test-art.mjs` (crest.png,
+  already in the mod). It needs a junction in `D:\Starsector\mods` (made by the user). Rebuild SagaLib
+  first: `bash build.sh` in `mods\SagaLib` must say "built vok" (and "only the bridges name other mods'
+  classes"). VoK is optional in the test mod. In "Test Range 77", Waypoint 77 belongs to the mod's own
+  faction **Test 77 Institute** (research stance PRIORITIZE, databanks ×2 credits, ×0.5 reputation, its
+  own four lines) and has two options: "Test 77 - the vault job" (Accept unlocks "Test 77: Vault
+  Protocols"; finishing it grants "Test 77: Granted Gift") and "Test 77, check research" (four yes/no
+  questions through SF_HasResearch and the unlock flag, and the option Grant "Agriculture Industrialization" (VoK)).
+  The mod's tree has five techs: Field Basics (tier 0, from the start), Hand-written (tier 0, column 3:
+  a hand-written row outside Saga Forge's block), Relay Theory (tier 1, its own icon, needs VoK's
+  Industrial Base Template and Field Basics), Vault Protocols (tier 1, unlocked by the quest), Granted
+  Gift (tier 2, needs Vault Protocols).
+
+```
+(a) Without Vaults of Knowledge
+  1. Enable LazyLib, SagaLib and seventyseven_a only; dev mode. New game, Ctrl+F9 › "77: go to Test
+     Range 77". The game loads.
+  2. Waypoint 77 › "Test 77, check research": each of the four questions answers "no".
+  3. Grant "Agriculture Industrialization" (VoK): the text says nothing happened, and no "Research
+     completed" line. starsector.log has one line "SF_GrantResearch aotd_tech_agriculture: Vaults of
+     Knowledge isn't enabled: nothing is granted". Grant again: no second line.
+  4. Back, Leave › "Test 77 - the vault job" › Accept; leave the dialog. The station's menu has "Test
+     77 - finish the vault job"; pick it: the quest completes, no "Research completed" line.
+  5. "Test 77, check research" › the vault question: "yes" (the flag is set without VoK too); the
+     Granted Gift question: "no".
+  6. Ctrl+F9 › Mods: "Vaults of Knowledge research: Vaults of Knowledge isn't enabled (…)".
+     starsector.log: no SagaLib errors.
+
+(b) With Vaults of Knowledge: the mod's tree (user-run: ToT's starfarer.api.jar copied over the game's
+    by the user; Saga Forge never writes to D:\Starsector; no Industrial.Evolution)
+  1. Enable LazyLib, Ashlib, BMO, AoTD Theory of Toolbox, AoTD Vaults of Knowledge, SagaLib and
+     seventyseven_a. New game (it loads: VoK read the mod's rows), Ctrl+F9 › "77: go, with 5
+     databanks (VoK only)".
+  2. Open VoK's research screen. Its mod list has a tree "Saga Forge test #77: VoK research" with the
+     five techs at their places: tier 0 Field Basics (researched) and Hand-written (column 3); tier 1
+     Relay Theory (a blue-and-gold placeholder icon) and Vault Protocols; tier 2 Granted Gift. Icons:
+     VoK's "basic" (Field Basics, Hand-written, Granted Gift) and "farming1" (Vault Protocols).
+  3. Relay Theory: needs Industrial Base Template (VoK's tree) and Field Basics, costs 1 research
+     databank; its line reads "Test 77 - needs a VoK tech and one of this mod's" (modifier).
+  4. Vault Protocols: can't be researched yet; it shows "Finish Test 77 - the vault job at
+     Waypoint 77." Granted Gift needs Vault Protocols.
+  5. Start researching Relay Theory: it starts and 1 databank is taken.
+
+(c) With VoK: unlocked by a quest, granted at an ending
+  1. Waypoint 77 › "Test 77 - the vault job" › Accept; leave the dialog. VoK's screen: Vault
+     Protocols' quest requirement is met (VoK keeps the line and shows it green).
+  2. "Test 77 - finish the vault job": "Research completed: Test 77: Granted Gift" after the quest's
+     end; VoK's tree shows Granted Gift researched (though Vault Protocols isn't).
+  3. "Test 77, check research": Granted Gift "yes"; the vault flag "yes".
+
+(d) With VoK: SF_HasResearch and granting one of VoK's own techs
+  1. "Test 77, check research" › Agriculture Industrialization: "no" (the player isn't commissioned:
+     VoK also counts the commissioning faction's techs).
+  2. Grant "Agriculture Industrialization" (VoK): "Research completed: Agriculture
+     Industrialization"; VoK's own tree shows it researched. Grant again: no second line.
+  3. Agriculture Industrialization: "yes". The Hegemony and Industrial Base Template: "yes" (VoK
+     answers for AI factions from its fixed list).
+  4. Ctrl+F9 › Mods: "Vaults of Knowledge research: bridge ready". starsector.log: "Vaults of
+     Knowledge bridge loaded"; no SagaLib errors.
+
+(e) With VoK: the faction's research stance
+  1. Waypoint 77's comm directory: Ira Voss, station commander of Test 77 Institute (VoK only trades with commanders and administrators). Talk to her with the databanks in
+     cargo: VoK's databank option is there; its greeting is "Test 77 (b): the Institute's own
+     greeting. …", the options "Test 77 - select databanks for the Institute" and "Test 77 - keep the
+     databanks after all".
+  2. Sell 1 databank: the credits are twice what VoK's independents pay (×2 against ×1; compare at an
+     independent market) and the reputation gain half; then the farewell "Test 77 (b): the
+     Institute's own farewell. …".
+
+(f) 0.98.5a, once AoTD for 0.98.5a is out
+  1. First recheck the VoK facts in FORMATS.md ("AoTD - Vaults of Knowledge") against that version
+     (the two files' columns, otherReq, the rewards reader, the API the bridge calls), rebuild SagaLib
+     against its Vok.jar, and set the test mod's target to 0.98.5a.
+  2. Repeat (a)–(e) on the 0.98.5a install.
+```
+
+  **(a) passed** (2026-11-20, 0.98a-RC8, no VoK): every question "no"; the vault job unlocked (flag
+  "yes") and completed without a "Research completed" line; one log line each for `rsv_tech_gift` (the
+  ending) and `aotd_tech_agriculture` (the grant), "Vaults of Knowledge isn't enabled: quests grant no
+  research and see none" once; the dev menu's Mods page shows the bridge's state; no SagaLib errors.
+  **Found**: the game drops a `"` at the very end of an option's label (`Grant VoK's "Agriculture
+  Industrialization"` showed without its last quote); the test option was renamed to `Grant
+  "Agriculture Industrialization" (VoK)`.
+  **(b.1)–(b.4) passed** (2026-11-20, with ToT's jar, VoK, Ashlib, BMO): the game loads; Command ›
+  Research & Production › Research has the tree "Saga Forge test #77: VoK research" with the five techs
+  in one line (tier, then column); the mod's own icon (Relay Theory) and VoK's "basic" / "farming1" show;
+  Relay Theory's requirements list Industrial Base Template ("Already researched!") and Field Basics,
+  its modifier line reads "Test 77 - needs a VoK tech and one of this mod's"; Vault Protocols shows
+  "Finish Test 77 - the vault job at Waypoint 77." in its requirements; Granted Gift needs Vault
+  Protocols. **Found**: (1) "Hand-written" (tier 0, not from the start) is researched too: VoK sets every
+  player tech up to its highest enabled tier (tier 0 by default) researched on load. FORMATS.md has it;
+  Problems now warns about a tier-0 tech with costs, prerequisites or a quest unlock. (2) Costs come
+  from a colony's research storage, not the fleet's cargo, so (b.5) needs a colony with a research
+  facility: skipped (VoK's own mechanic, nothing of ours).
+  **(c) passed** (same day): after Accept, Vault Protocols' quest requirement turned green (VoK keeps the
+  line); finishing the job showed "Research completed: Test 77: Granted Gift" (green) after the quest's
+  Completed line, and VoK's tree shows Granted Gift Finished while Vault Protocols isn't; "Granted Gift"
+  answers "yes". (A VoK/vanilla "Analyze Derelict Ship" mission was offered by Test 77 Institute: the new
+  faction takes part in other content as expected.)
+  **(d) passed** (same day): Agriculture Industrialization "no", then the grant showed "Research
+  completed: Agriculture Industrialization", then "yes"; the Hegemony and Industrial Base Template "yes";
+  dev menu "Vaults of Knowledge research: bridge ready", VoK "at start on, now on: counts". Log: "Vaults
+  of Knowledge bridge loaded" once, one grant line each for rsv_tech_gift and aotd_tech_agriculture, no
+  errors.
+  **(e) blocked by VoK 5.0.7** (same day): no one offers VoK's databank trade: not Test 77 Institute's
+  administrator, and not vanilla's either (Tri-Tachyon's administrator at Culann, PRIORITIZE; an
+  independent administrator at Cethlenn, MERCENARY), with 5 databanks in cargo. VoK's
+  `ResearchSell.execute` answers `personCanAcceptDbs` before it sets the `buysDatabanks` field that
+  check needs, so it is always false (FORMATS.md). The faction's row loaded without a problem (the game
+  started, the faction has VoK's research manager). Fixed in the test mod on the way: Ira Voss was an
+  agent; VoK only trades with commanders and administrators, so she is the station commander now.
+  Recheck (e) when a VoK version shows the trade.
+  **Task #77 in-game check on 0.98a-RC8: done** ((a)–(d) passed, (b.5) skipped, (e) blocked by VoK).
+  **Open:**
+  - **(f) 0.98.5a: UNTESTED.** Nothing of #77 has been run on 0.98.5a yet; AoTD doesn't exist for it.
+    Run (f) as soon as AoTD (ToT + VoK) for 0.98.5a is out (user, 2026-11-20).
+  - **(e) databank trade: ask AoTD's developer (Kaysaar)** about VoK 5.0.7's `ResearchSell`: the
+    databank option is never offered (`personCanAcceptDbs` is answered before `buysDatabanks` is set),
+    for vanilla factions too. **To do for the user** (2026-11-20). Recheck (e) once a VoK version
+    shows the trade.
+
+- **Task #79 plugin node** (PLAN.md §10.9; SagaLib 1.4.0 `SF_RunPlugin` and `lastai.sagalib.api.SagaPlugin`;
+  **0.98a-RC8** install `D:\Starsector`; dev mode, throwaway saves only). Test mod `mods\seventynine_a`
+  (prefix `pga_`), built by `npx jiti scripts/build-test-mod.ts seventynine_a`; it has its own jar
+  `jars/pga_plugins.jar` (listed in its mod_info.json), built by `bash build.sh` in the mod folder from
+  `src/pga/plugins`: `CoinFlip` (adds its `text` argument and a line with what it got and flipped,
+  returns "ok" for heads or "odd" for tails; `chance` = the chance of heads) and `Broken` (adds a line,
+  then throws on purpose). It needs a junction in `D:\Starsector\mods` (made by the user). Rebuild
+  first, in this order: `bash build.sh` in `mods\SagaLib` (the jar with SF_RunPlugin), then `bash
+  build.sh` in `mods\seventynine_a`. In "Test Range 79", Waypoint 79 (an independent station) has the
+  option "Test 79 - plugins".
+
+```
+(a) Result branching and arguments
+  1. Enable LazyLib, SagaLib and seventynine_a only; dev mode. New game: it loads (the rules with
+     SF_RunPlugin and their quoted "key=value" arguments load without a RuleException). Ctrl+F9 ›
+     "79: go to Test Range 79".
+  2. Waypoint 79 › "Test 79 - plugins" › "(a) Flip a coin - a Plugin node with the results ok and
+     odd": "Test 79 (a): the coin spins in the air...", then "Test 79: the plugin got {chance=0.5,
+     owner=independent, text=Test 79 (a): ...} (quest pga_test, node flip) and flipped heads." (or
+     tails; the word highlighted). owner=independent: "$faction.id" was read from memory.
+  3. The next line matches the flip: heads → "the plugin returned "ok" (heads), so the quest took
+     the node's "ok" output"; tails → the "odd" line. Never the "WRONG - no result" line.
+  4. Back, flip 5-10 times: both outcomes come up.
+  5. "(d) What did the last flip return": names the last flip's result ("ok" or "odd").
+  6. Back › "(a2) Flip a two-headed coin - chance 1": got {chance=1, ...}, flipped heads, then "(a2):
+     "ok", as chance 1 says". Never a WRONG line.
+  7. starsector.log, one info line per run: "[SagaLib] SF_RunPlugin in rule pga_test_flip: plugin
+     pga.plugins.CoinFlip quest=pga_test node=flip {chance=0.5, text=..., owner=independent} -> ok
+     ($global.pga_test_flip_result)" (or -> odd).
+
+(b) The failure path (nothing stops the game)
+  1. "(b) Run the broken plugin - it throws": "Test 79 (b): the broken plugin adds this line, then
+     throws on purpose.", then "Test 79 (b): the plugin threw, so SagaLib logged one error ... took the
+     "otherwise" output". Back works.
+  2. starsector.log: one error "[SagaLib] SF_RunPlugin in rule pga_test_broken: plugin
+     pga.plugins.Broken failed (java.lang.IllegalStateException: Test 79: this plugin fails on purpose);
+     the quest takes its "no result" path", with the stack trace below it, then the info line "-> no
+     result".
+  3. "(b2) Run a plugin class that is not in the jar": "Test 79 (b2): there is no such class, so
+     SagaLib logged one error line and the conversation went on". Log: one error line "plugin
+     pga.plugins.NoSuchPlugin isn't in any enabled mod's jars (no class pga.plugins.NoSuchPlugin; is
+     the jar listed under "jars" in its mod_info.json?); ..." without a stack trace.
+  4. "(d)" still names the last coin flip of (a).
+
+(c) The Action op
+  1. "(c) Run a plugin from an Action node": "Test 79 (c): the Action's plugin runs (chance 0: always
+     tails).", "the plugin got {chance=0, text=...} (quest pga_test, node act) and flipped tails.",
+     then "Test 79 (c): $global.pga_test_act_result is "odd": the Action's plugin ran and its result
+     was kept." Never the WRONG line.
+
+(d) A save in between
+  1. After a flip in (a), save, then load that save: "(d)" names the same result (the key is in
+     the save). The save loads without errors; SagaLib saved nothing of the plugins themselves.
+  2. starsector.log: no SagaLib errors other than the two of (b).
+
+(e) Saga Forge with the test mod
+  1. Open seventynine_a: Quests › "Test 79: plugins". The Plugin node "Flip a coin": the class picker
+     lists pga.plugins.Broken and pga.plugins.CoinFlip as "plugin · jars/pga_plugins.jar". Problems:
+     only the warning about pga.plugins.NoSuchPlugin (on purpose).
+  2. Play › "(a) Flip a coin ...": "(the plugin CoinFlip runs here in game)" and the buttons "(Play)
+     The plugin returns "ok"", "... "odd"", "(Play) No result, or the plugin fails"; each one goes on
+     at its output.
+  3. Rules view of "Flip a coin": SF_RunPlugin pga.plugins.CoinFlip "quest=pga_test" "node=flip"
+     "chance=0.5" ... then FireBest pga_test_flip_result, and the rules pga_test_flip_ok / _odd /
+     _next.
+
+(f) 0.98.5a, later
+  1. getInstanceOfScript is in 0.98.5a's API too; once SagaLib 1.4 runs there, set the test mod's
+     target to 0.98.5a, rebuild it and repeat (a)-(c) on D:\Starsector_98_5a.
+```
+
+  **Result (2026-11-21, 0.98a-RC8, SagaLib + seventynine_a only): (a)–(d) PASSED.** Both flip outcomes
+  branched right, chance 1 always "ok", arguments arrived (owner read from memory); the broken plugin and
+  the missing class each logged one error (stack trace only for the throw) and the conversation went on;
+  the Action's result was kept; the last result survived a save and load. (e) not run; (f) waits for
+  0.98.5a. LazyLib isn't needed (SagaLib has no dependency on it).
+
+- **Task #79 one-name characters** (PLAN.md §10.10; FORMATS.md "One-name characters"; SagaLib 1.4.0
+  `OneNameTokens`; **0.98a-RC8** install `D:\Starsector`; dev mode, throwaway saves only). Same test mod
+  `mods\seventynine_a`, rebuilt by `npx jiti scripts/build-test-mod.ts seventynine_a` (rebuild SagaLib
+  with `bash build.sh` first). Two cats with one name each (first name empty, the name in the
+  last-name slot, `"oneName": true`): **Tyger** in Waypoint 79's comm directory, with the option
+  "Test 79 - one name", and **Mousey**, who commands "Mousey's Patrol", a neutral fleet guarding
+  Waypoint 79. Both conversations print every name token in brackets: `first [$personFirstName],
+  First [$PersonFirstName], full [$personName], last [$personLastName], token [$<id>_firstName], name
+  token [$<id>_name]`. 0.98a has no `$PersonFirstName` of its own: SagaLib fills it for one-name
+  people only. The code says vanilla's UI shows the trimmed full name everywhere; (b)–(d) look at it.
+
+```
+(a) The name tokens when talking to a one-name person
+  1. Enable LazyLib, SagaLib and seventynine_a only; dev mode. New game, Ctrl+F9 › "79: go to Test
+     Range 79".
+  2. Waypoint 79 › comm directory › Tyger › "Test 79 - one name": the line reads "first [Tyger],
+     First [Tyger], full [Tyger], last [Tyger], token [Tyger], name token [Tyger]." and then
+     "Hi, Tyger." (no empty brackets, no "Hi, .").
+  3. Save, load that save, talk to Tyger again: the same (SagaLib's generator is added again on
+     load, after vanilla's).
+
+(b) The comm directory and the person panel
+  1. Waypoint 79's comm directory lists Tyger as "Tyger" (no leading space, no doubled name), with
+     the portrait and "Agent" (post); the dialog's person panel shows "Tyger" too.
+
+(c) Intel
+  1. Tyger › "Test 79 - one name" › "(e2) Make Tyger a potential contact": the line about Intel ›
+     Contacts appears.
+  2. Intel › Contacts (and the new-intel notice, if one shows): the contact reads "Tyger" in the
+     list, the title and the description (no leading space, nothing empty where a first name would go).
+
+(d) A one-name fleet commander
+  1. On the map at Waypoint 79: hover over "Mousey's Patrol". Note whether its tooltip names the
+     commander; if it does, it reads "Mousey".
+  2. Click it › Open a comm link: the person panel shows "Mousey", and the reply reads "first
+     [Mousey], First [Mousey], full [Mousey], last [Mousey], token [Mousey], name token [Mousey]."
+     (the active person here is the fleet's commander).
+  3. Cut the comm link; in the fleet's own dialog (the encounter screen), any text that names the
+     commander reads "Mousey".
+
+(e) No SagaLib errors
+  1. starsector.log: no SagaLib errors; "[SagaLib]" lines for the one-name generator only if
+     something failed (there should be none).
+
+(f) Saga Forge with the test mod
+  1. People › Tyger: "One name" is ticked, there is no First name field, the Name field says Tyger,
+     the header and the list show "Tyger" with a "one name" badge; the preview's "In dialog with
+     them" lists $personFirstName → "Tyger" (and the other name tokens).
+  2. Untick and tick "One name" again: the name stays Tyger (in the last-name slot).
+  3. Problems: the warnings that the two test conversations use $personFirstName / the
+     $<id>_firstName token with a one-name person (on purpose here).
+  4. Play "Test 79: one-name characters" with the Test context's person set to Tyger: the line
+     reads as in (a) 2.
+```
+
+  **Result (2026-11-21, 0.98a-RC8): (a)–(d) PASSED.** Tyger reads "Tyger" in the comm directory, the
+  person panel and the potential-contact notice. Every token bracket, including $PersonFirstName (which
+  0.98a lacks), reads [Tyger], and the greeting reads "Hi, Tyger.". Mousey commanding a fleet reads
+  [Mousey] in his comm reply. Not repeated: (a.3) save/load and (f) the editor.
+
+### Task #80: fixes found while building Heliopolis (H1–H8)
+
+Test mod `mods/eighty_a` (prefix eta_, 0.98a-RC8, SagaLib 1.4 installed; it needs 1.2), built by
+`npx jiti scripts/build-test-mod.ts eighty_a`; `data/variants/eta_kite_Test.variant` is hand-written.
+Dev mode on. H3 and H8 are editor checks only (test/heliopolis80.test.ts). The Heliopolis-specific
+checks were skipped by the user's choice (2026-11-21).
+
+```
+Setup
+  1. Link the mod (cmd): mklink /J "D:\Starsector\mods\eighty_a" "D:\ModTools\mods\eighty_a"
+  2. Launcher: enable SagaLib and "Saga Forge test #80: Heliopolis findings". Dev mode on.
+  3. New game (the test range is also added to an existing save). Ctrl+F9 › "80: go to Test Range 80".
+
+(a) H1: derelicts from a ship variant
+  1. In Test Range 80, hover over and open "Tarsus wreck (H1)": the salvage screen names a Tarsus
+     (tarsus_d_Standard), and you can recover it as one.
+  2. "Own-variant wreck (H1)": a Kite, from the mod's own variant eta_kite_Test (2 Harpoons and a
+     light machine gun if you recover it and look at its loadout).
+  3. "Random wreck (H1)": some random independent hull, as before.
+  4. starsector.log: no SagaLib warning or error about these three.
+
+(b) H2: a first-visit scene and quest arrivals at the same station
+  1. Dock at Outpost 80: "Test 80 (b): Outpost 80's first-visit scene" plays; Continue opens the
+     station's own menu (Trade, Refit...).
+  2. Leave and dock again: straight to the station's own menu, no scene.
+  3. Later, with a test quest running (d), its Arrive is an option in that menu ("Test 80d-A - finish
+     quest A" etc.), not a scene that takes over docking.
+
+(c) H4: an interjection that hands back after setting a stage
+  1. Open "Wreck with a voice (H4)" › Explore: the "Test 80 (c)" voice scene cuts in.
+  2. "(c1) Take them aboard": vanilla's salvage goes on at once in the same visit (the salvage
+     result / loot). The scene does not play a second time.
+  3. Intel: "Test 80c: a voice in the wreck" has "Bring the survivor to Outpost 80", marker on
+     Outpost 80.
+  4. Dock at Outpost 80 › "Test 80c - hand over the survivor": the quest ends as a success.
+  (c2, optional, needs a new game: "Ignore it" goes on into the salvage as well.)
+
+(d) H5: quests started at a stage
+  1. Waypoint 80 › "Test 80 - menu" › "(d1) Start quest A...": Intel has "Test 80d: quest A" with
+     its journal entry "Go to Outpost 80 (A)" and a marker on Outpost 80 at once.
+  2. Ctrl+F9 › "80: go to Test Range 80 and start the world event": a "Test 80: the world event
+     ran" news item; Intel has quest B with its entry and marker at once.
+  3. "Test 80 - menu" › "(d3/e3) Add 100 points to the Test 80 progress event": the progress
+     event's stage "Full" runs (now or within a day); Intel has quest C with its entry and marker.
+  4. Dock at Outpost 80: "Test 80d-A/B/C - finish quest ..." options are there; each ends its quest.
+
+(e) H6: reputation with a named person
+  1. Waypoint 80's comm directory: note Ada Clerk's and Bea Quartermaster's relationship numbers.
+  2. Ada Clerk › "Test 80e - reputation" › "(e1) +5 with Bea Quartermaster": the text panel says
+     Bea Quartermaster's relationship improved by 5; Ada Clerk's panel is unchanged.
+  3. "(e2) +5 with the person you are talking to": Ada Clerk +5.
+  4. "(e1b) -5 with Bea Quartermaster, as a dialog display": Bea -5, Ada unchanged.
+  5. The world event (d2) gave Bea +3 and the progress stage (d3) gave Bea +4: check her number in
+     the comm directory. No crash when those ran outside a conversation.
+
+(f) H7: the special trade good preset
+  1. "Test 80 - menu" › "(f) Buy 5 Test 80 spice for 1,000 credits": 5 "Test 80 spice" in the cargo
+     as a special item (one stack, up to 100).
+  2. Sell them at Waypoint 80's open market: they sell; pickup and drop sounds play.
+
+(g) No errors
+  1. starsector.log: no SagaLib errors from eighty_a.
+```
+
+  **Result (2026-11-21, 0.98a-RC8): (a) PASSED.** The recovery screens: "Tarsus (D), Standard
+  Freighter" (tarsus_d_Standard), "Kite (D), Test 80 Shuttle" (the mod's own variant, by its display
+  name) and a random Vigilance (D). The (D) and lasting damage are vanilla's derelict d-mods.
+  **(b.1) PASSED:** the first-visit scene played on docking at Outpost 80, and Continue opened the
+  station's own menu (vanilla's approach text and picture, comm directory, bar, trade, Leave).
+  **(b.2) PASSED:** docking again went straight to the station's menu, no scene.
+  **(d1) PASSED:** "(d1) Start quest A" showed "Test 80d: quest A - Accepted" and at once the step
+  update "Go to Outpost 80 (A)" (SF_Start, then SF_Step). **(b.3) PASSED:** at Outpost 80, "Test
+  80d-A - finish quest A" is an option in the station's menu (not a takeover), and it plays the
+  quest's scene. (Its End after "Finish" not shown in the screenshots.)
+  **(c) PASSED:** at the Wreck with a voice, Explore › the Test 80 (c) scene › "(c1) Take them
+  aboard" showed "Accepted" and the step "Bring the survivor to Outpost 80", then went straight on to
+  vanilla's salvage assessment ("Begin salvage operations") in the same visit. Intel: the entry and
+  its marker. At Outpost 80, "Test 80c - hand over the survivor" (a menu option) completed it. Open:
+  in that run the first-visit scene played again at Outpost 80 (likely an earlier save was loaded:
+  "Copies of campaign data in memory: 2"); to confirm with the user.
+  **(d2) PASSED:** the profile's forced world event posted "Test 80: the world event ran" and Intel
+  had "Test 80d: quest B - Go to Outpost 80 (B)" with its marker (SF_Start + SF_Step outside a
+  conversation). **(d3) PASSED:** "(d3/e3) Add 100 points" showed "+100" and the stage "Full" at
+  once; Intel had "Test 80d: quest C - Go to Outpost 80 (C)" with its marker. **(d4) PASSED:** Outpost
+  80's menu lists "Test 80d-A/B/C - finish quest ..." as options.
+  **(e1), (e2), (e1b) PASSED:** talking to Ada Clerk, (e1) "Relationship with Bea Quartermaster
+  improved by 5, currently at 5/100", Ada unchanged; (e2) Ada +5 (5/100); (e1b) the display took Bea
+  back to 0/100. **(e5) FAILED, fixed:** Bea was at 0 before (e1), so the world event's +3 and the
+  progress stage's +4 never ran. The export of world events and progress stages only wrote a
+  faction's reputation and dropped a person's (eventOpLines). Now AdjustRepPerson there too, a person
+  picker in those editors, and an error for "the person you're talking to" (nobody is talked to).
+  The first-visit scene replaying in the (c) run: the log shows a second new game (Test Range 80
+  built twice), so it was right. **(e5) PASSED after the fix** (game restarted, new game, profile
+  "start the world event", then "(d3/e3) Add 100 points"): Bea Quartermaster reads NEUTRAL (7 / 100)
+  in Waypoint 80's comm directory, the event's +3 and the progress stage's +4.
+  **(f) PASSED:** "Gained 5× Test 80 spice"; in the cargo one special-item stack of 5 (default
+  special icon), its description, and the open market's "Sells for: 1,200¢ per unit". (Not seen:
+  the sale itself and its sounds.)
+  **(g) PASSED:** starsector.log(.1) for every eighty_a run: "content: 4 quests, 2 people, ... 0
+  errors", no SagaLib warning or error from eighty_a. (Seen in older runs, not this task: Heliopolis's
+  scatter hel_cryo_probes failed, left for task #83.)
+  **Task #80: all in-game checks passed (2026-11-21, 0.98a-RC8), after the fix to (e5).**
+
+### Task #67: user-experience pass (Fight node, events without a dialog, repeat text, pictures by gender)
+
+The list of items is `docs/UX-PASS.md`. Heliopolis (rebuilt 2026-11-21 without its workarounds) covers
+the Fight node at Persea, a progress event without a dialog, repeat texts and Link › close the dialog;
+the rest is in `mods/EditorScratchpadMod` (prefix edi_, "Test Range 67"; also the Ship Editor's scratch
+mod, its hulls untouched), built by `npx jiti scripts/build-test-mod.ts EditorScratchpadMod`. Both need
+SagaLib 1.4.0 (`bash build.sh` in mods/SagaLib: the jar has SF_Fight and the quiet ops). 0.98a, dev mode.
+
+```
+Setup
+  1. mods/SagaLib: bash build.sh (done 2026-11-21); Heliopolis: bash build.sh in its folder if its jar is missing.
+  2. Launcher: enable SagaLib, Heliopolis and Editor Scratchpad Mod (it is already linked). Dev mode on.
+  3. New game. Ctrl+F9 › "67: go to Test Range 67".
+
+(a) Fight node with a named fleet (Test Range 67)
+  1. Waypoint 67 › "Test 67 - menu" › "(a) Fight a named fleet (Vane's Pair)": the fleet dialog opens
+     with "Engage Vane's Pair" and Leave; no comm link, no attitude text.
+  2. Engage: the enemy deploys everything and doesn't retreat; no objectives. The ships are named
+     "Test 67 Flagship" and "Test 67 Hound"; Rook Vane commands.
+  3. Win: normal salvage (no extra AI cores), then "Test 67 (a): you won..." in the same dialog;
+     "Back to the menu" returns to Waypoint 67's menu.
+  4. Dev console: $global.sagaforge_fleet_edi_pair_defeats is 1.
+
+(b) Fight node from fleet points, Left connected
+  1. "(b) Fight 30 fleet points of pirates": "Engage the Test 67 pirates". Engage, sink a ship or two,
+     then retreat / Leave: "Test 67 (b): you left (or lost)..." in the same dialog.
+  2. "(b)" again at once: the same damaged fleet (fewer ships), the option reads "Re-engage".
+  3. "(b)" again, Leave without engaging: the Left line again, the fleet still damaged.
+  4. Win it: "Test 67 (b): you won against the Test 67 pirates."
+  5. Save, load, "(b)" again before 10 days pass if you left one damaged: no errors, still damaged.
+     After 10+ days: a fresh full fleet.
+
+(c) Picture by the player's gender
+  1. "(c) A picture by the player's gender": a male captain sees cargo_loading, a female captain
+     the hound in its hangar (check one in this game; the other needs a new game, optional).
+
+(d) Repeat text
+  1. "(d) A scene with a repeat text": the long first-time text. "Ask the first question", "Back":
+     only "Test 67 (d): the repeat text. "Anything else?"" with "the repeat text" highlighted, and
+     the first question gone. Same after the second question.
+  2. "Done", then "(d)" again in the same visit: the repeat text (once per visit). Leave, undock,
+     dock again, "(d)": the long text again.
+
+(e) Progress event stage with outcomes, no dialog
+  1. "(e) Add 100 points to the Test 67 progress event", "Back", "Leave", undock.
+  2. When the stage runs (at once or within a day): no dialog opens. A campaign message "Gained
+     1,111¢" or "Gained 2,222¢" (one, not both); credits up by that.
+
+(f) World event actions, no dialog
+  1. Ctrl+F9 › "67: go to Test Range 67 and start the world event". Unpause.
+  2. No dialog flashes. Bottom-left messages: +1,000¢, 5 supplies, an alpha core, relationship with
+     the independents improved by 3, with Cal Broker by 5, a story point, 1,000 XP. Nothing missing,
+     nothing twice; cargo, credits and reputation changed by those amounts.
+  3. The news item "Test 67: the world event ran" is listed.
+  4. Dev console: $global.edi_event_ran is true; after 3 days it is gone.
+
+(g) Heliopolis: the Persea vault (Fight nodes replace the old defenders)
+  1. Play Heliopolis to Persea, or use its dev profile for Persea if you have one. At the vault, "Tell
+     it you are coming in anyway": the defences wake, then the fleet dialog with "Engage the
+     Custodian's defences" (The Custodian, 180 fleet points, hel_warden).
+  2. Leave: the dialog closes. Fly back to the vault: "The Custodian's defences are still there",
+     "Go back in" fights again (the same damaged fleet if you hurt it).
+  3. Win: "The last of the Custodian's ships goes dark..." in the same dialog, "Go down to the
+     vault" goes on to the door (no separate conversation, no "You decide to..." screen of vanilla's
+     own salvage).
+  4. Great Cat path: "Grab Tyger and run for the ship", then "Engage the reserve" (200 points); a win
+     goes on to "The Great Cat" scene.
+
+(h) Heliopolis: events, repeat text, comm link
+  1. The Hegemony suspicion progress event's stages (Rumours, Patrols, Writ) run without a dialog;
+     at Patrols the Inspectorate fleet spawns.
+  2. The Sunspot (Tyger), Pops's "Ask Pops about the cats" and Mousey's workshop: the full scene the
+     first time; a question's Back shows only the short line ("Tyger watches you from her
+     cushion...").
+  3. The probe scavengers' comm link: "Bluff" or "Let them have it": the reply stays on screen until
+     "Close the comm link", which closes the dialog.
+
+(i) Log
+  1. starsector.log: no SagaLib error for edi_ or hel_ content ("content: ... 0 errors").
+
+(j) U18: versions by a setting fixed at new game (LunaLib enabled)
+  Prep: in a throwaway Saga Forge mod with a LunaLib page (e.g. sixtytwo_a), mark an on/off setting
+  "Versions may depend on it"; in the strip pick "<setting> = on" for a person (another portrait and
+  last name) and an encounter (more fleet points); export.
+  1. LunaLib's menu: the setting on; new game. starsector.log: "settings of <mod> recorded for this game
+     (...): <id> true" before the "versions: ... uses version setting:<id>=true" lines.
+  2. The person has the "on" portrait and name; the encounter is the bigger fleet. Dev menu › Versions:
+     setting:<id>=true; Dev menu › Mod settings: "at the start of this game true".
+  3. Set the setting off in the campaign, save, load: the person and fleet stay the "on" version; the dev
+     menu shows live false, recorded true; no new "recorded" log line.
+  4. New game with the setting off: the base portrait, name and fleet; versions "base".
+  5. An old save (SagaLib 1.3, or from before the item had versions), setting on: "recorded for this game"
+     on its first load; the item takes the "on" version. Switch off, load again: nothing changes.
+  6. A quest whose dialog differs in a "<setting> = <value>" version: in a game started with that value
+     the changed text shows ($global.sfv_<quest>_setting_<id>_<value> = true); otherwise the base text.
+
+(k) U37: versions by the player's gender (EditorScratchpadMod: Cal Broker at Waypoint 67)
+  1. New game with a FEMALE captain. starsector.log: "the player's gender recorded for this game
+     (...): FEMALE" before the "versions:" lines. (If it says "isn't known yet", the gender isn't set
+     at onNewGame: report it, the timing needs another hook.)
+  2. Waypoint 67's comm directory: Callie Broker, a woman's portrait (portrait_mercenary02). Her
+     dialog says "Callie" where it used Cal's first name. Dev menu › Versions: setting:player_gender=FEMALE.
+  3. Save, load: still Callie; no new "recorded" line.
+  4. New game with a MALE captain: Cal Broker with his own portrait; versions "base".
+
+(l) U40: a mixed fleet (EditorScratchpadMod: "Test 67 hunters" beside Waypoint 67, respawning a day after it's beaten)
+  1. Go to Waypoint 67: "Test 67 hunters" (mercenary) is there. starsector.log: "encounter edi_hunters: N ships
+     drawn for 40.0 random fleet points" and "extra groups added K ships [...]".
+  2. Its ships: always the Eagle (Assault); random mercenary ships for about 40 points; always one of Condor
+     (Support) or Drover (Strike), the Condor about 3 times in 4; about half the time two Hammerheads.
+  3. Beat it (or use the console to destroy it), wait a day or two: a new one, with different random ships
+     and extras. No errors in the log.
+
+(m) U43: a hail on contact and the Fleet response node group (EditorScratchpadMod: "Test 67 tax collector", Hegemony, a new one near Waypoint 67 every day)
+  1. Fly near Waypoint 67 until the tax collector reaches you: the fleet screen shows "Test 67 (m): you're
+     being hailed by the tax collector." and the fleet's description, then its comm link opens at once
+     ("Test 67 (m): back taxes, captain...").
+  2. Pay 1,000 credits: 1,000 credits go, the comm link is cut, back on the fleet screen: Leave works, the
+     fleet flies off and doesn't come back (starsector.log: encounter edi_tax avoided).
+  3. Next day, another one: Refuse: the comm link is cut, the fleet screen offers Engage; Leave isn't offered
+     (unless your fleet is much stronger). Fight it.
+  4. Next one: Make a run for it: back on the fleet screen, Leave works; the fleet chases. Let it catch you:
+     the hail comes again and the dialog says "you ran. You will not run twice."; Power up the weapons: Engage.
+  5. Save and load in the middle (after fleeing): the chase and the "ran" line still work. No errors in the log.
+
+(n) U46: an encounter's own outcome actions (EditorScratchpadMod: the same tax collector)
+  1. Pay one off (step m 2): when it leaves, a campaign message "Gained 67 experience" (no dialog flashes);
+     starsector.log: "encounter edi_tax: avoided; firing [SF_enc_edi_tax_avoided]".
+  2. Beat one in battle: after the post-battle dialog, "Gained 567 credits" as a campaign message, and the
+     log says "firing [SF_enc_edi_tax_defeated]". Console: $global.edi_tax_beaten is true.
+  3. No errors in the log.
+```
 
 ## Workflow checks (task #36)
 

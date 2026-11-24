@@ -3,6 +3,7 @@ import type { AppSettings, GameIndex, ImageData, FontData, UserDefinitions, Vers
 import type { RuleRow } from '../../../shared/rules/types'
 import { compileRules, type RuleSet } from '../../../shared/rules/engine'
 import { defsFor } from '../../../shared/defs'
+import { indexView } from '../../../shared/indexview'
 import type { GameDefinitions } from '../../../shared/defs/types'
 
 export type PageId = 'saga' | 'factions' | 'people' | 'items' | 'quests' | 'locations' | 'encounters' | 'fleets' | 'images' | 'dialog' | 'problems' | 'translation'
@@ -22,13 +23,23 @@ export const PAGES: { id: PageId; label: string }[] = [
 ]
 
 class AppState {
-  index = $state.raw<GameIndex | null>(null)
+  /** The game index as read: every installed mod (main/gameindex.ts). */
+  rawIndex = $state.raw<GameIndex | null>(null)
+  /**
+   * #67 U33: the sources that count for the active mod (vanilla, the mod, its listed mods); set by
+   * mods.svelte.ts, which knows the mod's list.
+   */
+  visibleOf = $state<(raw: GameIndex) => Set<string>>(() => new Set(['starsector-core']))
+  /** #67 U33: the index as the active mod's game has it (indexview.ts): what every page reads. */
+  private view = $derived(this.rawIndex ? indexView(this.rawIndex, this.visibleOf(this.rawIndex)) : null)
+  get index(): GameIndex | null { return this.view }
+  set index(v: GameIndex | null) { this.rawIndex = v }
   /** #47: the main and migration installs and the target (null until startup). */
   versions = $state.raw<VersionState | null>(null)
   /** #47: the other install's index and vanilla rule ids, for the version comparison (lazy). */
   otherIndex = $state.raw<GameIndex | null>(null)
   otherRuleIds = $state.raw<string[] | null>(null)
-  settings = $state<AppSettings>({ styleChecks: false, extensions: {}, releasesDir: '', releasesDirChosen: false })
+  settings = $state<AppSettings>({ styleChecks: false, extensions: {}, releasesDir: '', releasesDirChosen: false, nodeGroupsDir: '', nodeGroupsDirChosen: false })
   definitions = $state.raw<UserDefinitions | null>(null)
   page = $state<PageId>((localStorage.getItem('sf.page') as PageId) || 'factions')
   /** Selection per page (id of the open object), remembered while the app runs. */
@@ -103,6 +114,14 @@ export const images = {
   clear(): void {
     for (const p of imageCache.values()) p.then((u) => u && URL.revokeObjectURL(u))
     imageCache.clear()
+  },
+  /**
+   * #67 U33: the sources that count changed: look pictures and fonts up again, but keep the URLs of
+   * pictures already on screen (revoking them broke the images being shown).
+   */
+  refresh(): void {
+    imageCache.clear()
+    fontCache.clear()
   },
   url(gamePath: string | null | undefined, sourceId?: string): Promise<string | null> {
     if (!gamePath) return Promise.resolve(null)

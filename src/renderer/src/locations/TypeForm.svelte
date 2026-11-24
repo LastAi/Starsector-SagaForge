@@ -59,9 +59,10 @@
     <Field label="Name" for="ty-n" help="Its default name (defaultName): used when an entity of this type has no name of its own.">
       <input id="ty-n" type="text" value={et.name} onchange={(e) => { const v = e.currentTarget.value; setE((t) => { t.name = v }) }} />
     </Field>
-    <Field label="Behaves like" for="ty-b" help="The vanilla type it inherits everything else from (baseId): tags, layers, how it is drawn, and vanilla's own behaviour for it. A station can be docked at when it has a market; a derelict can be salvaged.">
+    <Field label="Behaves like" ref="locations-entity-types" for="ty-b" help="The vanilla type it inherits everything else from (baseId): tags, layers, how it is drawn, and vanilla's own behaviour for it. A station can be docked at when it has a market; a derelict can be salvaged.">
       <select id="ty-b" value={et.behavesLike} onchange={(e) => { const v = e.currentTarget.value; setE((t) => { t.behavesLike = v }) }}>
         {#each BASE_GROUPS as g (g.label)}<optgroup label={g.label}>{#each bases.filter(g.test) as b (b.id)}<option value={b.id}>{b.name} ({b.id})</option>{/each}</optgroup>{/each}
+        {#if et.behavesLike && !bases.some((b) => b.id === et.behavesLike)}<option value={et.behavesLike}>{et.behavesLike} (not offered here: animated or from another mod)</option>{/if}
       </select>
     </Field>
     <Field label="Sprite" help="The picture in the campaign view. Choose… picks one or imports your own (cropped to 160×160, as vanilla's stations).">
@@ -92,7 +93,7 @@
     <Field label="Name" for="ty-n" help={pt.isStar ? 'The star type\'s name, shown in the system\'s info.' : 'The planet type\'s name, shown in the planet info ("Terran", "Barren").'}>
       <input id="ty-n" type="text" value={pt.name} onchange={(e) => { const v = e.currentTarget.value; setP((t) => { t.name = v }) }} />
     </Field>
-    <Field label="Based on" help={pt.isStar ? 'The vanilla star whose settings are copied: corona, light color, glow. Only the name and texture change.' : 'The vanilla planet type whose settings are copied: tilt, atmosphere and its colors, the icon color. Only the name and texture change.'}>
+    <Field label="Based on" ref={pt.isStar ? 'locations-star-types' : 'locations-planet-types'} help={pt.isStar ? 'The vanilla star whose settings are copied: corona, light color, glow. Only the name and texture change.' : 'The vanilla planet type whose settings are copied: tilt, atmosphere and its colors, the icon color. Only the name and texture change.'}>
       <div class="imgrow"><TypeThumb planet={base} size={32} /><span class="small">{base?.name ?? pt.basedOn} <span class="mono muted">{pt.basedOn}</span></span><button class="mini" onclick={() => (choosingBase = true)}>Choose…</button></div>
     </Field>
     <Field label="Texture" help="The surface wrapped around the sphere. Choose… picks one or imports your own (cropped to 1024×512, as vanilla's).">

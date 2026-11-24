@@ -9,6 +9,7 @@ import { parseRulesCsvRows } from '../shared/export/csvrows'
 import { detokenizeRows, type RuleStrings } from '../shared/export/texttokens'
 import { defsFor } from '../shared/defs'
 import { mergeFactionJson } from '../shared/faction'
+import { mergeEntry, type MergeHow } from '../shared/indexview'
 import { detectInstall as _detect, errText, isFile, modsRootFor, readLoose, scanSources, walk, type ModsOptions } from './install'
 import type {
   FactionInfo, GameIndex, HullInfo, IllustrationInfo, ItemInfo, MarketInfo, NameCategoryInfo, NamedEntry, PersonInfo, PortraitInfo, Problem,
@@ -17,7 +18,7 @@ import { factionKeySurvey } from '../shared/factionkeys'
 import { procgenData, typeInfos } from '../shared/celestial'
 import { parseSystemsJava } from '../shared/javasystems'
 import type { RuleRow } from '../shared/rules/types'
-import type { PlaceInfo, SagaQuestInfo, SectorSnapshot, SnapshotInfo } from '../shared/api'
+import type { ConditionInfo, VariantInfo, GraphicIconInfo, IndustryInfo, SalvageGenInfo, SkillInfo, TypeDescInfo, Origin, PlaceInfo, ResearchTechInfo, SagaQuestInfo, SectorSnapshot, SnapshotInfo } from '../shared/api'
 import { idPrefix, mergeSnapshot } from '../shared/snapshot'
 
 export const detectInstall = _detect
@@ -54,12 +55,13 @@ export const titleCase = (id: string) => id.replace(/[_-]+/g, ' ').replace(/\b([
  * the mod order) wins.
  */
 function put<T extends { id: string; definedBy: string; changedBy: string[] }>(map: Map<string, T>, entry: T, how: 'json' | 'csv' | boolean): void {
-  const prev = map.get(entry.id)
+  const prev = map.get(entry.id) as (T & { layers?: unknown[]; layerHow?: MergeHow }) | undefined
   if (!prev) { map.set(entry.id, entry); return }
-  if (prev.definedBy === entry.definedBy && !prev.changedBy.length) { map.set(entry.id, { ...entry, changedBy: prev.changedBy }); return }
-  const changedBy = [...prev.changedBy, entry.definedBy]
-  const replace = how === 'csv' ? prev.definedBy === 'starsector-core' && !prev.changedBy.length : how !== false
-  map.set(entry.id, replace ? { ...entry, definedBy: prev.definedBy, changedBy } : { ...prev, changedBy })
+  const { layers: prevLayers, layerHow: _h, ...prevSelf } = prev
+  const merged = mergeEntry(prevSelf as unknown as T & Origin, entry as unknown as T & Origin, how) as unknown as T
+  // #67 U33: each source's own version, so the editor can merge only the mods the active mod counts (indexview.ts)
+  if (prev.definedBy === entry.definedBy && !prev.changedBy.length) { map.set(entry.id, merged); return }
+  map.set(entry.id, { ...merged, layers: [...(prevLayers ?? [prevSelf]), entry], layerHow: how })
 }
 
 const num = (v: unknown, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d }
@@ -82,20 +84,35 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
   const systems = new Map<string, SystemInfo>()
   const items = new Map<string, ItemInfo>()
   const dropGroups: DropGroupRow[] = []
-  const industries = new Map<string, NamedEntry>()
-  const conditions = new Map<string, NamedEntry>()
+  const industries = new Map<string, IndustryInfo>()
+  /** #67 U34: salvage data per entity type, skills, planet/entity type descriptions. */
+  const salvageGen = new Map<string, SalvageGenInfo>()
+  const skills = new Map<string, SkillInfo>()
+  const typeDescs = new Map<string, TypeDescInfo>()
+  const graphicsIcons = new Map<string, GraphicIconInfo>()
+  const conditions = new Map<string, ConditionInfo>()
+  /** #67: planet type → its category (planet_gen_data.csv), and how planets roll each condition (condition_gen_data.csv). */
+  const planetCategory = new Map<string, string>()
+  const conditionGen = new Map<string, { group: string; hazard?: number; on: string[] }>()
   const submarkets = new Map<string, NamedEntry>()
   const hulls = new Map<string, HullInfo>()
   const wings = new Map<string, NamedEntry>()
   const weapons = new Map<string, NamedEntry>()
   const hullmods = new Map<string, NamedEntry>()
   const illustrations = new Map<string, IllustrationInfo>()
+  // #67 U49: illustrations a Saga Forge mod has in its project but hasn't exported (registered) yet
+  const unexported: { key: string; mod: string; modName: string }[] = []
   const portraits: PortraitInfo[] = []
-  const variants = new Map<string, NamedEntry>()
+  const variants = new Map<string, VariantInfo>()
+  const shipRoles: { role: string; variant: string; weight: number; definedBy: string }[] = []
   const customEntityTypes = new Map<string, NamedEntry>()
   const planetTypes = new Map<string, NamedEntry>()
   const entityRaw = new Map<string, Record<string, unknown>>()
   const planetRaw = new Map<string, Record<string, unknown>>()
+  /** #67 U33: each source's own planets.json / custom_entities.json entry ("p:" / "e:" + id), for indexview.ts. */
+  const typeLayers = new Map<string, { sourceId: string; raw: Record<string, unknown> }[]>()
+  /** #67 U33: each source's settings.json (enabled or not), for the colour and font layers. */
+  const settingsLayers: { sourceId: string; settings: Record<string, unknown> }[] = []
   const procStars: Record<string, { habZoneStart: number }> = {}
   const procRows = new Map<string, Record<string, string>>()
   const codeFiles: { text: string; file: string; sourceId: string }[] = []
@@ -114,6 +131,10 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
   const sagaQuests = new Map<string, SagaQuestInfo>()
   const sagaEncounters = new Map<string, NamedEntry>()
   const sagaPools = new Map<string, NamedEntry>()
+  // #77: AoTD Vaults of Knowledge techs and faction stances (merged spreadsheets, key id / factionId)
+  const researchTechs = new Map<string, ResearchTechInfo>()
+  const researchFactions = new Map<string, NamedEntry & { stance: string }>()
+  const researchIcons = new Set<string>()
   let settings: Record<string, unknown> = {}
 
   const readText = async (f: string): Promise<string | null> => {
@@ -196,8 +217,9 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
     // ---- items and economy ids
     for (const r of await csvRows(src, 'data/campaign/commodities.csv')) {
       const id = (r.id ?? '').trim()
-      if (!id || id.startsWith('#')) continue
-      put(items, { id, name: r.name ?? id, kind: 'commodity', icon: r.icon ?? '', tags: csvTags(r.tags), basePrice: num(r['base price']), desc: r.desc ?? '', ...own }, 'csv')
+      // #75: a row starting with # is a comment the game skips (Nexerelin ships "#Transplutonics,rare_metals,…")
+      if (!id || id.startsWith('#') || (r.name ?? '').trimStart().startsWith('#')) continue
+      put(items, { id, name: r.name ?? id, kind: 'commodity', icon: r.icon ?? '', tags: csvTags(r.tags), basePrice: num(r['base price']), desc: r.desc ?? '', econUnit: num(r.econUnit), ...own }, 'csv')
     }
     // Phase 8a: drop groups (every source's rows add to the group; checked in game 2026-11-16)
     for (const r of await csvRows(src, 'data/campaign/procgen/drop_groups.csv')) {
@@ -208,17 +230,79 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
     }
     for (const r of await csvRows(src, 'data/campaign/special_items.csv')) {
       const id = (r.id ?? '').trim()
-      if (!id || id.startsWith('#')) continue
+      if (!id || id.startsWith('#') || (r.name ?? '').trimStart().startsWith('#')) continue
       put(items, { id, name: r.name ?? id, kind: 'special', icon: r.icon ?? '', tags: csvTags(r.tags), basePrice: num(r['base price']), desc: r.desc ?? '', ...own }, 'csv')
     }
+    /** #67 U34: with the row's description and tags when the file has them (for the reference pages). */
     const named = async (rel: string, into: Map<string, NamedEntry>, nameCol = 'name') => {
       for (const r of await csvRows(src, rel)) {
         const id = (r.id ?? '').trim()
-        if (id && !id.startsWith('#')) put(into, { id, name: (r[nameCol] ?? '').trim() || id, ...own }, 'csv')
+        if (!id || id.startsWith('#')) continue
+        const desc = (r.desc ?? '').trim(), tags = csvTags(r.tags)
+        put(into, { id, name: (r[nameCol] ?? '').trim() || id, ...(desc ? { desc } : {}), ...(tags.length ? { tags } : {}), ...own }, 'csv')
       }
     }
-    await named('data/campaign/industries.csv', industries)
-    await named('data/campaign/market_conditions.csv', conditions)
+    // #77: VoK's techs (every mod may add rows; its own tree per modId) and research stances
+    for (const r of await csvRows(src, 'data/campaign/aotd_tech_options.csv')) {
+      const id = (r.id ?? '').trim()
+      if (!id || id.startsWith('#')) continue
+      const req = (r.reqToResearchFirst ?? '').split(',').map((x) => x.trim()).filter((x) => x && x !== 'none')
+      put(researchTechs, { id, name: (r.name ?? '').trim() || id, tier: num(r.tier), modId: (r.modId ?? '').trim(), fromStart: (r.isResearchedFromStart ?? '').trim().toLowerCase() === 'true', requires: req, otherReq: (r.otherReq ?? '').trim(), ...own }, 'csv')
+    }
+    for (const r of await csvRows(src, 'data/campaign/aotd_faction_behaviour.csv')) {
+      const id = (r.factionId ?? '').trim()
+      if (!id || id.startsWith('#')) continue
+      put(researchFactions, { id, name: id, stance: (r.researchStance ?? '').trim(), ...own }, 'csv')
+    }
+    for (const r of await csvRows(src, 'data/campaign/industries.csv')) {
+      const id = (r.id ?? '').trim()
+      if (!id || id.startsWith('#')) continue
+      const n = (k: string) => ((r[k] ?? '').trim() ? num(r[k]) : undefined)
+      put(industries, { id, name: (r.name ?? '').trim() || id, desc: (r.desc ?? '').trim(), tags: csvTags(r.tags), upkeep: n('upkeep'), income: n('income'), icon: (r.image ?? '').trim(), upgrade: (r.upgrade ?? '').trim(), downgrade: (r.downgrade ?? '').trim(), ...own }, 'csv')
+    }
+    // #67 U34: what an entity type gives when salvaged, its defenders and XP
+    for (const r of await csvRows(src, 'data/campaign/procgen/salvage_entity_gen_data.csv')) {
+      const id = (r.id ?? '').trim()
+      if (!id || id.startsWith('#')) continue
+      const one = (k: string) => (r[k] ?? '').replace(/\s+/g, ' ').trim()
+      put(salvageGen, { id, type: one('type'), dropValue: one('drop_value'), dropRandom: one('drop_random'), defFaction: one('defFaction'), probDefenders: num(r.probDefenders), xpDiscover: num(r.xpDiscover), xpSalvage: num(r.xpSalvage), ...own }, 'csv')
+    }
+    for (const r of await csvRows(src, 'data/characters/skills/skill_data.csv')) {
+      const id = (r.id ?? '').trim()
+      if (!id || id.startsWith('#')) continue
+      const yes = (k: string) => (r[k] ?? '').trim().toUpperCase() === 'TRUE'
+      put(skills, { id, name: (r.name ?? '').trim() || id, tier: num(r.tier), officer: yes('combat officer'), admiral: yes('admiral'), admin: yes('admin'), desc: (r.description ?? '').trim(), author: (r.author ?? '').trim(), tags: csvTags(r.tags), icon: (r.icon ?? '').trim(), ...own }, 'csv')
+    }
+    // #67 U34: the game's own text for planet types and custom entities (descriptions.csv)
+    for (const r of await csvRows(src, 'data/strings/descriptions.csv')) {
+      const id = (r.id ?? '').trim(), type = (r.type ?? '').trim()
+      if (!id || id.startsWith('#') || (type !== 'PLANET' && type !== 'CUSTOM')) continue
+      const text = (r.text1 ?? '').trim()
+      if (text) put(typeDescs, { id: `${type}:${id}`, text, ...own }, 'csv')
+    }
+    // #67 (user, 2026-11-22): conditions with what the Conditions reference shows (description, icon,
+    // planet condition or colony one), plus how planets roll them (condition_gen_data.csv)
+    for (const r of await csvRows(src, 'data/campaign/market_conditions.csv')) {
+      const id = (r.id ?? '').trim()
+      if (!id || id.startsWith('#')) continue
+      put(conditions, { id, name: (r.name ?? '').trim() || id, desc: (r.desc ?? '').trim(), icon: (r.icon ?? '').trim(), planetary: (r.planetary ?? '').trim().toLowerCase() === 'true', ...own }, 'csv')
+    }
+    for (const r of await csvRows(src, 'data/campaign/procgen/planet_gen_data.csv')) {
+      const id = (r.id ?? '').trim(), cat = (r.category ?? '').trim()
+      if (id && !id.startsWith('#') && cat && !planetCategory.has(id)) planetCategory.set(id, cat)
+    }
+    {
+      const rows = await csvRows(src, 'data/campaign/procgen/condition_gen_data.csv')
+      for (const r of rows) {
+        const id = (r.id ?? '').trim()
+        if (!id || id.startsWith('#') || conditionGen.has(id)) continue
+        // the planet columns sit between requiresNotAny and "multipliers >>>"
+        const keys = Object.keys(r)
+        const from = keys.indexOf('requiresNotAny') + 1, to = keys.findIndex((k) => k.startsWith('multipliers'))
+        const on = keys.slice(from, to < 0 ? keys.length : to).filter((k) => k && Number((r[k] ?? '').trim()) > 0)
+        conditionGen.set(id, { group: (r.group ?? '').trim(), hazard: (r.hazard ?? '').trim() ? num(r.hazard) : undefined, on })
+      }
+    }
     await named('data/campaign/submarkets.csv', submarkets)
     await named('data/hulls/wing_data.csv', wings, 'id')
     await named('data/weapons/weapon_data.csv', weapons)
@@ -227,11 +311,12 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
     // ---- hulls: ship_data.csv rows plus .ship/.skin ids and sizes (light regex scan, no full parse)
     for (const r of await csvRows(src, 'data/hulls/ship_data.csv')) {
       const id = (r.id ?? '').trim()
-      if (!id || id.startsWith('#')) continue
+      // the name is the first column: "#Doom" comments the whole row out
+      if (!id || id.startsWith('#') || (r.name ?? '').trimStart().startsWith('#')) continue
       const prev = hulls.get(id)
       put(hulls, {
         id, name: (r.name ?? '').trim() || id, hullSize: prev?.hullSize ?? '', designation: r.designation ?? '',
-        tech: r['tech/manufacturer'] ?? '', hints: r.hints ?? '', isSkin: false, ...own
+        tech: r['tech/manufacturer'] ?? '', hints: r.hints ?? '', isSkin: false, tags: csvTags(r.tags), ...own
       }, true)
     }
     for (const file of await walk(path.join(src.dir, 'data', 'hulls'), ['.ship', '.skin'])) {
@@ -259,28 +344,42 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
     const st = await json(src, 'data/config/settings.json')
     if (st) {
       if (src.isCore || src.enabled) settings = mergeFactionJson(settings, st) as Record<string, unknown>
+      settingsLayers.push({ sourceId: S, settings: st as Record<string, unknown> })
       const graphics = (st.graphics ?? {}) as Record<string, unknown>
+      // #77: VoK's tech icons (and any other mod's) by key
+      const ti = graphics.ui_icons_tech_tree
+      if (ti && typeof ti === 'object' && !Array.isArray(ti)) for (const k of Object.keys(ti)) researchIcons.add(k)
       for (const [category, entries] of Object.entries(graphics)) {
         if (!entries || typeof entries !== 'object' || Array.isArray(entries)) continue
         for (const [key, p] of Object.entries(entries as Record<string, unknown>)) {
           if (typeof p !== 'string' || !/\.(png|jpe?g|webp)$/i.test(p)) continue
+          // #67 U34: raid objective icons and VoK's tech icons, offered by key with a preview
+          if (category === 'raidObjectives' || category === 'ui_icons_tech_tree') put(graphicsIcons, { id: `${category}/${key}`, category, key, path: slash(p), ...own }, true)
           if (category !== 'illustrations' && !/illustration|intel|events|backgrounds/i.test(category)) continue
           const id = `${category}/${key}`
           put(illustrations, { id, category, key, path: slash(p), ...own }, true)
         }
       }
     }
+    // #67 U49: a Saga Forge mod's illustrations that its export hasn't registered yet (no settings.json entry)
+    if (!src.isCore) {
+      const sp = await json(src, 'sagaforge/project.json')
+      const ill = (sp?.illustrations ?? {}) as Record<string, unknown>
+      for (const key of Object.keys(ill)) unexported.push({ key, mod: S, modName: src.name ?? S })
+    }
     // types: merged JSON, so later sources change entries key by key (R15, R19)
     const ce = await json(src, 'data/config/custom_entities.json')
     for (const [id, v] of Object.entries(ce ?? {})) {
       if (!v || typeof v !== 'object') continue
       entityRaw.set(id, mergeFactionJson(entityRaw.get(id) ?? {}, v) as Record<string, unknown>)
+      typeLayers.set(`e:${id}`, [...(typeLayers.get(`e:${id}`) ?? []), { sourceId: S, raw: v as Record<string, unknown> }])
       put(customEntityTypes, { id, name: id, ...own }, true)
     }
     const pl = await json(src, 'data/config/planets.json')
     for (const [id, v] of Object.entries(pl ?? {})) {
       if (!v || typeof v !== 'object') continue
       planetRaw.set(id, mergeFactionJson(planetRaw.get(id) ?? {}, v) as Record<string, unknown>)
+      typeLayers.set(`p:${id}`, [...(typeLayers.get(`p:${id}`) ?? []), { sourceId: S, raw: v as Record<string, unknown> }])
       put(planetTypes, { id, name: id, ...own }, true)
     }
     // vanilla's random generation tables (R18); a mod's rows are merged by id
@@ -294,7 +393,7 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
       let t = ''
       try { t = await fsp.readFile(file, 'utf8') } catch { continue }
       filesRead++
-      if (!t.includes('createStarSystem')) continue
+      if (!t.includes('createStarSystem') && !t.includes('getStarSystem(')) continue
       codeFiles.push({ text: t, file: slash(path.relative(src.dir, file)), sourceId: S })
     }
     const snd = await json(src, 'data/config/sounds.json')
@@ -333,7 +432,19 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
     // ---- variant ids (file names; the game uses variantId, which matches the file name in practice)
     for (const file of await walk(path.join(src.dir, 'data', 'variants'), ['.variant'])) {
       const id = path.basename(file, '.variant')
-      put(variants, { id, name: id, ...own }, true)
+      // #67 U39: its hull and display name (a light regex read, like the .ship scan)
+      filesRead++
+      let t = ''
+      try { t = await fsp.readFile(file, 'utf8') } catch { /* unreadable: id only */ }
+      const hull = /["']?hullId["']?\s*:\s*["']([^"']+)["']/.exec(t)?.[1]
+      const dn = /["']?displayName["']?\s*:\s*["']([^"']*)["']/.exec(t)?.[1]
+      put(variants, { id, name: id, ...(hull ? { hull } : {}), ...(dn ? { displayName: dn } : {}), ...own }, true)
+    }
+    // #67 U39: vanilla's ship roles (which variants a faction's fleets use for each role); a mod's file adds to them
+    const roles = await json(src, 'data/world/factions/default_ship_roles.json')
+    for (const [role, vs] of Object.entries(roles ?? {})) {
+      if (!vs || typeof vs !== 'object' || Array.isArray(vs)) continue
+      for (const [variant, w] of Object.entries(vs as Record<string, unknown>)) if (typeof w === 'number' || typeof w === 'string') shipRoles.push({ role, variant, weight: num(w), definedBy: S })
     }
 
     // ---- portraits (any image under graphics/portraits)
@@ -424,9 +535,13 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
     for (const l of layers) eff = mergeFactionJson(eff, l.raw) as Record<string, unknown>
     const id = String(eff.id ?? path.basename(key, '.faction'))
     const color = Array.isArray(eff.color) ? (eff.color as unknown[]).map((x) => num(x)) : null
+    // #67 (user, 2026-11-21): each layer's own colour, so the editor shows the colour of the sources
+    // that count for the active mod (vanilla, it, its listed mods), not of every installed mod
+    const colors = layers.flatMap((l) => (Array.isArray(l.raw.color) ? [{ sourceId: l.sourceId, color: (l.raw.color as unknown[]).map((x) => num(x)) }] : []))
     const custom = (eff.custom ?? {}) as Record<string, unknown>
     factions.set(id, {
-      id, name: String(eff.displayName ?? titleCase(id)), color, file: layers[0].file, logo: String(eff.logo ?? ''), crest: String(eff.crest ?? ''),
+      id, name: String(eff.displayName ?? titleCase(id)), color, colors, layerValues: layers.length > 1 ? layers.map((l) => ({ sourceId: l.sourceId, ...(typeof l.raw.displayName === 'string' ? { name: l.raw.displayName } : {}), ...(typeof l.raw.logo === 'string' ? { logo: l.raw.logo } : {}), ...(typeof l.raw.crest === 'string' ? { crest: l.raw.crest } : {}) })) : undefined, file: layers[0].file, logo: String(eff.logo ?? ''), crest: String(eff.crest ?? ''),
+      knownShips: layers.map((l) => { const k = (l.raw.knownShips ?? {}) as Record<string, unknown>; return { sourceId: l.sourceId, hulls: strList(k.hulls), tags: strList(k.tags) } }).filter((k) => k.hulls.length || k.tags.length),
       listed: listedFactionFiles.has(key), showInIntelTab: eff.showInIntelTab !== false && custom.hideInIntelTab !== true,
       definedBy: layers[0].sourceId, changedBy: layers.slice(1).map((l) => l.sourceId)
     })
@@ -434,12 +549,22 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
   }
 
   const ui: UiSettings = { colors: {}, fonts: {} }
-  for (const [k, v] of Object.entries(settings)) {
-    if (Array.isArray(v) && (v.length === 3 || v.length === 4) && v.every((x) => typeof x === 'number')) ui.colors[k] = v as number[]
-    else if (typeof v === 'string' && /\.fnt$/i.test(v)) ui.fonts[k] = v
+  const uiOf = (o: Record<string, unknown>) => {
+    const out: { colors: Record<string, number[]>; fonts: Record<string, string> } = { colors: {}, fonts: {} }
+    for (const [k, v] of Object.entries(o)) {
+      if (Array.isArray(v) && (v.length === 3 || v.length === 4) && v.every((x) => typeof x === 'number')) out.colors[k] = v as number[]
+      else if (typeof v === 'string' && /\.fnt$/i.test(v)) out.fonts[k] = v
+    }
+    return out
   }
+  Object.assign(ui, uiOf(settings))
+  // #67 U33: each source's own colours and fonts (in load order), so the dialog preview uses the mod's game's (indexview.ts)
+  ui.layers = settingsLayers.map((l) => ({ sourceId: l.sourceId, ...uiOf(l.settings) })).filter((l) => Object.keys(l.colors).length || Object.keys(l.fonts).length)
 
-  const types = typeInfos(planetTypes, planetRaw, customEntityTypes, entityRaw)
+  const types0 = typeInfos(planetTypes, planetRaw, customEntityTypes, entityRaw)
+  // #67 U33: a type several sources set keeps each one's JSON (indexview.ts merges the visible ones)
+  const withLayers = <T extends { id: string }>(l: T[], k: string): T[] => l.map((t) => { const ls = typeLayers.get(`${k}:${t.id}`); return ls && ls.length > 1 ? { ...t, rawLayers: ls } : t })
+  const types = { planets: withLayers(types0.planets, 'p'), entities: withLayers(types0.entities, 'e') }
   const codeSystems = codeFiles.flatMap((f) => parseSystemsJava(f.text, f.file, f.sourceId, (id) => systems.has(id)))
 
   // ---- #64: the imported sector snapshot: what the files and Java sources don't show, tied to its mod
@@ -474,17 +599,29 @@ export async function buildIndex(install: ValidInstall, opts: IndexOptions): Pro
   const active = opts.activeModDir ? sources.find((s) => s.writable && s.writeDir === opts.activeModDir) : undefined
   const sortByName = <T extends { name: string }>(m: Map<string, T>) => [...m.values()].sort((a, b) => a.name.localeCompare(b.name))
   const sortByName2 = (l: SagaQuestInfo[]) => l.sort((a, b) => a.title.localeCompare(b.title))
+  /** #67: each condition with how planets roll it; a category column (cat_hab3) stands for its planet types. */
+  const conditionsWithGen = (): Map<string, ConditionInfo> => {
+    const byCat = new Map<string, string[]>()
+    for (const [type, cat] of planetCategory) byCat.set(cat, [...(byCat.get(cat) ?? []), type])
+    const out = new Map<string, ConditionInfo>()
+    for (const [id, c] of conditions) {
+      const g = conditionGen.get(id)
+      out.set(id, g ? { ...c, group: g.group, hazard: g.hazard, onPlanets: [...new Set(g.on.flatMap((h) => (h.startsWith('cat_') ? byCat.get(h) ?? [] : [h])))] } : c)
+    }
+    return out
+  }
 
   const index: GameIndex = {
     install, modsMode: opts.mode, workspaceDir: opts.workspaceDir, modsRoot, activeSourceId: active?.id ?? null, sources,
     factions: sortByName(factions), people: sortByName(people), markets: sortByName(markets), systems: sortByName(systems),
-    items: sortByName(items), industries: sortByName(industries), conditions: sortByName(conditions), submarkets: sortByName(submarkets),
+    items: sortByName(items), industries: sortByName(industries), conditions: sortByName(conditionsWithGen()), submarkets: sortByName(submarkets),
     hulls: sortByName(hulls), variants: sortByName(variants), wings: sortByName(wings), weapons: sortByName(weapons), hullmods: sortByName(hullmods),
-    illustrations: [...illustrations.values()], portraits, customEntityTypes: types.entities, planetTypes: types.planets,
+    illustrations: [...illustrations.values()], unexportedIllustrations: unexported.filter((u) => ![...illustrations.values()].some((i) => i.key === u.key)), portraits, customEntityTypes: types.entities, planetTypes: types.planets,
     procgen: procgenData(procStars, [...procRows.values()]), codeSystems,
     sectorSize: [Number(settings.sectorWidth) || 164000, Number(settings.sectorHeight) || 104000],
-    dropGroups,
+    dropGroups, shipRoles, salvageGen: [...salvageGen.values()], skills: [...skills.values()].sort((a, b) => a.name.localeCompare(b.name)), typeDescs: [...typeDescs.values()], graphicsIcons: [...graphicsIcons.values()].sort((a, b) => a.id.localeCompare(b.id)),
     places: [...places.values()].sort((a, b) => a.name.localeCompare(b.name)), sagaQuests: sortByName2([...sagaQuests.values()]), sagaEncounters: sortByName(sagaEncounters), sagaPools: sortByName(sagaPools), snapshot,
+    researchTechs: [...researchTechs.values()].sort((a, b) => a.modId.localeCompare(b.modId) || a.tier - b.tier || a.name.localeCompare(b.name)), researchFactions: sortByName(researchFactions), researchIcons: [...researchIcons].sort(),
     sounds: [...sounds].sort(), music: [...music].sort(), ruleCounts, ruleFiles, ui, problems,
     nameCategories: [...nameCats.values()].sort((a, b) => a.id.localeCompare(b.id)),
     shipNameLists: [...shipLists.values()].sort((a, b) => a.id.localeCompare(b.id)),

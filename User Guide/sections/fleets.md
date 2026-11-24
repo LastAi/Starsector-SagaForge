@@ -5,11 +5,12 @@ types, a preview of what a faction's doctrine builds, and Nexerelin's new-game f
 
 ## How it works
 
-The left column has three lists, four with Nexerelin: **Named fleets** (**+ New…** makes one),
+The left column has three lists, four with Nexerelin: **Named fleets** (**+ New…** makes one,
+**+ Copy…** copies the selected one, and the **inactive** box shows or hides inactive ones),
 **Fleet type names**, **Doctrine preview** (one entry per faction your mod adds or changes) and
 **New-game fleets (Nexerelin)**. The middle shows the one you picked.
 
-![The named fleet Haven Guard, with Commodore Reyes as captain](../img/fleets-guard.png)
+![The named fleet Butters's Prowl, with Butters as captain](../img/fleets-guard.png)
 
 ### Named fleets
 
@@ -17,7 +18,7 @@ A named fleet is a fixed fleet: a story fleet the player meets again and again, 
 strength. On its own it does nothing in the game: an encounter brings it into the sector (see
 [Encounters › Use a named fleet](encounters.md#use-a-named-fleet)).
 
-- **Fleet name**: its name on the map ("Haven Guard"). Empty: the faction's name for its fleet
+- **Fleet name**: its name on the map ("Butters's Prowl"). Empty: the faction's name for its fleet
   type.
 - **Faction**: whose fleet it is: its flag, its relations and the player's reputation when
   fighting it.
@@ -28,9 +29,21 @@ strength. On its own it does nothing in the game: an encounter brings it into th
   a defeat and commands the fleet again next time; ticked, the captain dies with the fleet and is
   gone for good.
 - **Ships**: one row per ship, with its **Variant** (from the game, the installed mods and Ship
-  Editor), an optional **Ship name** (written without the faction's prefix; the game adds it,
-  "VCS Stubborn") and the **Flag** button for the flagship, which the captain commands.
+  Editor; each shown with its hull and variant name), an optional **Ship name** (written without
+  the faction's prefix; the game adds it, "CAT Thirty Days") and the **Flag** button for the
+  flagship, which the captain commands. The variant list shows **only <faction>'s ships** (the
+  hulls the fleet's faction knows) by default; untick it, or use the list's **+N**, for the rest.
+- **+ From a faction's fleet…** gives a starting list of ships as that faction's own fleets would
+  have them: pick a **Faction**, a **Kind** (patrol, raiders, carriers, phase, trade convoy,
+  civilian) and a **Size**, and the ships are drawn by vanilla's ship roles and weights from the
+  hulls the faction knows (**Reroll** for another draw). **Add** puts them after the list, **Replace
+  the ships** instead of it; then edit them like any others.
 - **Used by**: the encounters that spawn it.
+
+The header bar has the fleet's name and id, **Inactive** (kept in the editor, not exported; nor
+are the encounters that use it, and Problems lists them) and **Delete**.
+
+![Ships from a faction's fleet: a medium Hegemony patrol for the tax collector](../img/fleets-fromfaction.png)
 
 Every defeat of the fleet is counted in the game (`$global.sagaforge_fleet_<id>_defeats`, shown at
 the top of the form), so a quest can check how often the player has beaten it.
@@ -39,7 +52,7 @@ the top of the form), so a quest can check how often the player has beaten it.
 
 **For every faction** lists fleet types and the name a fleet of that type gets when its faction
 doesn't name the type itself. Use it for your own fleet type ids, so every faction's fleets of that
-type have a name. (A single faction's own names are on its **Names & ranks** tab, see
+type have a name. (A single faction's own names are on its **Names** tab, see
 [Factions › The faction tabs](factions.md#the-faction-tabs).)
 
 ### Doctrine preview
@@ -51,7 +64,7 @@ trade-off (vanilla's factions keep the total at 7). It uses vanilla's own number
 randomness on top, so a real fleet varies. **Edit the doctrine (Factions › Doctrine)** jumps to the
 faction.
 
-![What the Vanguard Compact's doctrine makes](../img/fleets-doctrine.png)
+![What Heliopolis's doctrine makes](../img/fleets-doctrine.png)
 
 ### New-game fleets (Nexerelin)
 
@@ -88,13 +101,14 @@ The plan is kept in `sagaforge/fleets.json` (new-game fleets: `sagaforge/nexerel
 
 ### Make a named fleet
 
-1. In **Named fleets**, press **+ New…**, type the **Name** (e.g. `Haven Guard`) and press
-   **Create**. The id gets your prefix (`vgc_haven_guard`).
+1. In **Named fleets**, press **+ New…**, type the **Name** (e.g. `Tax Collector`) and press
+   **Create**. The id gets your prefix (`toc_tax_collector`).
 2. Pick the **Faction** and a **Fleet type** (`patrolMedium`).
 3. Pick a **Captain** if one of your characters commands it (see
    [People › Add a character](people.md#add-a-character)), and decide whether **the captain dies**
    when the fleet is beaten.
-4. Press **+ Ship** for each ship and type or pick its **Variant** (`enforcer_Assault`,
+4. Press **+ From a faction's fleet…** for a starting list (a medium Hegemony patrol, say) and
+   **Add** it, or **+ Ship** for each ship and type or pick its **Variant** (`enforcer_Assault`,
    `hammerhead_Balanced`…). Give the important ones a **Ship name**, and click **Flag** on the
    flagship.
 5. Bring it into the game with an encounter: see
@@ -102,18 +116,23 @@ The plan is kept in `sagaforge/fleets.json` (new-game fleets: `sagaforge/nexerel
 
 ![The New named fleet dialog](../img/fleets-new.png)
 
-In game: wherever its encounter spawns it, the player meets the Haven Guard with the same four
-ships, the VCS Free Haven as flagship and Commodore Reyes in command.
+In game: wherever its encounter spawns it, the player meets the same ships with the same flagship
+and captain (in The Other Captain, Anselm Varro on the hound the tax collector flies).
+
+For several similar fleets, select one and press **+ Copy…**: the copy has everything, under a new
+name and id. To keep a draft out of the game, tick **Inactive**.
+
+![The Tax Collector, a named fleet of The Other Captain](../img/fleets-tax.png)
 
 ### Name fleet types
 
 1. In **Fleet type names**, click **For every faction**.
 2. In the last row, type or pick a fleet type id: one of vanilla's, or your own (e.g. an id you
-   typed as **Fleet type** of an encounter).
-3. Type its **Name** (e.g. `Compact Patrol`). **Game's name** shows the name the game already has
+   typed as **Fleet type** of an encounter, such as Heliopolis's `hel_picket`).
+3. Type its **Name** (e.g. `Prowler Picket`). **Game's name** shows the name the game already has
    for it, if any. ✕ removes a row.
 
-![The fleet type patrolMedium named "Compact Patrol"](../img/fleets-types.png)
+![Heliopolis's own fleet type hel_picket, named "Prowler Picket"](../img/fleets-types.png)
 
 In game: fleets of that type that have no name of their own, and whose faction doesn't name the
 type, are called by this name on the map.

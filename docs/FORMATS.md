@@ -179,6 +179,64 @@ Read through `Factions.CUSTOM_*`:
   the packages in order, core first, so a vanilla command shadows a mod command with the same
   name. SagaLib's commands all start with `SF_`.
 - 0.98.5a loads more than one rules file: see [Rule file list](#rule-file-list-code-in-game-pending).
+- **Operators in a command line** (javap of `com.fs.starfarer.campaign.rules`, 0.98a-RC8; task #79):
+  each script and condition line is split by `Misc.tokenize`. An unquoted `=` (also `==`, `!=`, `<`,
+  `>`, `=-` …) is an operator token, also inside a word: `k=v` is `k`, `=`, `v`. A line whose first
+  token isn't a `$variable` is a command, and a command line with any operator token (other than a
+  leading `!`) throws `RuleException: Operators (except for '!') not allowed in command invocations`
+  while the rules load; two operators in any line throw "Multiple operators". A double-quoted token is
+  one literal, `=` and `$` included (`"text=Heads or tails?"`, `"who=$global.x"`: the game doesn't read
+  the `$` there). That's why `SF_RunPlugin` takes each `"key=value"` in quotes.
+
+## Plugins: the mod's own Java (code, 0.98a-RC8; task #79, SagaLib 1.4)
+
+- **`SettingsAPI.getInstanceOfScript(className)`** (javap, `ScriptStore`): `Class.forName(name, true,
+  <the script class loader>)` with the `Class` cached by name, then `newInstance()` on **every call**
+  (a new object each time). Any `Exception` comes back as `RuntimeException("Problem loading class
+  [<name>]", cause)`; a class not found isn't cached. The script class loader sees every enabled mod's
+  jars (mod_info.json `"jars"`) and its loose `data/scripts` sources (Janino). SagaLib's
+  `SF_RunPlugin` uses it (SagaLib FORMAT.md, "Plugins").
+- The game's class loader refuses most of `java.io`, `java.nio.file.File*`, `java.lang.reflect` and
+  `javax.script` in mod classes (SagaLib's SandboxTests): a plugin can't use them either.
+- **What Saga Forge exports**: a Plugin node `<n>` of quest `<q>` with declared results is a rule
+  `<q>_<n>` (the node's entry) with `SF_RunPlugin <class> "quest=<q>" "node=<n>" "key=value"…` then
+  `FireBest <q>_<n>_result`; one rule per connected result on trigger `<q>_<n>_result` with the
+  condition `$global.<q>_<n>_result == <result>`; and a fallback `<q>_<n>_next` with no conditions
+  (FireBest prefers the rule with more conditions) that continues at "otherwise". A node without
+  results (or none connected) is one rule: the line, then what follows. An Action's "Run a plugin"
+  is the same line with its quest and node; a world event's or progress stage's has neither (its
+  result goes to SagaLib's local `$sagaforge_plugin_result`).
+- The editor lists the classes of the jars the mod's `mod_info.json` names under `"jars"` from each
+  jar's zip central directory and the class files' headers (`src/main/jars.ts`; no Java needed): a
+  class is a plugin when it implements `lastai.sagalib.api.SagaPlugin`, directly or through a
+  superclass or interface in those jars, and is public and not abstract.
+- **Recipe: a plugin jar for a mod** (what `mods/seventynine_a/build.sh` does):
+  1. Write a class that implements `lastai.sagalib.api.SagaPlugin`:
+     ```java
+     package mymod.plugins;
+     import lastai.sagalib.api.SagaPlugin;
+     import lastai.sagalib.api.SagaPluginContext;
+     import java.util.Map;
+     public class ShrinkMarkets implements SagaPlugin {
+         public String run(SagaPluginContext ctx, Map<String, String> args) {
+             int by = Integer.parseInt(args.containsKey("by") ? args.get("by") : "1");
+             // … the work, e.g. Global.getSector().getEconomy().getMarketsCopy() …
+             ctx.addText("Every colony shrinks by " + by + ".");
+             return "done"; // a result the Plugin node declares, or null for none
+         }
+     }
+     ```
+     A public class with a public no-argument constructor; keep no state in fields (a new instance runs
+     each time).
+  2. Compile against the game's API and SagaLib's jar, for Java 8 bytecode (what SagaLib uses; the
+     game runs Java 17, so `--release 17` works too):
+     `javac --release 8 -cp "<Starsector>/starsector-core/starfarer.api.jar;<mods>/SagaLib/jars/SagaLib.jar" -d build src/mymod/plugins/*.java`
+     (use `:` instead of `;` on Linux; add `json.jar`, `log4j-1.2.9.jar`, `lwjgl.jar` from
+     starsector-core if the code uses them). Then `jar cf jars/mymod_plugins.jar -C build .`
+  3. List the jar in the mod's `mod_info.json`: `"jars": ["jars/mymod_plugins.jar"]`. Don't put
+     SagaLib's classes into it; Saga Forge's export adds the SagaLib 1.4.0 dependency.
+  4. In Saga Forge, press **Rescan jars** on the Plugin node (or save, which reads the mod again): the
+     class shows in the picker.
 
 ## Token replacement (code)
 
@@ -209,6 +267,103 @@ Read through `Factions.CUSTOM_*`:
   AddBarEvent (option, blurb), AddRaidObjective (name). With **another id** (the parameter's own
   text): AddRaidObjective's tooltip, SetStoryOption's log text. **No replacement**: ShowMapMarker's
   title and text (`getString`).
+
+## One-name characters (API source and javap, 0.98a-RC8 and 0.98.5a-RC5; task #79)
+
+- **Vanilla's person tokens** (`CoreRuleTokenReplacementGeneratorImpl`): for the active person (the
+  dialog target's `getActivePerson()`, else a fleet's commander) `$PersonName` and `$personName` =
+  `getFullName()`, `$personFirstName` = `getFirst()`, `$personLastName` = `getLast()`. **0.98.5a adds**
+  `$PersonFirstName` and `$PersonLastName` (and `$PlayerFirstName`, `$PlayerLastName`); 0.98a has no
+  capitalised first or last name token. The player's `$playerLastName` falls back to the first name
+  when the last is blank; the active person's tokens have no such fallback.
+- `FullName.getFullName()` is `(first + " " + last).trim()`, and `Person.getNameString()` returns it.
+  In the engine (`starfarer_obf.jar`) every class that reads a FullName for display calls
+  `getFullName()` (comm directory, market info, officer data, intel and dialog UI classes); the only
+  engine use of `getFirst()` / `getLast()` is `FleetMember.writeReplace`, which drops a "steady",
+  level-1 captain whose first **and** last names are both empty when saving (a one-name person keeps
+  a last name, so isn't affected). So a one-name person, first name empty and the name in the last
+  slot, shows as just the one name everywhere in vanilla's UI by the code; **in game pending**: the
+  comm directory, intel (Contacts) and a fleet's tooltip and dialog (INGAME-CHECKS "Task #79
+  one-name characters").
+- Where vanilla's API uses the first name: the generator above; `BaseHubMission` puts
+  `$personFirstName` into the mission's memory (generators replace before memory, so a generator's
+  value wins); `BaseEventPlugin.addPersonTokens` (`$<prefix>FirstName`, old event intel);
+  `FleetInteractionDialogPluginImpl` (`$firstName` in the `fleetInteractionDialog` strings, which no
+  vanilla string uses); `CoreCampaignPluginImpl` (the player's `$firstName` memory key). Vanilla's
+  rules.csv uses `$personFirstName` twice.
+- **Generators are merged in list order** (`CampaignEngine$3.getTokenReplacements`: a new HashMap,
+  `putAll` of each generator's map in turn), so for the same token **the later generator wins**, then
+  the merged tokens are replaced longest first. Vanilla adds its generator in
+  `CoreLifecyclePluginImpl.onGameLoad`; `ModManager.getEnabledModPlugins` lists the core lifecycle
+  plugin before every mod's plugin, so a generator a mod adds in its own `onGameLoad` comes after
+  vanilla's (on a new game too: `onGameLoad(true)` runs after `onNewGameAfterTimePass`). One added
+  earlier (in `onNewGameAfterEconomyLoad`) comes before it and loses. SagaLib's one-name generator is
+  added in `onGameLoad` for that reason (SagaLib FORMAT.md, "One-name characters").
+- Saga Forge: **People › One name** stores `oneName: true` with the one name in `name.last`
+  (`src/shared/personname.ts`); exported as `"oneName": true` with `name.first` empty. The person's
+  `$<id>_firstName` token is the one name. Play and the dialog preview fill `$personFirstName` /
+  `$PersonFirstName` with it as SagaLib does. Another mod's person whose index name is one word is
+  read as a one-name person.
+
+## Node groups (Saga Forge's own format; task #67 U43, 2026-11-23)
+
+Not a game format: how Saga Forge keeps node groups. The game never sees a group; the export
+writes the normal nodes it stands for. Shared code: `src/shared/nodegroups.ts`.
+
+- **A definition** (`<id>.group.json`): `format` (1), `id` (lowercase words joined by dots, the
+  first one a namespace: `sagaforge.` for the built-in ones, an author's or a mod's prefix for
+  others), `label`, `description`, `version` (a number the author bumps) and `changes` (what changed,
+  shown on Replace), `requires` (`{"sagalib": "1.4.0", "game": "0.98a"}`, shown), `summary` (the
+  card's text, with `{{field}}`), `fields`, `entry`, `exits`, `nodes`, `edges`.
+- **Fields**: `{key, label, type, default?, options?, help?, required?}`; types `text`, `longtext`,
+  `number`, `bool`, `choice` (`options`: values or `{value, label}`), and the pickers `faction`,
+  `person`, `encounter`, `item`, `quest`, `place`. Filled in automatically and never shown:
+  `{{prefix}}` (the mod's prefix), `{{instance}}` (the placed node's id), `{{quest}}` (the quest's id).
+- **Nodes** are normal quest nodes (any type but Start and group: no groups inside groups), with
+  ids local to the group. In any string, `{{key}}` is replaced by the field's value (a string that
+  is only `{{key}}` takes the value's type, so `"amount": "{{amount}}"` stays a number). Any object
+  (a node, an option, an action) may have `"if"`: `key`, `!key`, `key == value`, `key != value`,
+  joined with `&&` / `||`; when false it is left out (with its edges).
+- **`entry`**: the node incoming connections go to. **`exits`**: `{key, label, node, handle}`, the
+  placed node's output dots; a connection from exit `key` leaves from `node`'s output `handle`
+  inside. **`edges`**: `{from, handle, to}` between the group's nodes.
+- **Placed** (a quest node `{"type": "group", "group": <id>, "values": {...}, "title"?}`): a missing
+  value is the field's default. Expanded ids are `<placed id>__<node id>`, and a dialog's option ids
+  get the same prefix (option ids are the quest's), so a group can be placed many times; rule ids
+  and text keys stay stable while the placed node keeps its id.
+- **Identity**: `id` names the group across versions; the **hash** (computed from the content with
+  sorted keys, never written) is one exact version. Same id and hash = the same group, shown once.
+  Same id, another hash: the higher `version` is newer; the same version is "a modified copy".
+- **Where groups live**: built in (`src/shared/groups`, read-only); the **library** (Settings › Node
+  group library, default Saga Forge's data folder › nodegroups), offered in every mod; the **mod's
+  copies** (`sagaforge/nodegroups/<id>.group.json`). Placing a group copies it into the mod: a mod
+  never depends on files outside it. One version per id in a mod.
+- **Replace** (another version of the mod's copy): values are kept by field key where the type is
+  the same (a choice value the new version doesn't list goes back to the default); new fields take
+  their defaults; dropped fields and connections from exits that are gone are listed before
+  confirming. **Expand into nodes** replaces a placed group with its nodes (ids `<placed>_<node>`),
+  one way.
+- **Built in**: `sagaforge.fleet_response` (Fleet response, below).
+
+### The hail on contact and the Fleet response (rules.csv and API source, 0.98a; task #67 U43)
+
+Vanilla's interception, as the Knights of Ludd's "sacred protectors" and the Hegemony's
+investigators: `BeginFleetEncounter` (fired when the fleet screen opens) runs
+`MakeOtherFleetPreventDisengage <reason> true` and `HailPlayer`, which opens the fleet's comm link
+(`OpenCommLink`) at once. Branches end with `ShowDefaultVisual` + `EndConversation NO_CONTINUE`
+(vanilla's `cutCommLinkNoText`): back to the fleet screen. Flags are set per reason
+(`Misc.setFlagWithReason`); `MakeOtherFleetAllowDisengage` beats prevent, and prevent only holds
+while the fleet's AI chooses to engage (a much stronger player can leave).
+
+- Saga Forge's hail: `<encounter>_hail`, `BeginFleetEncounter`, `$entity.sagaforge_encounter == <id>
+  score:1000` + `!$sagaforge_hailed`; `$sagaforge_hailed = true 0` (once per meeting), `FleetDesc`,
+  `MakeOtherFleetPreventDisengage hail true`, `HailPlayer`. Only with a comm-link dialog. A warning
+  when "player may disengage" is on (it would let the player leave anyway).
+- Fleet response: let them go = `SF_Despawn` (SagaLib 1.4: without an id, the dialog's fleet; its
+  encounter's outcome is avoided and it withdraws); fight = `MakeOtherFleetAllowDisengage sagaforge
+  false`, `MakeOtherFleetHostile sagaforge true`, `MakeOtherFleetAggressive sagaforge true`,
+  `MakeOtherFleetPreventDisengage sagaforge true`; flee = `MakeOtherFleetPreventDisengage sagaforge
+  false`, `… hail false`, `$entity.sagaforge_fled = true`. Each then cuts the comm link.
 
 ## Hub missions (API source)
 
@@ -999,7 +1154,8 @@ core code at runtime), RetroLib (ship retrofits), sidebarLib (UI), VideoLib (vid
 planets through Java plugins), Variants Lib (fleet variant selection through Java plugins and
 settings), Particle Engine, Officer Extension, Crew Replacer, Second-in-Command. None has a
 campaign content format that a quest, faction, person or location would use. The decisions are
-in PLAN.md §10.
+in PLAN.md §10. (Theory of Toolbox and BMO are looked at more closely in "Economy and colony mods"
+below, task #66; the decision is unchanged.)
 
 ### Optional mods and mod conditions (task #60, SagaLib 1.3; code 2026-11-17)
 
@@ -1038,6 +1194,248 @@ in-game results are recorded below when the test mod `sixty_a` has run (INGAME-C
   to small mods.
 - **Answered (#63, code)**: ModPlugins run in mod order (Nexerelin's `onNewGameAfterEconomyLoad`
   before SagaLib's); see "mod_info.json and dependencies".
+
+### Economy and colony mods (installed mods, 0.98a-RC8; task #66, 2026-11-19)
+
+The facts behind PLAN.md §10.8. Read from the installed mods' data files and with `javap` on their
+jars (none ships sources in the jar; Seats of Power has `jars/src.rar`). "Merged" means the mod reads
+the file with `getMergedSpreadsheetDataForMod(key, path, modId)` or `getMergedSpreadsheetData(key,
+path)`, so another mod can ship rows at the same path, keyed by that column.
+
+**AoTD and Industrial.Evolution are never played together** (user, 2026-11-19). Neither
+`mod_info.json` says so (the game has no key for it, see "mod_info.json and dependencies"). A mod can
+support both optionally, but no player has both.
+
+#### Vanilla's commodity search (API, 0.98a-RC8)
+
+- `HubMissionWithSearch.pickCommodity()` runs the market search, then picks a `CommodityOnMarketAPI`
+  (a commodity **at** a market) from every matching market's `getAllCommodities()`, skipping
+  `isMeta()` and `isNonEcon()` ones. 36 criteria, each `require…` / `prefer…`: `CommodityIsNotPersonnel`,
+  `CommodityLegal` / `Illegal` (to the market's faction), `CommodityIs(id)` (one id per call, all
+  must hold), `CommodityTags(ReqMode, tags…)`, and `AtLeast` / `AtMost` for `Available`, `Demand`,
+  `Production`, `Surplus`, `Deficit` (economy units, ints) and `BasePrice` (float).
+- Tradeable economy commodities in vanilla (`commodities.csv`, not `nonecon` and not `meta`): supplies,
+  fuel, crew, marines, food, organics, volatiles, ore, rare_ore, metals, rare_metals, heavy_machinery,
+  domestic_goods, organs, drugs, hand_weapons, luxury_goods, lobster. `ships` is `meta`; AI cores,
+  survey data, blueprints, ship_weapons and credits are `nonecon`.
+- Amounts are in **economy units**; real cargo units = units × the commodity's `econUnit`
+  (`CommoditySpecAPI.getEconUnit()`).
+- (Task #75, API source 0.98a-RC8 and 0.98.5a-RC5.) `requireCommodityIs(id)` adds one requirement per
+  call and all must hold, so "one of these commodities" can't be built from it. `getSearch()` is
+  public and `SearchData.commodityReqs` is a public list of `CommodityRequirement`
+  (`commodityMatchesRequirement(CommodityOnMarketAPI)`), so SagaLib adds its own "id is one of"
+  requirement there. `pickCommodity()` resets the search afterwards.
+- vanilla's `econUnit` (commodities.csv): supplies 750, fuel 1500, crew 500, marines 100, food 2000,
+  organics 1500, volatiles 200, ore 5000, rare_ore 500, metals 2000, rare_metals 200,
+  heavy_machinery 300, domestic_goods 1000, organs 200, drugs 400, hand_weapons 200, luxury_goods 500,
+  lobster 500. So 0.1 economy units is 200 food or 20 transplutonics. Vanilla's own
+  `CheapCommodityMission` sizes its amount by value (credits ÷ base price), not by `econUnit`.
+- Rule commands read `$` arguments from memory: `AddRemoveCommodity`, `PlayerHasCargo` and
+  `ShowResCost` use `Token.getString/getFloat(memoryMap)`, and `AddRemoveCommodity <id> - <qty>`
+  (a lone `-` is an operator token) takes. Memory numbers stored as Floats print as "200.0" in text, so
+  SagaLib stores a commodity target's numbers as Integers.
+
+#### AoTD - Theory of Toolbox 1.0.13 (`aotd_theory_of_toolbox`; needs LazyLib, Ashlib, BMO)
+
+AoTD's economy module; Vaults of Knowledge and Seats of Power depend on it.
+- **Game version**: 1.0.13 refuses to run on anything but exactly 0.98a-RC8
+  (`onAboutToStartGeneratingCodex`). A 0.98.5a version comes out once 0.98.5a's final RC is out, and
+  it works the same way, including the replacement API jar (user, from ToT's developer, 2026-11-19).
+  The facts here are 1.0.13's until that version is checked.
+- **Its own `starfarer.api.jar`** (`0.98a/starfarer.api.jar`, plus a patcher in `dev/`): the player
+  copies it over the game's. Compared class by class with the RC8 jar, **only
+  `impl/campaign/econ/impl/BaseIndustry.class` differs**, with the same method signatures. Only
+  `getMaxDeficit(String...)` changed: when `isModEnabled("aotd_theory_of_toolbox")`, a market's local
+  supply goes to its industries in their `order`; otherwise it works as vanilla. So code compiled against
+  the vanilla jar (SagaLib) runs unchanged with it. Without the swapped jar, ToT logs "Market Test
+  Failed" and asks for it. The install here (`D:\Starsector`) still has the vanilla jar.
+- **Replaces the sector's economy** by reflection: `AoTDEconomy extends
+  com.fs.starfarer.campaign.econ.Economy`, set into the sector's private `economy` field. Markets get
+  `AoTDCommodityOnMarket` objects (a `CommodityOnMarket` subclass) with their own getters:
+  - **`getMaxDemand()` returns `min(1, demand)`**: always 0 or 1 (bytecode `iconst_1; getfield demand;
+    Math.min`). Vanilla's `…DemandAtLeast(n)` for n ≥ 2 never matches.
+  - `getMaxSupply()` returns its own `supply`. `getDeficitQuantity()` and `getExcessQuantity()` use their
+    own formulas (deficit minus trade, excess from `econUnit × 3`). They still measure shortage and
+    surplus, but the numbers don't mean what vanilla's do.
+  - `getAvailable()` still works: the available stat gets a flat `aotd_local` modifier (the stockpile).
+  - **Found in game (task #75, 2026-11-19)**: with ToT, vanilla's `…DeficitAtLeast(1)` almost only
+    matches **lobster** (its only producer is Volturn): a commodity target "legal, not personnel, not
+    military, the market is short of it, prefer expensive" picked lobster at four markets in a row. A
+    quest that wants variety under ToT shouldn't require a shortage (prefer it instead). ToT's units
+    were seen as documented: domestic_goods econUnit 250, crew 2500.
+- **Economy units per commodity**: `data/campaign/aotd_econ_sheet.csv`, merged (key `commodityId`, mod
+  `aotd_theory_of_toolbox`). Header: `commodityId,supplyEconUnitMult,demandEconUnitMult,
+  calculationScript,internalCut,externalCut,econUnitMult`. ToT's 19 rows cover the 18 commodities above
+  plus `ships`. `econUnitMult` ≠ 1 multiplies the spec's `econUnit` by reflection (`setEconUnit`) for the
+  whole game, for example crew ×5, food ×0.1, rare_metals ×10, domestic_goods ×0.25. A commodity
+  with no row keeps its `econUnit` and gets defaults (multipliers 1, cuts 0.05 / 0.15). VoK ships 4 rows
+  for its own commodities.
+- **Other changes**: replaces the open, black, military and local-resources submarket plugins (and
+  Nexerelin's and HMI's versions; `aotd_submarket_plugin_replacement_map.csv`); makes `spaceport` and
+  `population` `ALWAYS_ACTIVE_NON_PENDING`; trade contracts and Grand Wonders (code only: public static
+  registration, `GrandWonderAPI` industry plugins); 4 market conditions of its own, 1 industry
+  (`aotd_gw_construction_site`), 1 rule (`AoTDFleetCheck`). Its state is Java objects in memory
+  (`$aotd_trade_manager`, `$aotd_industry_data`, …), with no flags a rule could read.
+
+#### AoTD - Vaults of Knowledge 5.0.7 (`aotd_vok`; needs ToT, BMO, Ashlib, LazyLib)
+
+Research. It replaces no vanilla industry, commodity, item, condition or submarket id. It does override
+33 vanilla salvage entities (`procgen/salvage_entity_gen_data.csv`: derelict probes and motherships,
+caches, research stations, `ruins_*`) and adds rows to vanilla's `rare_tech` / `rare_tech_low` drop
+groups.
+- **Techs**: `data/campaign/aotd_tech_options.csv`, merged (key `id`, mod `aotd_vok`): another mod can add
+  techs with data only. Header: `id,name,tier,timeToResearch,reqToResearchFirst,itemReqToResearch,iconId,
+  rewards,columnNumber,rowNumber,isResearchedFromStart,otherReq,tags,modId`. Sample:
+  `aotd_tech_agriculture,Agriculture Industrialization,1,15,aotd_tech_rudimentary_eq,research_databank:3,
+  farming2,farming:industry,0,7,false,,,aotd_vok`. The columns:
+  - `reqToResearchFirst`: tech ids, comma-separated, or `none`.
+  - `itemReqToResearch`: `id:qty,…` (commodities or special items).
+  - `rewards`: `value:type` lines, type `industry|ship|weapon|hullmod|special_ability|modifier` (a
+    `modifier` is only text; its effect is coded per tech).
+  - `otherReq`: `$key:Shown text`, checked as `Global.getSector().getMemory().is(key, true)`, so a
+    **global memory flag** (vanilla examples `$playerCanUseGates`). A quest can make a tech researchable by
+    setting it.
+  - `tier` 0–5, `columnNumber` / `rowNumber` place it in the tree, `iconId` is a
+    `graphics.ui_icons_tech_tree.<iconId>` entry in `settings.json`, and `modId` groups the techs.
+  - (Task #77, `ResearchOptionSpec.initSpecFromJson` and VoK's UI with `javap`, 5.0.7.) **How the row is
+    read**, and what breaks it:
+    - `tier`, `timeToResearch`, `columnNumber`, `rowNumber` are `getInt`, `isResearchedFromStart` is
+      `getBoolean`: a cell that isn't a whole number / true / false throws while the game loads
+      (the loader wraps it in a RuntimeException).
+    - `reqToResearchFirst` is split on ","; only the exact text `none` means no prerequisite. **An
+      empty cell makes "" a prerequisite**, so the tech can never be researched.
+    - `itemReqToResearch`: each "," entry is split on ":" and kept only with exactly two parts
+      (`Integer.parseInt` on the second). VoK's own `aotd_tech_dual_trade_system` has
+      `research_databank10`, which is silently skipped.
+    - `rewards`: split on newlines, each line on ":", taking parts 0 (value) and 1 (type), into a
+      HashMap keyed by value (a value twice is kept once; the order isn't kept). **An empty cell or a
+      line without ":" throws while the game loads** (VoK's own file has neither). A colon inside a
+      modifier's text makes the type the text after it (unknown → `UNIDENTIFIED`).
+    - `otherReq`: split on ":", used only with exactly two parts (key, text), so the shown text can't
+      have a colon. It's re-checked as `Global.getSector().getMemory().is(key, true)`.
+    - `modId`: VoK's research screen has one tree per mod id (`modIDsRepo`), named with
+      `getModSpec(modId).getName()`, so a mod's own techs get a tree of their own and their columns
+      and rows don't meet VoK's.
+    - **Tier 0 is researched at once** (seen in game 2026-11-20, task #77; `AoTDVokModPlugin` on load):
+      every player tech whose tier is at or below `AoTDSettingsManager.getHighestTierEnabled()` (VoK's
+      tier-unlock settings; tier 0 by default) is set researched on each load, whatever
+      `isResearchedFromStart` says. AI factions get tiers 0 and 1 the same way (`advance`).
+    - Research costs are paid from the databanks in the player's **research storage** (a colony's), not
+      the fleet's cargo ("You have 0 stored in Research Storages" with 5 in cargo).
+    - In the research screen a mod's tree is drawn left to right by tier, then `columnNumber`;
+      `rowNumber` is the line.
+    - `iconId`: drawn with `getSettings().getSpriteName("ui_icons_tech_tree", iconId)`, which fails for
+      a key no `settings.json` lists. VoK's own icons are 320×320 PNGs in `graphics/icons/tech`.
+- **Granting a tech**: Java only. `AoTDMainResearchManager.getInstance().getManagerForPlayer()
+  .getResearchOptionFromRepo(id).setResearched(true)`, then `AoTDListenerUtilis.finishedResearch(id,
+  faction)` (VoK's console command `research_tech` does exactly this). Asking: `isResearchedForPlayer(id)`,
+  `haveFactionResearchedCertainTech(faction, id)`. The state is a Java object in persistent data
+  (`$aotd_vok_manager`), not memory, so rules can't read it and no rule command grants a tech.
+  (Task #77, `javap -c`.) `getManagerForPlayer()` is the player faction's manager;
+  `getResearchOptionFromRepo(id)` returns null for an id VoK doesn't have. `isResearchedForPlayer(id)`
+  is true when **the faction that commissions the player or the player's faction** has it.
+  `haveFactionResearchedCertainTech(faction, id)` is false for a faction VoK has no manager for, and
+  **for every AI faction it answers from one fixed list** (`AoTDFactionResearchManager.AI_FACTION_TECHS_START`,
+  21 of VoK's own techs: ind_base_template, rudimentary_eq, agriculture, exoskeletons, nanometal,
+  hull_manufacture, aquatic_agriculture, hazmat_equipment, antimatter_production, spaceport_expansion,
+  improved_fertilizers, advanced_mining_equipment, alloy_production, orbital_assembly, consumer,
+  drug_production, maglev, resort_tech, advanced_logistic, dual_trade_system, streamlined_production,
+  each `aotd_tech_` + that). AI factions never "research" any other tech, another mod's included.
+  SagaLib 1.4's VoK bridge uses these (its FORMAT.md, "Vaults of Knowledge research").
+- **Faction research stance**: `data/campaign/aotd_faction_behaviour.csv`, merged across all mods (key
+  `factionId`, `getMergedSpreadsheetData`). Header: `factionId,researchStance,forbidden_tech,db_cash_mult,
+  db_rep_mult,initResponse,dialogSelectOptionName,dialogDismayOptionName,responseAfter`. Stances:
+  MERCENARY, PRIORITIZE, BALANCE, RESTRICTIVE, CLEANSE. It decides how the faction buys databanks
+  (credits and reputation multipliers, the dialog lines).
+  (Task #77, `FactionResearchAttitudeData.getDataFromCSV`, `ResearchSell`.) `researchStance` goes
+  through `AoTDAIStance.valueOf`; an unknown name (and a faction with no row) is `DEFAULT`, and
+  `ResearchSell`'s `personCanAcceptDbs` turns the databank trade down for `DEFAULT`. The enum also has
+  `SPECIAL` and `NEGLECT`, which no file uses. **Who buys** (rule `databanks_turnInOption`, PopulateOptions,
+  `$isPerson` + `ResearchSell personCanAcceptDbs`; seen in game 2026-11-20): only a person whose post is
+  base, station or outpost commander or administrator, of a faction with a VoK research manager and
+  attitude data. An agent or other contact never gets the option. Without databanks in cargo the option
+  is there but disabled. **In 5.0.7 the option never shows** (seen in game 2026-11-20 at Tri-Tachyon's and
+  an independent administrator, with databanks in cargo): `execute` returns the `personCanAcceptDbs`
+  answer before it sets `buysDatabanks`, which that check requires, so it is always false. The stance and
+  multipliers are read but have no effect on the player until VoK fixes it. `db_cash_mult` / `db_rep_mult` are `getDouble` (an empty
+  or non-number cell throws while loading); `forbidden_tech` is split on ","; an empty dialog line
+  falls back to VoK's own default. VoK's own rows multiply by 0.2–3 (credits) and 0.2–1 (reputation).
+  The file's header ends with an empty column (`…,responseAfter,`).
+- **Items**: `research_databank` (commodity, `nonecon`, price 5000) is the main research cost and the
+  obvious quest reward. 13 special items (`omega_processor`, `turing_engine`, `aotd_shrouded_*`, …) and 7
+  more commodities (`advanced_components`, `water`, `refined_metal`, …).
+- **Locked vanilla industries**: only in the build menu (BMO requirement listeners: aquaculture, farming,
+  mining, refining, heavyindustry, orbitalworks, lightindustry, fuelprod, commerce, megaport). An
+  industry added in code (`market.addIndustry`, as SagaLib does) runs normally. But on **AI faction
+  markets** VoK's `AIColonyManagerListener` swaps industries once that faction has researched the
+  upgrade (heavyindustry → orbitalworks, lightindustry → `aotd_commercial_manu`, fuelprod →
+  `aotd_fuel_refinery`, mining → `aotd_mining_megaplex`), so a mod's NPC market can change with VoK.
+- **Code only** (rows exist, but each needs a Java class): research projects, special projects
+  (`aotd_projects.csv`), megastructures (`aotd_megastructure*.csv`).
+- `LunaSettings.csv`: research speed and tier unlocks (`aotd_research_speed_multiplier`,
+  `aotd_tier_1_unlock` … `aotd_tier_experimental_unlock`); `magic_achievements.csv`: 13 achievements.
+
+#### AoTD - Seats of Power 3.2.1 (`aotd_sop`) and Dreams of Past 3.0.6 (`Cryo_but_better`)
+
+- **SoP**: policies (`aotd_policies.csv`, merged key `id`), ambitions (`aotd_ambitions.csv`,
+  `aotd_ambitions_tasks.csv`), faction capital and timeline. Every row names a Java class. All of it is
+  the player faction's (singletons `$aotd_faction_manager`, `$aotd_amb_manager`). No rule commands. The
+  capital is a market condition, `aotd_capital`, so `MarketHasCondition aotd_capital` reads it.
+  `tag_data.json` is vanilla's intel-tag file (one filter tag). It replaces no vanilla id.
+- **DoP** replaces vanilla's `cryorevival` industry (plugin `DisabledVanillaCryoRevIndustry`, upkeep
+  10) and adds `cryoorganharvester`, `reawakening_facility`, 2 conditions and the `ark` entity. It doesn't
+  need ToT.
+
+#### Building Menu Overhaul 2.1.0 (`bmo`)
+
+The colony build menu. It reads every enabled mod's `data/campaign/industries.csv` (`loadCSV` per mod)
+and makes a filter tag per mod, so a mod's industries are grouped under its name with no work. Its
+extension points (upgrade paths, build requirements) are Java (`UpgradePathManager`,
+`AdditionalReqManager`). No data format.
+
+#### Industrial.Evolution 4.1.b (`IndEvo`; needs LazyLib, MagicLib, LunaLib, GraphicsLib)
+
+Content, not a new economy: vanilla's supply, demand and prices work as usual.
+- **Replaces** vanilla's `commerce` industry (plugin `indevo.industries.TradeCenter`) and the
+  `wormhole_anchor` item's plugin; `settings.json` changes `adminSalaryTier1..3`; it prepends a "Type:"
+  line to every industry description.
+- **Every market**: `IndEvo_ressCond` is put on every market in the economy on each load and economy
+  tick. It adds `IndEvo_parts` supply and demand to heavy industry (and the optional Corruption, off by
+  default).
+- **Commodities**: `IndEvo_parts` (Ship Components, an economy commodity, base price 120, in vanilla's
+  `extended` drop group), `IndEvo_rare_parts` (Relic Components), `IndEvo_pet_food`. 42 special items:
+  VPC chips (`IndEvo_vpc_*`), forge templates, industry items (`IndEvo_log_core`, `IndEvo_neurals`,
+  `IndEvo_transmitter`, `IndEvo_simulator`), consumables (`IndEvo_consumable_*`), pets.
+- **Industries**: 45 new. Most check `isPlayerOwned()` in their effects, so on an NPC market they only
+  have their supply and demand. Ruins industries need the condition `IndEvo_RuinsCondition`. Each is
+  switched by a LunaLib setting with the industry's id.
+- **New game**: places industries on vanilla markets, the Galatia Academy market, core-world and
+  derelict artillery stations, minefields and Gacha stations. Derelict artillery skips systems tagged
+  `theme_hidden`, `theme_special`, `system_cut_off_from_hyper` or `system_abyssal` and planets tagged
+  `not_random_mission_target`, and picks themed (remnant, derelict, ruins) systems.
+- **Merged lists another mod can add to** (key `id`, mod `IndEvo`, path from IndEvo's `settings.json`;
+  one column `id`): `data/config/indEvo/embassy_whitelist.csv` (**factions** that can have an embassy:
+  persean, tritachyon, hegemony, …), `custom_order_blacklist.csv` (factions without custom orders; the
+  faction memory key `$IndEvo_customOrderAllowed` overrides it either way),
+  `reverse_engineering_whitelist.csv` and `printing_whitelist.csv` (hull ids),
+  `lab_commodity_whitelist.csv`, `ruins_industry_whitelist.csv`, `bureau_industry_whitelist.csv`,
+  `shipping_submarkets_whitelist.csv`, `world_tree_whitelist.csv`, `rural_polity_blacklist.csv`,
+  `hidden_arcologies_*.csv` (planet types). Also merged: `data/campaign/pets.csv`.
+- **Rule commands** (selection): `IndEvo_marketHasIndustry`, `IndEvo_marketIsPlayerOwned`,
+  `IndEvo_HasGenericSpecialItemInCargo`. They are IndEvo's own commands, so they can't be used in an
+  optional mod's rules (§10.2).
+- Ships `data/config/exerelinFactionConfig/` and `vayraBounties/` without depending on them.
+
+#### Other installed mods with colony content
+
+Only new ids, no new economy: Random Assortment of Things 3.3.1 (7 commodities, all `nonecon`; 2
+industries; 11 conditions; 8 items), United Aurora Federation 0.8.4c (9 commodities, 6 of them economy
+goods; 6 industries; 22 conditions; 23 items), Hazard Mining Incorporated 0.5.0e (`red_water` economy,
+`mess_nano`; 12 industries), Arma Armatura 3.3.8 (4 `nonecon` commodities, 3 industries), Crew Replacer
+0.7.8 and Second-in-Command 2.1.1 (`nonecon` / `meta` commodities). **Nexerelin 0.12.2d** changes only
+the `script` column of vanilla's `pirate_activity` and `comm_relay` conditions and of the `open_market`,
+`black_market`, `storage`, `generic_military` and `local_resources` submarkets, and adds `prisoner`
+(`nonecon`).
 
 ## Starsector 0.98.5a (code, 2026-11-12)
 
@@ -1088,6 +1486,10 @@ The code facts:
   game splits at every colon, showing only the piece after the id ("95:opt:SFR test B: pick me"
   shows "SFR test B"). Vanilla never uses one. Saga Forge warns about a colon in an option, start
   option or arrival option, and its preview cuts the label the same way.
+- **A quote mark at the very end of an option label is dropped** (seen in game 2026-11-20, task #77):
+  `Grant VoK's "Agriculture Industrialization"` showed as `Grant VoK's "Agriculture Industrialization`.
+  A quote inside the label stays (`Has the player researched "Granted Gift" (test 77)?` was shown whole).
+  Saga Forge warns about a label ending in `"` (options, start options, arrival options).
 - Vanilla 0.98.5a: 10,615 rules in `rules.csv` and 5,510 (the Sindrian Diktat storyline) in
   `rules/askoniaCrisis2.csv`.
 - In dev mode the engine compares each listed file's modification time and reloads changed files

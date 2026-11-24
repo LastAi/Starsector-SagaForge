@@ -1,9 +1,10 @@
 <script lang="ts">
   /**
    * #63 (PLAN.md §10.3): Factions › Nexerelin, the faction's Nexerelin config (data only, optional).
-   * Fields and facts: shared/nexconfig.ts. Starting relations come from Relations & changes; Export
+   * Fields and facts: shared/nexconfig.ts. Starting relations come from the Relations tab; Export
    * writes them as startRelationships. Keys without a field are kept ("Other keys").
    */
+  import RefButton from '../ui/RefButton.svelte'
   import {
     NEX_ALIGNMENTS, NEX_GROUPS, NEX_START_FLEETS, NEX_TRAITS, nexBool, nexConfigJson, nexConfigPath, nexOtherKeys,
     startFleets, type NexConfig, type NexField
@@ -19,7 +20,7 @@
     /** The relations that go into the config, and those that stay SagaLib's (mod conditions). */
     relations: Record<string, number>
     stay: string[]
-    factionOptions: { id: string; name?: string }[]
+    factionOptions: { id: string; name?: string; definedBy?: string }[]
     /** Apply an edit to the config (through the undo history). */
     onEdit: (fn: (c: NexConfig) => void) => void
     onCreate: () => void
@@ -99,7 +100,7 @@
           {@const types = NEX_START_FLEETS.filter((t) => fleets[t.key]?.length)}
           {@const n = types.reduce((a, t) => a + fleets[t.key].length, 0)}
           <div class="row">
-            <label for={`nx-fleets`}>{f.label}</label>
+            <label for={`nx-fleets`}>{f.label} <RefButton ref="factions-nex-start-fleets" /></label>
             <div class="ctl">
               <span class="small">{n ? `${n} fleet${n === 1 ? '' : 's'}: ${types.map((t) => `${t.label} ${fleets[t.key].length}`).join(', ')}` : 'none (players who join it only get Custom)'}</span>
               <button id="nx-fleets" class="mini" onclick={onFleets}>Edit on Fleets › New-game fleets</button>
@@ -119,7 +120,7 @@
         {:else if f.kind === 'alignments'}
           {@const map = isObj(v) ? (v as Record<string, unknown>) : {}}
           <div class="sub">
-            <div class="sublabel">{f.label}</div>
+            <div class="sublabel">{f.label}<RefButton ref="factions-nex-alignments" /></div>
             <table class="t al">
               <tbody>
                 {#each NEX_ALIGNMENTS as a (a)}
@@ -180,7 +181,7 @@
   {/each}
 
   <div class="group">
-    <div class="gt"><span>Starting relations</span><button class="mini" onclick={onRelations}>Edit on Relations & changes</button></div>
+    <div class="gt"><span>Starting relations</span><button class="mini" onclick={onRelations}>Edit on the Relations tab</button></div>
     {#if Object.keys(relations).length}
       <div class="chips">{#each Object.entries(relations) as [o, val] (o)}<span class="chip">{factionName(o) || o} <span class="mono">{val}</span></span>{/each}</div>
     {:else}<div class="muted small">None designed: everyone starts as Nexerelin decides.</div>{/if}

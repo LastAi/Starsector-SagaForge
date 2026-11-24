@@ -20,9 +20,11 @@ export function releaseName(info: Pick<ModInfo, 'name' | 'id' | 'gameVersion'>, 
 export const releaseFolder = (info: Pick<ModInfo, 'name' | 'id'>): string => safeName(info.name || info.id) || info.id
 
 /** Files that stay out of a release: the editor's plans, dev-mode test profiles, hidden and junk files. */
-export function leftOutOfRelease(rel: string): string | null {
+export function leftOutOfRelease(rel: string, opts: { originals?: boolean } = {}): string | null {
   const p = rel.replace(/\\/g, '/')
   const parts = p.split('/')
+  // #67 U38 (user, 2026-11-22): the original images go in only when asked (Export › "with the original images")
+  if (p.startsWith('sagaforge/originals/')) return opts.originals ? null : 'original images'
   if (parts[0] === 'sagaforge') return 'Saga Forge plans'
   if (p.startsWith('data/sagaforge/dev/')) return 'test profiles (dev mode only)'
   if (parts.some((s) => s.startsWith('.'))) return 'hidden files'

@@ -3,7 +3,7 @@ import type { GameDefinitions } from './defs/types'
 import type { DefsPatch } from './defs'
 import type { RuleRow } from './rules/types'
 import type { RuntimeText } from './translate'
-import type { ProjectState, WriteRequest, WriteResult, FactionLayers } from './project'
+import type { ProjectState, WriteRequest, WriteResult, FactionLayers, JarInfo } from './project'
 import type { QuestPlan } from './model'
 
 export type InstallInfo =
@@ -84,19 +84,32 @@ export interface Origin {
   definedBy: string
   /** Later sources that patch it (factions) or replace it (rows). */
   changedBy: string[]
+  /** #67 U33: each source's own version when several define or change it (indexview.ts effectiveOf). */
+  layers?: unknown[]
+  layerHow?: 'json' | 'csv' | boolean
 }
 
 export interface FactionInfo extends Origin {
   id: string
   name: string
-  /** [r,g,b,a] */
+  /** [r,g,b,a], merged over every installed mod's patch. */
   color: number[] | null
+  /** #67: the colour each layer (the defining file, then patches in load order) sets, for factionColor(). */
+  colors?: { sourceId: string; color: number[] }[]
+  /** #67 U33: the name, logo and crest each layer sets (indexview.ts). */
+  layerValues?: { sourceId: string; name?: string; logo?: string; crest?: string }[]
   /** Path of the faction file relative to the source, e.g. data/world/factions/hegemony.faction */
   file: string
   logo: string
   crest: string
   /** Listed in a factions.csv (the game only loads listed factions). */
   listed: boolean
+  /**
+   * #67 U39: the ships each layer (the defining file, then patches) adds to knownShips (hulls and
+   * blueprint tags): the variant picker's "faction's ships" and "From a faction's fleet" use the
+   * layers of the sources that count for the mod.
+   */
+  knownShips?: { sourceId: string; hulls: string[]; tags: string[] }[]
   showInIntelTab: boolean
 }
 
@@ -142,12 +155,37 @@ export interface ItemInfo extends Origin {
   tags: string[]
   basePrice: number
   desc: string
+  /** #75: commodities: commodities.csv econUnit (cargo units per economy unit); tags nonecon / meta say whether it's in the economy. */
+  econUnit?: number
 }
 
-export interface NamedEntry extends Origin { id: string; name: string }
+/** #67 U39: a ship variant: its hull (for "the faction's ships") and its display name in the file. */
+export interface VariantInfo extends Origin { id: string; name: string; hull?: string; displayName?: string }
+export interface NamedEntry extends Origin {
+  id: string
+  name: string
+  /** #67 U34: the game's description (industries, submarkets, hullmods), for the reference. */
+  desc?: string
+  /** #67 U34: the CSV's tags (industries; wings, weapons, hullmods for blueprint tags). */
+  tags?: string[]
+}
+/** #67 U34: an industries.csv row with what the Industries reference shows. */
+export interface IndustryInfo extends NamedEntry { upkeep?: number; income?: number; icon?: string; upgrade?: string; downgrade?: string }
+/** #67 U34: a salvage_entity_gen_data.csv row (salvage, defenders and XP of an entity type). */
+export interface SalvageGenInfo extends Origin { id: string; type: string; dropValue: string; dropRandom: string; defFaction: string; probDefenders: number; xpDiscover: number; xpSalvage: number }
+/** #67 U34: a skill_data.csv row (who can have it). */
+export interface SkillInfo extends NamedEntry { tier: number; officer: boolean; admiral: boolean; admin: boolean; icon?: string; author?: string }
+/** #67 U34: a settings.json graphics icon the editor offers by key (raidObjectives, VoK's ui_icons_tech_tree); id "<category>/<key>". */
+export interface GraphicIconInfo extends Origin { id: string; category: string; key: string; path: string }
+/** #67 U34: a descriptions.csv text for a planet type (PLANET) or custom entity (CUSTOM); id "PLANET:<id>". */
+export interface TypeDescInfo extends Origin { id: string; text: string }
+/** #67: a market condition with what the Conditions reference shows; how planets roll it from condition_gen_data.csv (onPlanets: planet type ids). */
+export interface ConditionInfo extends NamedEntry { desc?: string; icon?: string; planetary?: boolean; group?: string; hazard?: number; onPlanets?: string[] }
 
 /** #64: a place in the sector: an entity with an id (planet, station, jump point, custom entity). */
 export interface PlaceInfo extends Origin { id: string; name: string; system: string; kind: string; faction?: string; market?: string }
+/** #77: a VoK tech (aotd_tech_options.csv row): its tree (modId), tier and whether it is researched from the start. */
+export interface ResearchTechInfo extends Origin { id: string; name: string; tier: number; modId: string; fromStart: boolean; requires: string[]; otherReq: string }
 /** #64: another Saga Forge mod's quest: SagaLib keeps its state in $global.<id>_state. */
 export interface SagaQuestInfo extends Origin { id: string; title: string; kind: string; stages: string[] }
 /** #64: the sector snapshot the editor imported (SagaLib dev menu › Write sector snapshot). */
@@ -178,9 +216,11 @@ export interface SectorSnapshot {
 }
 
 /** A planets.json entry (planet type or star), merged over every source (R15, R19). */
-export interface PlanetTypeInfo extends NamedEntry { isStar: boolean; texture: string; iconColor: number[] | null; raw: Record<string, unknown> }
+/** #67 U33: rawLayers = each source's own JSON when several sources set the type (indexview.ts merges the visible ones). */
+export interface RawLayer { sourceId: string; raw: Record<string, unknown> }
+export interface PlanetTypeInfo extends NamedEntry { isStar: boolean; texture: string; iconColor: number[] | null; raw: Record<string, unknown>; rawLayers?: RawLayer[] }
 /** A custom_entities.json entry, merged and with its baseId resolved (R19, R20). */
-export interface EntityTypeInfo extends NamedEntry { sprite: string; sheet: string; icon: string; tags: string[]; radius: number | null; raw: Record<string, unknown> }
+export interface EntityTypeInfo extends NamedEntry { sprite: string; sheet: string; icon: string; tags: string[]; radius: number | null; raw: Record<string, unknown>; rawLayers?: RawLayer[] }
 /** procgen tables: per star type its habitable zone start; categories and planet types with weights. */
 export interface ProcgenData {
   stars: Record<string, { habZoneStart: number }>
@@ -206,6 +246,8 @@ export interface HullInfo extends Origin {
   tech: string
   hints: string
   isSkin: boolean
+  /** #67 U34: ship_data.csv tags (blueprint tags such as base_bp). */
+  tags?: string[]
 }
 
 export interface IllustrationInfo extends Origin {
@@ -233,16 +275,20 @@ export interface GameIndex {
   markets: MarketInfo[]
   systems: SystemInfo[]
   items: ItemInfo[]
-  industries: NamedEntry[]
-  conditions: NamedEntry[]
+  industries: IndustryInfo[]
+  conditions: ConditionInfo[]
   submarkets: NamedEntry[]
   hulls: HullInfo[]
   wings: NamedEntry[]
   weapons: NamedEntry[]
   hullmods: NamedEntry[]
   /** Ship variant ids (from .variant file names). */
-  variants: NamedEntry[]
+  variants: VariantInfo[]
+  /** #67 U39: default_ship_roles.json rows (role → variant, weight) of every source; a mod's file adds to vanilla's. */
+  shipRoles?: { role: string; variant: string; weight: number; definedBy: string }[]
   illustrations: IllustrationInfo[]
+  /** #67 U49: illustration keys a Saga Forge mod has in its project but its export hasn't registered yet (not in the game). */
+  unexportedIllustrations?: { key: string; mod: string; modName: string }[]
   portraits: PortraitInfo[]
   customEntityTypes: EntityTypeInfo[]
   /** planets.json entries: planet types and stars (isStar). */
@@ -255,6 +301,11 @@ export interface GameIndex {
   sectorSize?: [number, number]
   /** Phase 8a: every drop_groups.csv row of the game and the installed mods (groups merge: a mod's rows are added; checked in game). */
   dropGroups?: DropGroupRow[]
+  /** #67 U34: salvage data per entity type, skills, and the planet/entity type descriptions. */
+  salvageGen?: SalvageGenInfo[]
+  skills?: SkillInfo[]
+  typeDescs?: TypeDescInfo[]
+  graphicsIcons?: GraphicIconInfo[]
   sounds: string[]
   music: string[]
   /** Person name categories from every source's person_names.csv (R3); optional for older caches. */
@@ -276,6 +327,12 @@ export interface GameIndex {
   sagaPools?: NamedEntry[]
   /** #64: the imported sector snapshot ("seen in game"), if any. */
   snapshot?: SnapshotInfo | null
+  /** #77: AoTD Vaults of Knowledge techs of every source's aotd_tech_options.csv (merged by id), for prerequisites and grants. */
+  researchTechs?: ResearchTechInfo[]
+  /** #77: factions with a research stance row in any source's aotd_faction_behaviour.csv (merged by factionId). */
+  researchFactions?: (NamedEntry & { stance: string })[]
+  /** #77: the icon ids any source lists under settings.json graphics.ui_icons_tech_tree (VoK's tech icons). */
+  researchIcons?: string[]
   /** Rule counts per source; the rules themselves come from getRules(). */
   ruleCounts: Record<string, number>
   /**
@@ -296,6 +353,8 @@ export interface UiSettings {
   colors: Record<string, number[]>
   /** settings.json "defaultFont" etc. */
   fonts: Record<string, string>
+  /** #67 U33: each source's own colours and fonts, in load order (indexview.ts uses the visible ones). */
+  layers?: { sourceId: string; colors: Record<string, number[]>; fonts: Record<string, string> }[]
 }
 
 /** A BMFont (.fnt) with its page image, read from the game folder at runtime, never copied. */
@@ -346,6 +405,9 @@ export interface AppSettings {
   releasesDir: string
   /** True when the user chose releasesDir in Settings. */
   releasesDirChosen: boolean
+  /** #67 U43: the node group library folder (chosen, or Saga Forge's own data/nodegroups). */
+  nodeGroupsDir: string
+  nodeGroupsDirChosen: boolean
 }
 
 /** R32: a packed release, or the zip that already exists (nothing written). */
@@ -375,14 +437,33 @@ export interface EditorApi {
   addSpellWords(words: string[]): Promise<void>
   /** R29: the right-click menu's "Add to the mod's word list". */
   onSpellAdd(cb: (word: string) => void): void
+  /** #67 U44: open (or bring up) the token window, a child of the editor's window. */
+  openTokenWindow(): Promise<void>
+  /** #67 U44: the editor sends the token catalog (TokenPayload) whenever it changes; the window gets it. */
+  tokensPublish(payload: unknown): void
+  /** #67 U44 (token window): the latest catalog, and later ones as they come. */
+  tokensGet(): Promise<unknown>
+  onTokens(cb: (payload: unknown) => void): void
+  /** #67 U44 (token window): insert a token into the editor's last token field. */
+  tokensInsert(token: string): void
+  /** #67 U44 (editor): a token to insert, from the token window. */
+  onTokenInsert(cb: (token: string) => void): void
   /** R30: quest templates saved by the user (Saga Forge's data folder › templates). */
   listQuestTemplates(): Promise<{ file: string; quest: QuestPlan }[]>
   /** R30: save a quest as a template; returns the file. */
   saveQuestTemplate(name: string, quest: QuestPlan): Promise<string>
+  /** #67 U43: the node group library (the folder in Settings): each *.group.json file's content (unparseable ones as text). */
+  listNodeGroups(): Promise<{ file: string; def: unknown }[]>
+  /** #67 U43: save a node group into the library (<id>.group.json); returns the file. */
+  saveNodeGroup(def: unknown): Promise<string>
+  /** #67 U43: export a node group to a file the user picks (to share it); null = cancelled. */
+  exportNodeGroup(def: unknown): Promise<string | null>
+  /** #67 U43: pick a node group file to import; its text, or null = cancelled. */
+  readNodeGroupFile(): Promise<{ file: string; text: string } | null>
   /** #47: copy the active mod into sagaforge/backups/<stamp> <label>/ (never pruned); returns that folder. */
   snapshotMod(label: string): Promise<string>
   /** R32: pack the active mod into a release zip (+ forum post draft) in the releases folder. */
-  packRelease(req: { version: string; forumPost: string; overwrite?: boolean; notes?: string }): Promise<PackResult>
+  packRelease(req: { version: string; forumPost: string; overwrite?: boolean; notes?: string; /** #67 U38 */ originals?: boolean }): Promise<PackResult>
   /** R32: show a file in the system file manager. */
   showInFolder(file: string): Promise<void>
   setActiveMod(writeDir: string | null): Promise<GameIndex>
@@ -402,10 +483,15 @@ export interface EditorApi {
   /** Choose image files (several), or a folder (its images). Absolute paths. */
   pickImages(opts: { title?: string; folder?: boolean }): Promise<string[]>
   /** Show the reference document (R8) at a section; Saga Forge writes it to its own data folder. */
-  openReference(html: string, anchor: string): Promise<void>
+  /** #67 U34: the reference pages (one per group), the page to open and the section in it. */
+  openReference(pages: { file: string; html: string }[], file: string, anchor: string): Promise<void>
   loadFont(key: string): Promise<FontData | null>
+  /** #67 U33: the sources that count for the active mod: image and font lookups prefer them. */
+  setVisibleSources(ids: string[]): Promise<void>
   /** The active mod's plans, faction files and the shared files the editor may write. */
   loadProject(): Promise<ProjectState | null>
+  /** #79: the active mod's jars (mod_info.json "jars") and their classes, read again (after a rebuild). */
+  modJars(): Promise<JarInfo[]>
   /** Write files into the active mod (write guard + changed-on-disk check + optional backups). */
   writeFiles(req: WriteRequest): Promise<WriteResult>
   /** Run Check mod's file checks that need the disk (images exist, etc.). */

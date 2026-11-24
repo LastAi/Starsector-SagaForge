@@ -28,11 +28,17 @@ import { poolProblems } from './pools'
 import { eventProblems } from './events'
 import { progressProblems } from './progress'
 import { modProblems } from './mods'
+import { tokenProblems } from '../tokens'
+import { conditionScopeProblems } from '../conditions'
+import { chartNodeOf, expandModelGroups, groupDefProblems, groupInstanceProblems } from '../nodegroups'
 import { nexerelinProblems } from './nexerelin'
 import { bountyProblems } from './bounties'
 import { presenceProblems } from './presence'
 import { settingProblems } from './settings'
 import { achievementProblems, questSkipProblems } from './crossmod65'
+import { researchProblems } from './research'
+import { pluginProblems } from './plugins'
+import { oneNameProblems } from './onename'
 import { appVersionProblems } from './appversions'
 import { versionCheckProblems } from './versions'
 import { lowerPlacesModel } from '../modelversions'
@@ -59,7 +65,9 @@ export interface CheckContext {
 }
 
 type Checker = (ctx: CheckContext) => Problem[]
-const CHECKERS: Checker[] = [basicProblems, appVersionProblems, modProblems, nexerelinProblems, versionCheckProblems, factionProblems, allQuestProblems, flagsChecker, locationProblems, encounterProblems, saveChecker, styleChecks, itemProblems, missingImageProblems, (ctx) => todoProblems(ctx.model), (ctx) => inactiveProblems(ctx.model), imageSizeProblems, nameProblems, worldProblems, fleetProblems, poolProblems, eventProblems, progressProblems, bountyProblems, presenceProblems, settingProblems, achievementProblems, questSkipProblems,
+const CHECKERS: Checker[] = [basicProblems, appVersionProblems, modProblems, nexerelinProblems, versionCheckProblems, factionProblems, allQuestProblems, flagsChecker, locationProblems, encounterProblems, saveChecker, styleChecks, itemProblems, missingImageProblems, (ctx) => todoProblems(ctx.model), (ctx) => inactiveProblems(ctx.model), imageSizeProblems, nameProblems, worldProblems, fleetProblems, poolProblems, eventProblems, progressProblems, bountyProblems, presenceProblems, settingProblems, achievementProblems, questSkipProblems, researchProblems, pluginProblems, oneNameProblems,
+  (ctx) => tokenProblems(ctx.model),
+  (ctx) => conditionScopeProblems(ctx.model),
   (ctx) => (ctx.version ? versionProblems(ctx.model, ctx.version.diff, ctx.version.targetIsNewer, ctx.defs) : []),
   // Check mod only: rules that would take over the game's or other mods' dialog (Export runs it too)
   (ctx) => (ctx.rules ? modTakeoverProblems(ctx.model, ctx.loaded, ctx.index, ctx.rules) : [])]
@@ -76,15 +84,38 @@ export function addChecker(c: Checker): void { if (!CHECKERS.includes(c)) CHECKE
 export function checkModel(ctx: CheckContext): Problem[] {
   const out: Problem[] = []
   // #64: named places ("place:<id>") are checked as the objects they stand for
-  const lowered = { ...ctx, model: lowerPlacesModel(ctx.model) }
+  // #67 U43: placed node groups are checked as their normal nodes; their problems point at the placed node
+  const lowered = { ...ctx, model: expandModelGroups(lowerPlacesModel(ctx.model)) }
   for (const c of CHECKERS) {
-    try { out.push(...c(c === versionCheckProblems ? ctx : lowered)) } catch (e) {
+    try { out.push(...c(c === versionCheckProblems ? ctx : lowered).map(toChartNode)) } catch (e) {
       out.push({ level: 'error', area: 'Editor', message: `A check failed: ${(e as Error)?.message ?? e}` })
     }
   }
+  out.push(...nodeGroupProblems(ctx.model))
   const ignored = new Map(ctx.model.project.ignores.map((i) => [i.key, i.reason]))
   // problems inside inactive content are warnings (R10)
   return softenInactive(ctx.model, out).filter((p) => !(p.key && ignored.has(p.key)) && (ctx.styleChecks || p.level !== 'style'))
+}
+
+/** #67 U43: a problem inside a placed group's nodes points at the placed node. */
+function toChartNode(p: Problem): Problem {
+  const sub = p.ref?.page === 'quests' ? p.ref.sub : undefined
+  if (!sub || !sub.includes('__')) return p
+  const [node, ...rest] = sub.split('/')
+  const to = chartNodeOf(node)
+  return to === node ? p : { ...p, ref: { ...p.ref!, sub: [to, ...rest].join('/') } }
+}
+
+/** #67 U43: the mod's node groups and the placed ones. */
+function nodeGroupProblems(m: ModModel): Problem[] {
+  const out: Problem[] = []
+  const used = new Set(m.quests.flatMap((q) => q.nodes.flatMap((n) => (n.type === 'group' ? [n.group] : []))))
+  for (const d of m.nodeGroups ?? []) {
+    for (const msg of groupDefProblems(d)) out.push({ level: 'error', area: 'Node group', file: `sagaforge/nodegroups/${d.id}.group.json`, message: `Node group "${d.label || d.id}": ${msg}`, key: `groupdef:${d.id}:${msg.slice(0, 40)}` })
+    if (!used.has(d.id)) out.push({ level: 'info', area: 'Node group', file: `sagaforge/nodegroups/${d.id}.group.json`, message: `Node group "${d.label || d.id}" isn't placed in any quest. Its copy can be removed (Quests › Node groups).`, key: `groupunused:${d.id}` })
+  }
+  for (const q of m.quests) for (const p of groupInstanceProblems(q, m.nodeGroups)) out.push({ level: p.level, area: 'Quest', message: p.message, key: p.key, ref: { page: 'quests', id: q.id, sub: p.node } })
+  return out
 }
 
 function basicProblems(ctx: CheckContext): Problem[] {

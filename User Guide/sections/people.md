@@ -5,7 +5,7 @@ sector, whether they can become the player's contact, and how they word things.
 
 ## How it works
 
-![Ilse Reyes on the People tab](../img/people-reyes.png)
+![Pop Chicken, the cats' scrounger, on the People tab](../img/people-reyes.png)
 
 The tab has three columns:
 
@@ -17,21 +17,28 @@ The tab has three columns:
 
 - **This mod's people**: the characters your mod adds, marked **new**, with their rank. **+ New
   person** adds one. The **inactive** box shows or hides people marked *Inactive* (see below).
-- **Existing characters (read-only)**: the named people of the game and your other mods (vanilla's
-  are made in code, shown as "code (vanilla)"). Your mod never changes them, but your quests can
-  talk to them: use their id in a quest (see
+- **Existing characters (read-only)**: the named people of the game and of the mods your mod lists
+  in [Saga › Mods](saga.md#mods) (vanilla's are made in code, shown as "code (vanilla)"). **Show all
+  installed mods** adds the others, with how many are hidden. Your mod never changes them, but your
+  quests can talk to them: use their id in a quest (see
   [Quests › Write a conversation](quests.md#write-a-conversation)).
 
 The filter box searches both lists by name and id.
 
 ### The person form
 
-From top to bottom:
+The header has the name and id, **Inactive** and **Delete**; under it, the **Versions** strip
+when the mod lists optional mods, settings for versions, or for the player's gender (see [Saga ›
+Mods](saga.md#mods)). Then, from top to bottom:
 
-- **First name, Last name, Gender**: shown in dialog, the comm directory and the intel screen.
-  Gender picks he/she in vanilla's tokens such as `$personHeOrShe`.
+- **One name**: for a character with a single name (a cat called Tyger). The game keeps it as the
+  last name with an empty first name, and shows the one name everywhere. **New person** can make
+  one directly.
+- **First name, Last name, Gender**: shown in dialog, the comm directory and the intel screen
+  (a one-name character has only **Name**). Gender picks he/she in vanilla's tokens such as
+  `$personHeOrShe`.
 - **Faction**: their name and color under the portrait, and the reputation tests in dialog.
-- **Rank** and **Post**: "Commander Ilse Reyes", and their job at the market. A **staff post**
+- **Rank** and **Post**: "Captain Halvard Oduya", and their job at the market. A **staff post**
   (station commander, portmaster, administrator, …) at a market takes over that post from the
   person vanilla generates there. A commander or administrator also offers the player a
   commission when the faction does (see
@@ -75,9 +82,18 @@ exported, so they aren't in the game, and their problems show as warnings instea
 
 ### Preview and Used by
 
-The **Preview** shows the dialog's person panel: portrait, name, rank and post, faction. If they
-have phrases, it shows what each phrase becomes in three situations (no commission, friendly with
-the faction, commissioned).
+The **Preview** shows the dialog's person panel: portrait, name, rank and post, faction, and what
+`$personName`, `$personFirstName` and `$personLastName` say in dialog with them. With a version
+open, it shows that version. If they have phrases, it shows what each phrase becomes in three
+situations (no commission, friendly with the faction, commissioned).
+
+**One-name characters in game.** Vanilla leaves `$personFirstName` empty for them ("Hi, ."), so
+SagaLib 1.4 fills it, and `$PersonFirstName`, with the one name, and their `$<id>_firstName`
+token is the one name too. Play mode and the Test context do the same; another mod's person whose
+name is one word counts as one-name. Problems warns where a line uses `$personFirstName` with a
+one-name person in the conversation, so you can check the wording.
+
+![Tyger, a one-name character: "Tyger" for every name token](../img/people-onename.png)
 
 **Used by** lists the quests that use them (the contact who offers a quest, the speaker of a
 dialog) and the market they are placed at. Click a line to open that quest.
@@ -94,9 +110,9 @@ duplicated.
 ### Add a character
 
 1. Click **+ New person**.
-2. Type a **First name** and a **Last name**. The **Id** is made from the last name with your
-   mod's prefix (`vgc_reyes`). Quests and saves refer to them by it, so don't change it after a
-   release.
+2. Type a **First name** and a **Last name**, or tick **One name** and type the name. The **Id** is
+   made from the last name with your mod's prefix (`hel_tyger`). Quests and saves refer to them by
+   it, so don't change it after a release.
 3. Click **Create**. The new person belongs to your mod's first new faction (or the independents)
    and isn't placed anywhere yet.
 4. Set **Gender**, **Faction**, **Rank** and **Post**. Type in the Rank and Post boxes to search
@@ -120,7 +136,7 @@ encounter (see [Encounters › Add a fleet for a quest](encounters.md#add-a-flee
 4. Give them a quest to offer: a quest that starts *offered by a contact (person_missions.csv)*,
    with this person (see [Quests › Make a contact quest with stages](quests.md#make-a-contact-quest-with-stages)).
 
-![Reyes's Contact settings: military, importance HIGH](../img/people-contact.png)
+![Pop Chicken's Contact settings: trade and underworld, importance HIGH](../img/people-contact.png)
 
 **In game:** SagaLib makes them a potential contact the vanilla way. Like vanilla's mission givers,
 they can become one of the player's contacts (the intel screen's Contacts), and the quests they
@@ -130,7 +146,7 @@ offer show in their dialog.
 
 1. Set **Placement › Where** to *at a market*.
 2. In **Market**, pick a market of your mod (shown as "(this mod)") or an existing one, e.g.
-   `jangala`. For a market of your own, see
+   `chicomoztoc`. For a market of your own, see
    [Locations › Add a station with a market](locations.md#add-a-station-with-a-market).
 3. Leave **Comm directory** ticked so the player can call them when docked.
 4. For a station commander, portmaster or administrator, set **Post** to that post: they take it
@@ -139,7 +155,7 @@ offer show in their dialog.
 The market's page on the Locations tab lists them under its people too; changing either place
 changes both.
 
-![Reyes placed at Haven Station, in its comm directory](../img/people-reyes.png)
+![Pop Chicken placed at Research Station Felicette, in its comm directory](../img/people-reyes.png)
 
 **In game:** they are at that market and in its comm directory. If the market is in a star system
 your mod adds, SagaLib places them once the system exists.
@@ -161,23 +177,23 @@ portrait is only referenced; your own is copied into the mod and goes with it.
 
 ### Give a character phrases
 
-A phrase is a token, such as `$vgc_reyes_title`, that you put in any dialog text. When the game
-shows the text, SagaLib replaces it with the character's own wording for the moment. Reyes calls
-the player "Commander Varga" once they hold a Vanguard commission, "Captain Varga" when they are
-friendly, and plain "Captain" otherwise.
+A phrase is a token, such as `$hel_pops_title`, that you put in any dialog text. When the game
+shows the text, SagaLib replaces it with the character's own wording for the moment. Pop Chicken
+calls the player "friend of the Den" once they have traded AI cores with the cats, "human" once
+they have met them, and "captain" before that.
 
 1. Open the person and scroll to **Phrases**. Click **+ Phrase**.
-2. Name the token: it always starts with the person's id (`$vgc_reyes_`), you type the rest
+2. Name the token: it always starts with the person's id (`$hel_pops_`), you type the rest
    (`title`).
 3. Pick how it chooses: **first case that matches**, or **random**.
 4. For *first case that matches*, give each case its **if** lines (conditions, one per line, as in
    rules.csv; **+ add…** under the box offers common ones such as a reputation or commission test)
    and its text. **+ case** adds one. The **otherwise** text is used when no
    case matches. For *random*, every case is one possible text.
-5. Put the token in a dialog text, e.g. `"$vgc_reyes_title." Reyes doesn't look up from her slate.`
+5. Put the token in a dialog text, e.g. `"Ah, $hel_pops_title! What can old Pops do for you?"`
 6. Check the **Preview** on the right: it shows what the phrase becomes in three situations.
 
-![The phrase $vgc_reyes_title: two cases and an otherwise text, with the preview on the right](../img/people-phrases.png)
+![The phrase $hel_pops_title: two cases and an otherwise text, with the preview on the right](../img/people-phrases.png)
 
 **In game:** SagaLib replaces the token wherever it appears in dialog text. Phrases that belong
 to the whole mod rather than one person are on the Saga tab (see

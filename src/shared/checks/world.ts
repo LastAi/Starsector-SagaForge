@@ -7,6 +7,7 @@ import type { Problem, ProblemRef } from '../api'
 import type { ModModel } from '../serialize'
 import type { CheckContext } from './index'
 import { parseCsvRecords } from '../csvedit'
+import { fullName } from '../personname'
 
 /** What in the mod points at an object (to warn before it is removed). */
 export function usersOf(m: ModModel, id: string, marketId?: string): string[] {
@@ -23,7 +24,7 @@ export function usersOf(m: ModModel, id: string, marketId?: string): string[] {
     if (e.spawn.at === id) out.push(`encounter ${e.name} (spawns there)`)
     if (e.travelTo === id) out.push(`encounter ${e.name} (travels there)`)
   }
-  if (marketId) for (const p of m.people) if (p.placement.at === 'market' && p.placement.market === marketId) out.push(`${p.name.first} ${p.name.last} (lives at its market)`)
+  if (marketId) for (const p of m.people) if (p.placement.at === 'market' && p.placement.market === marketId) out.push(`${fullName(p.name)} (lives at its market)`)
   return out
 }
 

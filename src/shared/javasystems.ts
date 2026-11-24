@@ -93,6 +93,8 @@ export function codeSystemId(file: string, name: string, known: (id: string) => 
  * starmap.json's keys).
  */
 export function parseSystemsJava(text: string, file: string, sourceId: string, known: (id: string) => boolean = () => false): CodeSystem[] {
+  /** #67 U26: systems a script fetched (getStarSystem) rather than created. */
+  const fetched = new Set<CodeSystem>()
   const out: CodeSystem[] = []
   const src = stripComments(text)
   let sys: CodeSystem | null = null
@@ -129,10 +131,12 @@ export function parseSystemsJava(text: string, file: string, sourceId: string, k
     // a statement starts after the last block brace before it ("… generate(SectorAPI s) { StarSystemAPI system = …")
     const stmt = raw.replace(/\s+/g, ' ').replace(/^[^"]*[{}]\s*/, '').trim()
     if (!stmt) continue
-    const created = /createStarSystem\s*\(\s*"([^"]+)"/.exec(stmt)
+    // #67 U26: the core worlds exist already (starmap.json); their scripts fetch them with getStarSystem("…")
+    const created = /(?:createStarSystem|getStarSystem)\s*\(\s*"([^"]+)"/.exec(stmt)
     if (created) {
       sys = { id: codeSystemId(file, created[1], known), name: created[1], file, sourceId, star: null, bodies: [], skipped: 0 }
       out.push(sys)
+      if (stmt.includes("getStarSystem")) fetched.add(sys)
       vars.clear(); orbits.clear(); pending.clear(); numVars.clear()
       continue
     }
@@ -199,5 +203,6 @@ export function parseSystemsJava(text: string, file: string, sourceId: string, k
     s.bodies = s.bodies.filter((b) => b.focus !== '')
     s.skipped += before - s.bodies.length
   }
-  return out
+  // #67 U26: a script that only looks a system up (getStarSystem, nothing added) is no system of its own
+  return out.filter((s) => !fetched.has(s) || s.star || s.bodies.length)
 }

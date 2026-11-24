@@ -3,7 +3,7 @@
    * The faction form, for additions (whole document) and overrides (effective value; edits go to
    * the patch). Field definitions: shared/factionform.ts.
    */
-  import { FACTION_TABS, KNOWN_TOP_KEYS, visibleFields, colorToHex, hexToColor, type FactionEditor, type FactionField, type IdSource } from '../../../shared/factionform'
+  import { FACTION_TABS, KNOWN_TOP_KEYS, visibleFields, colorToHex, hexToColor, factionFieldRef, type FactionEditor, type FactionField, type IdSource } from '../../../shared/factionform'
   import { isObj } from '../../../shared/faction'
   import { parseLoose } from '../../../shared/loosejson'
   import { app } from '../state/app.svelte'
@@ -14,6 +14,7 @@
   import { nameCategoryTotals, shipListTotals } from '../../../shared/checks/names'
   import { factionKeyDoc } from '../../../shared/factionkeys'
   import { openReference } from '../ui/reference'
+  import RefButton from '../ui/RefButton.svelte'
   import type { Snippet } from 'svelte'
 
   interface Props {
@@ -39,14 +40,23 @@
   const STRICT: IdSource[] = ['hulls', 'wings', 'weapons', 'hullmods', 'commodities']
   const known = $derived(new Map(STRICT.map((s) => [s, new Set(options(s).map((o) => o.id))])))
   const unknownId = (src: IdSource | undefined, id: string) => !!src && STRICT.includes(src) && !known.get(src)!.has(id)
-  function options(src: IdSource | undefined): { id: string; name?: string }[] {
+  /** #67 U34: blueprint tags (ending in _bp) with how many hulls, fighters, weapons and hullmods carry each. */
+  const bpTags = $derived.by(() => {
+    const n = new Map<string, number[]>()
+    const lists: { tags?: string[] }[][] = [index.hulls, index.wings, index.weapons, index.hullmods]
+    lists.forEach((l, k) => { for (const x of l) for (const t of x.tags ?? []) if (t.endsWith('_bp')) { const c = n.get(t) ?? [0, 0, 0, 0]; c[k]++; n.set(t, c) } })
+    const word = ['hulls', 'fighters', 'weapons', 'hullmods']
+    return [...n].sort((a, b) => a[0].localeCompare(b[0])).map(([id, c]) => ({ id, name: c.map((x, k) => (x ? `${x} ${word[k]}` : '')).filter(Boolean).join(', ') }))
+  })
+  function options(src: IdSource | undefined): { id: string; name?: string; definedBy?: string }[] {
     switch (src) {
-      case 'hulls': return index.hulls.map((h) => ({ id: h.id, name: `${h.name} (${h.hullSize.toLowerCase().replace('_ship', '')})` }))
+      case 'hulls': return index.hulls.map((h) => ({ id: h.id, name: `${h.name} (${h.hullSize.toLowerCase().replace('_ship', '')})`, definedBy: h.definedBy }))
       case 'wings': return index.wings
       case 'weapons': return index.weapons
       case 'hullmods': return index.hullmods
       case 'commodities': return index.items.filter((i) => i.kind === 'commodity')
-      case 'portraits': return index.portraits.map((p) => ({ id: p.path }))
+      case 'portraits': return index.portraits.map((p) => ({ id: p.path, definedBy: p.sourceId }))
+      // the index's music and fleet types have no source (yet): shown from every installed mod
       case 'music': return index.music.map((m) => ({ id: m }))
       case 'nameSets': return nameSetOptions
       case 'shipNames': return shipNameOptions
@@ -56,6 +66,9 @@
         return [...ownFleetTypes.filter((t) => !ids.includes(t)).map((id) => ({ id, name: 'used by your encounters' })), ...ids.map((id) => ({ id, name: names[id] ?? '' }))]
       }
       case 'stations': return index.industries.filter((i) => /station|battlestation|starfortress/i.test(i.id))
+      // #67 U34: blueprint tags (on hulls, wings, weapons, hullmods) and skills had no suggestions
+      case 'tags': return bpTags
+      case 'skills': return (index.skills ?? []).filter((s) => s.officer || s.admiral).map((s) => ({ id: s.id, name: `${s.name} (${[s.officer && 'officer', s.admiral && 'commander'].filter(Boolean).join(', ')})`, definedBy: s.definedBy }))
       default: return []
     }
   }
@@ -65,7 +78,8 @@
     .map((c) => ({ id: c.id, name: `${c.male} m · ${c.female} f · ${c.last} last · ${c.sources.map(srcName).join(', ')}` })))
   const shipNameOptions = $derived(byMineFirst([...shipListTotals(index, project.m, project.loaded?.sourceId ?? null).values()])
     .map((c) => ({ id: c.id, name: `${c.count} names · ${c.sources.map(srcName).join(', ')}` })))
-  const ownFleetTypes = $derived([...new Set((project.m?.encounters ?? []).map((e) => e.fleet.type).filter(Boolean))])
+  // #67 U42: an encounter with a named fleet uses that fleet's type (its own field is hidden)
+  const ownFleetTypes = $derived([...new Set([...(project.m?.encounters ?? []).filter((e) => e.fleet.size !== 'template').map((e) => e.fleet.type), ...(project.m?.fleets?.templates ?? []).map((t) => t.fleetType)].filter(Boolean))])
   function srcName(id: string): string { return id === 'mine' ? 'this mod' : id === 'starsector-core' ? 'vanilla' : index.sources.find((s) => s.id === id)?.name ?? id }
   const num = (v: string) => (v.trim() === '' ? undefined : Number(v))
 
@@ -110,7 +124,7 @@
       {#if f.kind === 'idlist'}
         {@const layers = ed.listLayers(f.path)}
         <div class="group">
-          <div class="gt"><span>{f.label}</span><span>{#each layers.filter((l) => l.values.length) as l, i (l.sourceId + i)}<span class:mine={l.mine} class:othermod={!l.mine && l.sourceId !== 'starsector-core'}>{i ? ' · ' : ''}{srcName(l.sourceId)} {l.mine && ed.kind === 'override' ? '+' : ''}{l.values.length}</span>{/each}</span></div>
+          <div class="gt"><span>{f.label}{#if factionFieldRef(f)}<RefButton ref={factionFieldRef(f)!} />{/if}</span><span>{#each layers.filter((l) => l.values.length) as l, i (l.sourceId + i)}<span class:mine={l.mine} class:othermod={!l.mine && l.sourceId !== 'starsector-core'}>{i ? ' · ' : ''}{srcName(l.sourceId)} {l.mine && ed.kind === 'override' ? '+' : ''}{l.values.length}</span>{/each}</span></div>
           <div class="chips">
             {#each layers as l, li (l.sourceId + li)}
               {#if l.mine || li === 0 || showOthers}
@@ -132,7 +146,7 @@
         {@const map = isObj(v) ? (v as Record<string, unknown>) : {}}
         {@const opts = f.kind === 'names' ? (f.path.endsWith('posts') ? app.defs.posts : app.defs.ranks) : options(f.source)}
         <div class="group">
-          <div class="gt"><span>{f.label}</span>{#if set}<button class="mini" onclick={() => edit((e) => e.revert(f.path))}>Revert</button>{/if}</div>
+          <div class="gt"><span>{f.label}{#if factionFieldRef(f)}<RefButton ref={factionFieldRef(f)!} />{/if}</span>{#if set}<button class="mini" onclick={() => edit((e) => e.revert(f.path))}>Revert</button>{/if}</div>
           <table class="t">
             <tbody>
               {#each Object.entries(map) as [k, w] (k)}
@@ -161,7 +175,7 @@
       {:else if f.kind === 'presence'}
         {@const base = ed.kind === 'override' && v != null && !set}
         <div class="row" class:patched={set}>
-          <label for={`f-${f.path}`}>{f.label}</label>
+          <label for={`f-${f.path}`}>{f.label}{#if factionFieldRef(f)} <RefButton ref={factionFieldRef(f)!} />{/if}</label>
           <div class="ctl">
             <input id={`f-${f.path}`} type="checkbox" checked={v != null} disabled={base}
               title={base ? 'The original faction has it; a merge file can\'t remove it' : ''}
@@ -172,7 +186,7 @@
         </div>
       {:else}
         <div class="row" class:patched={set}>
-          <label for={`f-${f.path}`}>{f.label}</label>
+          <label for={`f-${f.path}`}>{f.label}{#if factionFieldRef(f)} <RefButton ref={factionFieldRef(f)!} />{/if}</label>
           <div class="ctl">
             {#if f.kind === 'text'}
               <input id={`f-${f.path}`} type="text" value={v == null ? '' : String(v)} onchange={(e) => { const val = e.currentTarget.value; edit((x) => x.set(f.path, val)) }} />
@@ -242,7 +256,7 @@
 <style>
   .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--border); font-size: 12px; }
   .seg { display: flex; flex-wrap: wrap; }
-  .seg button { border-radius: 0; margin-left: -1px; padding: 3px 10px; font-size: 12px; }
+  .seg button { border-radius: 0; margin-left: -1px; padding: 3px 7px; font-size: 12px; white-space: nowrap; }
   .seg button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
   .seg button:last-child { border-radius: 0 4px 4px 0; }
   .seg button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }

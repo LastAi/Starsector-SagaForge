@@ -8,9 +8,9 @@
 import type { Problem, ProblemFix } from '../api'
 import type { CheckContext } from './index'
 import type { ModModel } from '../serialize'
-import type { DialogNode, ModUse, QuestPlan } from '../model'
-import { modUses, effectiveConds, nodeGuards, sharedWithUnconditional, type ItemConds, type ModUseSite } from '../moduses'
-import { addCond, combinations, comboText, condText, CORE_ID, holds, isNone, noConds, optionalMods, SAGALIB_ID, useOf, type EffConds } from '../modlist'
+import type { DialogNode, ModsCondition, ModUse, QuestPlan } from '../model'
+import { modUses, effectiveConds, nodeGuards, scanItems, sharedWithUnconditional, type ItemConds, type ModUseSite } from '../moduses'
+import { addCond, combinations, comboText, condText, CORE_ID, holds, isNone, neverPairIn, neverPairs, noConds, optionalMods, SAGALIB_ID, useOf, type EffConds, type NeverPair } from '../modlist'
 import { parseCondition, parseScriptLine, TOKEN_RE } from '../rules/parse'
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
@@ -73,6 +73,9 @@ export function modProblems(ctx: CheckContext): Problem[] {
     out.push({ level: 'info', area: 'Mods', message: `${x.key.replace(':', ' ')} is used by conditional content (${x.conditional.map((k) => k.replace(/^\w+:/, '')).slice(0, 3).join(', ')}) and by content without conditions (${x.plain.map((k) => k.replace(/^\w+:/, '')).slice(0, 3).join(', ')}), so it keeps no condition.`, key: `modshared:${x.key}` })
   }
 
+  // ---- "Only with A and B" for two mods that never run together (#76)
+  out.push(...neverTogetherProblems(m, name))
+
   // ---- every combination of the optional mods
   out.push(...combinationProblems(m, eff, name))
 
@@ -99,13 +102,15 @@ function guardsMod(g: EffConds, id: string): boolean {
  */
 export function combinationProblems(m: ModModel, eff: Map<string, ItemConds>, name: (id: string) => string = (id) => id): Problem[] {
   const ids = optionalMods(m.project).map((x) => x.id)
+  const pairs = neverPairs(m.project)
   const out: Problem[] = []
-  const used = (q: QuestPlan) => q.nodes.some((n) => (n.type === 'dialog' && n.options.some((o) => !!o.mods)) || (n.type === 'branch' && n.cases.some((c) => !!c.mods)))
+  const used =(q: QuestPlan) => q.nodes.some((n) => (n.type === 'dialog' && n.options.some((o) => !!o.mods)) || (n.type === 'branch' && n.cases.some((c) => !!c.mods)))
   for (const q of m.quests) {
     if (q.inactive || (!ids.length && !used(q))) continue
     const qe = eff.get(`quest:${q.id}`)?.eff
     const guards = nodeGuards(q, qe)
-    const combos = ids.length ? combinations(ids) : [new Set<string>()]
+    // #76: combinations holding two mods that never run together are skipped
+    const combos = ids.length ? combinations(ids, 64, pairs) : [new Set<string>()]
     for (const on of combos) {
       if (qe && !holds(qe, on)) continue
       for (const n of q.nodes) {
@@ -123,6 +128,34 @@ export function combinationProblems(m: ModModel, eff: Map<string, ItemConds>, na
   // one message per node is enough: keep the first combination
   const seen = new Set<string>()
   return out.filter((p) => { const k = p.key!.split(':').slice(0, 3).join(':'); if (seen.has(k)) return false; seen.add(k); return true })
+}
+
+/**
+ * #76 (PLAN.md §10.8): "Only with A and B" where A and B never run together (built-in, like AoTD and
+ * Industrial.Evolution, or marked in Saga › Mods) is content no player sees: a warning.
+ */
+export function neverTogetherProblems(m: ModModel, name: (id: string) => string = (id) => id, pairs: NeverPair[] = neverPairs(m.project)): Problem[] {
+  const out: Problem[] = []
+  const test = (c: ModsCondition | undefined, label: string, ref: Problem['ref'], key: string) => {
+    if (!c?.with?.length || c.anyOf) return
+    const hit = neverPairIn(c.with, pairs)
+    if (!hit) return
+    out.push({ level: 'warning', area: 'Mods', message: `${label} is "Only with ${name(hit[0])} and ${name(hit[1])}", but they're never played together (Saga › Mods, Never with), so no player sees it. Use "Only with … or …", or remove one.`, ref, key: `modnever:${key}` })
+  }
+  for (const it of scanItems(m)) test(it.own, it.label, it.ref, it.key)
+  for (const q of m.quests) {
+    for (const n of q.nodes) {
+      const ref = { page: 'quests' as const, id: q.id, sub: n.id }
+      const where = `"${q.title}", node "${(n as { title?: string }).title || n.id}"`
+      if (n.type === 'dialog') {
+        for (const o of n.options) test(o.mods, `${where}, option "${o.text || o.id}"`, ref, `${q.id}:${n.id}:${o.id}`)
+        for (const ph of n.phrases ?? []) for (const [i, cs] of ph.cases.entries()) test(cs.mods, `${where}, phrase ${ph.token} case ${i + 1}`, ref, `${q.id}:${n.id}:${ph.token}:${i}`)
+      }
+      if (n.type === 'branch') for (const c of n.cases) test(c.mods, `${where}, case "${c.label || c.id}"`, ref, `${q.id}:${n.id}:${c.id}`)
+    }
+  }
+  for (const ph of m.phrases) for (const [i, cs] of ph.cases.entries()) test(cs.mods, `Phrase ${ph.token} case ${i + 1}`, { page: 'saga' }, `phrase:${ph.token}:${i}`)
+  return out
 }
 
 /** FORMATS.md "Load order": for merged JSON the last mod wins; a patch of another mod's faction should load after it. */

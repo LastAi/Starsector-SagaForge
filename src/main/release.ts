@@ -43,7 +43,7 @@ async function walkFiles(dir: string, base = dir): Promise<string[]> {
 
 const TEXT = /\.(csv|json|faction|version|txt|md|ini)$/i
 
-export interface PackRequest { modDir: string; releasesDir: string; version: string; forumPost: string; overwrite: boolean; rules: WriteRules; /** #60: release notes (the mods it requires, works with, conflicts with), written next to the zip when given. */ notes?: string }
+export interface PackRequest { modDir: string; releasesDir: string; version: string; forumPost: string; overwrite: boolean; rules: WriteRules; /** #60: release notes (the mods it requires, works with, conflicts with), written next to the zip when given. */ notes?: string; /** #67 U38: put sagaforge/originals in the zip. */ originals?: boolean }
 
 export async function packRelease(req: PackRequest): Promise<PackResult> {
   const problem = releaseDirProblem(req.releasesDir, req.rules)
@@ -61,7 +61,7 @@ export async function packRelease(req: PackRequest): Promise<PackResult> {
   const entries: ZipEntry[] = []
   const leftOut: { path: string; why: string }[] = []
   for (const rel of (await walkFiles(req.modDir)).sort()) {
-    const why = leftOutOfRelease(rel)
+    const why = leftOutOfRelease(rel, { originals: req.originals })
     if (why) { leftOut.push({ path: rel, why }); continue }
     let data = await fsp.readFile(path.join(req.modDir, rel))
     if (TEXT.test(rel)) data = Buffer.from(releaseText(rel, data.toString('utf8')), 'utf8')

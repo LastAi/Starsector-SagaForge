@@ -49,6 +49,8 @@
   }
   function applyPreset(id: string) {
     if (!item) return
+    // #67: "(custom)" only drops the preset mark; it used to apply the first preset's values
+    if (!id) { ed((it) => { delete it.preset }); return }
     const fresh = newItem(item.id, item.name, id, app.defs)
     ed((it) => { it.kind = fresh.kind; it.tags = fresh.tags; it.otherColumns = fresh.otherColumns; it.basePrice = fresh.basePrice; it.stackSize = fresh.stackSize; it.cargoSpace = fresh.cargoSpace; it.special = fresh.special; it.preset = id })
   }
@@ -109,7 +111,7 @@
       <VersionStrip kind="item" id={item.id} what="this item (name, description, icon and base price only: the game loads the rest at startup)" paths={(p) => /^(name|description|icon|basePrice)$/.test(p)} />
       <div class="body">
         <div class="grid2">
-          <Field label="Preset" for="it-p" help="Fills in the kind, tags and columns for a common use (a quest item, a trade good…). Picking one again resets those fields.">
+          <Field label="Preset" ref="items-presets" for="it-p" help="Fills in the kind, tags and columns for a common use (a quest item, a trade good…). Picking one again resets those fields.">
             <select id="it-p" value={item.preset ?? ''} onchange={(e) => applyPreset(e.currentTarget.value)}><option value="">(custom)</option>{#each app.defs.itemPresets as p (p.id)}<option value={p.id}>{p.name} ({p.kind})</option>{/each}</select>
           </Field>
           <Field label="Name" for="it-n" help="Shown in the cargo screen, its tooltip, markets and the dialog's &quot;Gained&quot; lines.">
@@ -176,7 +178,7 @@
     <div class="grid2 modal">
       <Field label="Name" for="ni-n" help="As the game shows it in cargo and dialog."><input id="ni-n" type="text" bind:value={newName} placeholder="e.g. Convoy black box" /></Field>
       <Field label="Id" help="How quests and saves refer to it. Don't change it after a release."><span class="mono">{newId || '—'}</span></Field>
-      <Field label="Preset" for="ni-p" help="A starting point; every field can be changed afterwards."><select id="ni-p" bind:value={newPreset}>{#each app.defs.itemPresets as p (p.id)}<option value={p.id}>{p.name} ({p.kind})</option>{/each}</select></Field>
+      <Field label="Preset" ref="items-presets" for="ni-p" help="A starting point; every field can be changed afterwards."><select id="ni-p" bind:value={newPreset}>{#each app.defs.itemPresets as p (p.id)}<option value={p.id}>{p.name} ({p.kind})</option>{/each}</select></Field>
     </div>
     <p class="muted small">Quest item: not traded, not lost in combat, hidden in the Codex. Special items use vanilla's generic item plugin, so no code is needed.</p>
     {#snippet actions()}<button onclick={() => (showNew = false)}>Cancel</button><button class="primary" disabled={!newName.trim()} onclick={create}>Create</button>{/snippet}

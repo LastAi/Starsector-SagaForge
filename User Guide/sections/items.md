@@ -5,14 +5,14 @@ goods and rare valuables.
 
 ## How it works
 
-![The Convoy black box, a quest item](../img/items-box.png)
+![Dr. Sallow's log, a quest item of Heliopolis](../img/items-box.png)
 
 ### The item list
 
 - **This mod's items**: the items your mod adds, each marked **special** or **commodity**. **+
   New** adds one.
-- **Existing items (read-only)**: every commodity and special item of the game and your other
-  mods. Click one to see its icon and description. You can't change them here (a row with the same
+- **Existing items (read-only)**: every commodity and special item of the game and of the mods
+  your mod lists in [Saga › Mods](saga.md#mods) (**Show all installed mods** adds the others). Click one to see its icon and description. You can't change them here (a row with the same
   id in your mod would replace the whole row), but your quests can give, take and test them by
   their id.
 
@@ -33,19 +33,21 @@ You rarely pick the kind yourself. Each new item starts from a **preset**:
 | **Quest item** | special | Something a quest gives and takes back: not traded, not lost in combat, hidden in the Codex, price 0. |
 | **Trade good** | commodity | Something markets buy and sell, with a base price. |
 | **Rare valuable** | special | A valuable find worth 50,000 credits, with a Codex entry. |
+| **Special trade good** | special | Something to buy and sell outside the economy: a stack of up to 100, base price 1,500, no rarity (it doesn't turn up in salvage by itself). Markets don't produce or need it. |
 
 Special items use vanilla's generic item plugin, so they need no code.
 
-The example has one of each kind: the **Convoy black box** is a quest item (a special item), and
-**Compact ration packs** is a trade good (a commodity). A commodity's description goes into
-`descriptions.csv` (the bar above the form says so), and its **Other columns** hold the economy
-values of the Trade good preset.
+Heliopolis has quest items (**Dr. Sallow's log**, **Butters's coordinates**), rare valuables
+(**Purr-sealed token**) and a special trade good, **Sunleaf**, the catnip the Midnight Zoomies
+smuggle. A commodity's description goes into `descriptions.csv` (the bar above the form says so),
+and its **Other columns** hold the economy values of the Trade good preset.
 
-![Compact ration packs, a trade good (commodity)](../img/items-tradegood.png)
+![Sunleaf, a special trade good](../img/items-tradegood.png)
 
 ### The item form
 
-- **Preset**: picking one again resets the kind, tags and columns to that preset.
+- **Preset**: picking one again resets the kind, tags and columns to that preset. **(custom)**
+  means the item no longer matches a preset; picking it changes nothing.
 - **Name** and **Icon**: shown in the cargo screen, tooltips, markets and the dialog's "Gained"
   lines. The icon is an 80×80 PNG.
 - **Base price**, **Stack size**, **Cargo space**: the price before markets change it, how many
@@ -71,8 +73,8 @@ says which file the item writes to. Items don't need SagaLib.
 ### Add a quest item
 
 1. Click **+ New**.
-2. Type the **Name**, e.g. *Convoy black box*. The **Id** is made from it with your prefix
-   (`vgc_convoy_black_box`); quests and saves refer to it, so don't change it after a release.
+2. Type the **Name**, e.g. *Dr. Sallow's log*. The **Id** is made from it with your prefix
+   (`hel_sallow_log`); quests and saves refer to it, so don't change it after a release.
 3. Leave **Preset** on **Quest item** and click **Create**.
 4. Write the **Description**: the text the player reads in the tooltip.
 5. Give it an icon (see [Give an item an icon](#give-an-item-an-icon)).
@@ -113,7 +115,7 @@ it in salvage on purpose, add it to a loot table (see
 3. Pick one, or click **Import…** to bring your own file in: choose it, crop it, and Saga Forge
    saves it to the mod's `graphics/icons/cargo/` with your prefix in the name. For more on
    importing, see [Images › Import images](images.md#import-images).
-4. Or type a path in the box, e.g. `graphics/icons/cargo/vgc_black_box.png`.
+4. Or type a path in the box, e.g. `graphics/icons/cargo/hel_sallow_log.png`.
 
 ![The icon picker: your mod's icons first, then the game's](../img/items-pick-icon.png)
 

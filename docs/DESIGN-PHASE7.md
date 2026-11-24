@@ -111,7 +111,8 @@ The user went through the left-out items and the questions below:
 - **Roaming fleets (q. 13):** Phase 8, with world events.
 - **Target extras (q. 6):** noted; the user will ask modders whether they want or need them.
   **Commodity targets need a delicate touch**: two major mods change how vanilla's economy and
-  planetary industry work. (Moved to task #66, after the mod-support baseline: PLAN.md §10.7.) **Terrain targets** look too obscure: most mods would rather spawn a
+  planetary industry work. (Moved to task #66, after the mod-support baseline: PLAN.md §10.7. Decided 2026-11-19: build,
+  PLAN.md §10.8.) **Terrain targets** look too obscure: most mods would rather spawn a
   matching place with randomized elements than match a random existing one.
 - **More spawn kinds (q. 10):** to look at, like specials.
 - **rdsm fixtures (q. 5):** right to leave out of Phase 7; an outstanding test case (INGAME-CHECKS

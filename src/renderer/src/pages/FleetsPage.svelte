@@ -4,6 +4,8 @@
    * captain; reused by encounters), fleet type names for every faction (R22), and a preview of what
    * a faction's doctrine makes (R4); #63: Nexerelin's new-game ready-made fleets.
    */
+  import RefButton from '../ui/RefButton.svelte'
+  import { fullName } from '../../../shared/personname'
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
   import Field from '../ui/Field.svelte'
@@ -16,6 +18,9 @@
   import NexFleets from '../factions/NexFleets.svelte'
   import { NEX_PLAYER, NEX_PLAYER_CONFIG, nexConfigPath, nexConfigured, startFleets, type NexConfig } from '../../../shared/nexconfig'
   import { nexListed } from '../../../shared/modlist'
+  import { mods } from '../state/mods.svelte'
+  import { factionKnows, knownVariants, ownKnownShips } from '../../../shared/shipsets'
+  import ShipSetDialog from '../ui/ShipSetDialog.svelte'
 
   const index = $derived(app.index!)
   const m = $derived(project.m)
@@ -26,19 +31,32 @@
   /** What the game calls a type without this mod (the mod's own exported names left out). */
   const gameName = (id: string) => (index.fleetTypeNamesBase ?? index.fleetTypeNames)?.[id] ?? ''
   const fleetTypeOptions = $derived([...new Set([...app.defs.fleetTypes.map((t) => t.id), ...Object.keys(index.fleetTypeNames ?? {}), ...Object.keys(m?.fleets?.typeNames ?? {})])].map((id) => ({ id, name: m?.fleets?.typeNames[id] || typeNames(id) })))
+  // #67 U39 (user, 2026-11-22): the variants of the fleet's faction's ships (what its fleets can use),
+  // the mod's list, or every installed mod (the picker's own switch); labelled by hull and variant name
+  let onlyFaction = $state(true)
+  let shipSet = $state(false)
+  const variantLabel = (v: { id: string; hull?: string; displayName?: string }) => { const h = v.hull ? index.hulls.find((x) => x.id === v.hull) : undefined; return `${h?.name ?? v.hull ?? ''}${v.displayName ? ` (${v.displayName})` : ''}` }
+  const factionShips = $derived(tpl && index ? knownVariants(index, factionKnows(index, tpl.faction, mods.visible, ownKnownShips(m?.factions ?? [], tpl.faction)), mods.visible) : [])
+  const variantOptions = $derived((onlyFaction && factionShips.length ? factionShips : index.variants).map((v) => ({ id: v.id, name: variantLabel(v), definedBy: v.definedBy })))
   const edT = (fn: (t: FleetTemplateDef) => void) => { const id = sel; project.change((mm) => { const t = mm.fleets?.templates.find((x) => x.id === id); if (t) fn(t) }) }
 
   // ---- new named fleet
   let showNew = $state(app.smokeModal === 'new')
   let newName = $state('')
   const newId = $derived(newName.trim() ? project.prefix + slug(newName).replace(new RegExp(`^${project.prefix}`), '') : '')
+  // #67 U41 (user, 2026-11-22): copy the selected named fleet under a new name and id
+  let copying = $state(false)
+  function startCopy() { if (!tpl) return; newName = `${tpl.name || tpl.id} copy`; copying = true; showNew = true }
+  let showInactive = $state(true)
   function create() {
     const id = newId
     if (!id || !m) return
     if (m.fleets?.templates.some((t) => t.id === id)) { app.error = `A named fleet "${id}" exists already.`; return }
     const faction = m.factions.find((f) => f.kind === 'addition')?.id ?? 'pirates'
-    project.change((mm) => { mm.fleets ??= { templates: [], typeNames: {} }; mm.fleets.templates.push(newTemplate(id, newName.trim(), faction)) })
+    const from = copying ? tpl : null
+    project.change((mm) => { mm.fleets ??= { templates: [], typeNames: {} }; mm.fleets.templates.push(from ? { ...JSON.parse(JSON.stringify($state.snapshot(from))), id, name: newName.trim(), inactive: undefined } : newTemplate(id, newName.trim(), faction)) })
     showNew = false
+    copying = false
     newName = ''
     app.selected.fleets = id
   }
@@ -98,10 +116,10 @@
 
 <div class="page">
   <aside class="left">
-    <div class="sect">Named fleets <button disabled={!m} onclick={() => (showNew = true)}>+ New…</button></div>
+    <div class="sect">Named fleets <span class="sectr"><label class="chk" title="Show named fleets marked Inactive (planned, not exported)"><input type="checkbox" bind:checked={showInactive} /> inactive</label><button disabled={!m || !tpl} onclick={startCopy} title={tpl ? `A copy of ${tpl.name || tpl.id} (everything: ships, captain, faction…) under a new name` : 'Select a named fleet to copy'}>+ Copy…</button><button disabled={!m} onclick={() => { copying = false; showNew = true }}>+ New…</button></span></div>
     <ul class="list">
-      {#each m?.fleets?.templates ?? [] as t (t.id)}
-        <li class:on={sel === t.id && !previewFaction && !showTypes}><button class="li" onclick={() => { app.selected.fleets = t.id; previewFaction = null; showTypes = false }}>{t.name || t.id}<span class="sub">{t.ships.length} ships</span></button></li>
+      {#each (m?.fleets?.templates ?? []).filter((t) => showInactive || !t.inactive) as t (t.id)}
+        <li class:on={sel === t.id && !previewFaction && !showTypes} class:inactive={t.inactive}><button class="li" onclick={() => { app.selected.fleets = t.id; previewFaction = null; showTypes = false }}>{t.name || t.id}{#if t.inactive} <span class="muted">[Inactive]</span>{/if}<span class="sub">{t.ships.length} ships</span></button></li>
       {:else}<li class="muted small pad">None yet.</li>{/each}
     </ul>
     <div class="sect">Fleet type names</div>
@@ -160,7 +178,7 @@
             <tr><td class="mono">{k}</td><td><input type="text" value={v} onchange={(e) => { const val = e.currentTarget.value; project.change((mm) => { mm.fleets!.typeNames[k] = val }) }} /></td><td class="muted">{gameName(k) || '—'}</td>
               <td><button class="mini" onclick={() => project.change((mm) => { delete mm.fleets!.typeNames[k] })}>✕</button></td></tr>
           {/each}
-          <tr><td colspan="4"><IdInput value="" options={fleetTypeOptions} placeholder="+ fleet type (vanilla's or your own id)" width="260px" clearOnCommit onCommit={(id) => { if (id) project.change((mm) => { mm.fleets ??= { templates: [], typeNames: {} }; mm.fleets.typeNames[id] = gameName(id) || id }) }} /></td></tr>
+          <tr><td colspan="4"><IdInput value="" options={fleetTypeOptions} placeholder="+ fleet type (vanilla's or your own id)" width="260px" clearOnCommit onCommit={(id) => { if (id) project.change((mm) => { mm.fleets ??= { templates: [], typeNames: {} }; mm.fleets.typeNames[id] = gameName(id) || id }) }} /><RefButton ref="factions-fleet-types" title="Fleet types and their default names: opens the reference" /></td></tr>
         </tbody>
       </table>
     {:else if nexSel && nexConfigOf}
@@ -171,13 +189,14 @@
         <h2>{nexName(nexSel)}: ready-made fleets (Nexerelin)</h2>
         <p class="muted small">The fleets offered on Nexerelin's new-game fleet choice when the player joins {nexName(nexSel)} at the start, next to Nexerelin's <b>Custom</b> button (a fleet built from the faction's known ships). Part of its Nexerelin config, <span class="mono">{nexConfigPath(nexSel)}</span>. <button class="linkish" onclick={() => { app.go('factions', nexSel) }}>Its other Nexerelin settings (Factions › Nexerelin)</button></p>
       {/if}
-      <div class="box"><NexFleets config={nexConfigOf} variantOptions={index.variants ?? []} onEdit={editNexFleets} /></div>
+      <div class="box"><RefButton ref="factions-nex-start-fleets" title="What each new-game fleet kind is: opens the reference" /><NexFleets config={nexConfigOf} variantOptions={index.variants ?? []} onEdit={editNexFleets} /></div>
       <p class="muted small">Each fleet is a list of variant ids, by type (Frigate (classic), Combat (small), …, as Nexerelin's screen names them). A type with several fleets gets &lt; &gt; buttons in game; types without fleets aren't offered.</p>
     {:else if nexSel}
       <div class="center muted">{nexSel} has no Nexerelin config. Add one on Factions › Nexerelin.</div>
     {:else if tpl}
       {@const users = templateUsers(m?.encounters ?? [], tpl.id)}
-      <h2>{tpl.name || tpl.id} <span class="mono muted small">{tpl.id}</span></h2>
+      <!-- #67 U41 (user, 2026-11-22): as the other pages: name and id on the left, Inactive and Delete on the right -->
+      <div class="head"><h2>{tpl.name || tpl.id}</h2><span class="mono muted">{tpl.id}</span>{#if tpl.inactive}<span class="muted small">[Inactive]</span>{/if}<span class="spacer"></span><label class="chk" title="Planned but not ready: not exported, so not in the game; an encounter or Fight node that uses it isn't either. Its problems become warnings; what uses it is flagged in Problems."><input type="checkbox" checked={!!tpl.inactive} onchange={(e) => { const v = e.currentTarget.checked; edT((t) => { if (v) t.inactive = true; else delete t.inactive }) }} /> Inactive</label><button class="mini danger" onclick={remove}>Delete</button></div>
       <p class="muted small">A named fleet: the same ships, names and captain every time an encounter spawns it, at full strength (SagaLib 1.1). Its defeats are counted in <span class="mono">$global.sagaforge_fleet_{tpl.id}_defeats</span>, for quest conditions.</p>
       <div class="grid2">
         <Field label="Fleet name" for="ft-n" help="Its name on the map (&quot;Butters's Pride&quot;). Empty: the faction's name for its fleet type.">
@@ -186,11 +205,11 @@
         <Field label="Faction" help="Whose fleet it is: its flag, its relations and the player's reputation when fighting it.">
           <IdInput value={tpl.faction} options={factionOptions} strict onCommit={(v) => edT((t) => { t.faction = v })} />
         </Field>
-        <Field label="Fleet type" help="Vanilla's or your own fleet type id; it names the fleet when the name is empty, and some vanilla code checks it.">
+        <Field label="Fleet type" ref="factions-fleet-types" help="Vanilla's or your own fleet type id; it names the fleet when the name is empty, and some vanilla code checks it.">
           <IdInput value={tpl.fleetType} options={fleetTypeOptions} onCommit={(v) => edT((t) => { t.fleetType = v })} />
         </Field>
         <Field label="Captain" for="ft-c" help="One of the mod's people commands the flagship (their portrait and name show when the player hails or fights it).">
-          <select id="ft-c" value={tpl.captain ?? ''} onchange={(e) => { const v = e.currentTarget.value; edT((t) => { t.captain = v || undefined }) }}><option value="">(the fleet's own officer)</option>{#each m?.people ?? [] as p (p.id)}<option value={p.id}>{p.name.first} {p.name.last}</option>{/each}</select>
+          <select id="ft-c" value={tpl.captain ?? ''} onchange={(e) => { const v = e.currentTarget.value; edT((t) => { t.captain = v || undefined }) }}><option value="">(the fleet's own officer)</option>{#each m?.people ?? [] as p (p.id)}<option value={p.id}>{fullName(p.name)}</option>{/each}</select>
         </Field>
         {#if tpl.captain}
           <Field label="When defeated" for="ft-d" help="By default the captain survives a defeat (as the player does) and commands the fleet again next time. Ticked: the captain dies with the fleet and is gone for good (never recreated, never a captain again). A quest can also remove a person (Action › Remove a person).">
@@ -198,14 +217,15 @@
           </Field>
         {/if}
       </div>
-      <div class="sect2">Ships <button class="mini" onclick={() => edT((t) => { t.ships.push({ variant: '' }) })}>+ Ship</button></div>
+      <div class="sect2">Ships <button class="mini" onclick={() => edT((t) => { t.ships.push({ variant: '' }) })}>+ Ship</button><button class="mini" onclick={() => (shipSet = true)} title="A starting list as the faction's fleets would have it (vanilla's ship roles), to edit after">+ From a faction's fleet…</button>
+        <label class="chk only" title="The variant list: only ships the fleet's faction knows (its known ships and blueprint tags), or every variant of vanilla and the mods this mod lists (the list's +N shows the other installed mods too)"><input type="checkbox" bind:checked={onlyFaction} /> only {tpl.faction || 'the faction'}'s ships ({factionShips.length})</label></div>
       <table class="t">
         <thead><tr><th title="The flagship: the captain commands it">Flag</th><th>Variant</th><th>Ship name</th><th></th></tr></thead>
         <tbody>
           {#each tpl.ships as s, i (i)}
             <tr>
               <td><input type="radio" name="flag" checked={(tpl.flagship ?? 0) === i} onchange={() => edT((t) => { t.flagship = i })} /></td>
-              <td><IdInput value={s.variant} options={index.variants} strict width="220px" placeholder="variant id" onCommit={(v) => edT((t) => { t.ships[i].variant = v })} /></td>
+              <td><IdInput value={s.variant} options={variantOptions} strict width="260px" placeholder="variant id" onCommit={(v) => edT((t) => { t.ships[i].variant = v })} />{#if s.variant}<span class="muted small vl">{variantLabel(index.variants.find((v) => v.id === s.variant) ?? { id: s.variant })}</span>{/if}</td>
               <td><input type="text" value={s.name ?? ''} placeholder="the game picks one" onchange={(e) => { const v = e.currentTarget.value; edT((t) => { t.ships[i].name = v || undefined }) }} /></td>
               <td><button class="mini" onclick={() => edT((t) => { t.ships.splice(i, 1); if ((t.flagship ?? 0) >= t.ships.length) t.flagship = 0 })}>✕</button></td>
             </tr>
@@ -216,7 +236,6 @@
       <div class="sect2">Used by</div>
       {#if users.length}<div>{#each users as u, i (u.id)}{i ? ', ' : ''}<button class="linkish" onclick={() => app.go('encounters', u.id)}>{u.name}</button>{/each}</div>
       {:else}<p class="muted small">No encounter uses it yet: on the Encounters page, set Fleet › Size to "a named fleet".</p>{/if}
-      <p><button class="mini danger" onclick={remove}>Delete named fleet</button></p>
     {:else}
       <div class="center muted">Pick a named fleet, the fleet type names, a faction's doctrine preview{#if showNex} or its new-game fleets{/if}.</div>
     {/if}
@@ -224,25 +243,40 @@
 </div>
 
 {#if showNew}
-  <Modal title="New named fleet" onClose={() => (showNew = false)}>
+  <Modal title={copying && tpl ? `Copy of ${tpl.name || tpl.id}` : "New named fleet"} onClose={() => { showNew = false; copying = false }}>
     <div class="grid2 modal">
       <Field label="Name" for="nf-n" help="Its name on the map; the id is made from it with the mod's prefix."><input id="nf-n" type="text" bind:value={newName} placeholder="e.g. Butters's Pride" /></Field>
       <Field label="Id" help="Encounters refer to it by id."><span class="mono">{newId || '—'}</span></Field>
     </div>
-    {#snippet actions()}<button onclick={() => (showNew = false)}>Cancel</button><button class="primary" disabled={!newId} onclick={create}>Create</button>{/snippet}
+    {#snippet actions()}<button onclick={() => { showNew = false; copying = false }}>Cancel</button><button class="primary" disabled={!newId} onclick={create}>{copying ? "Copy" : "Create"}</button>{/snippet}
   </Modal>
 {/if}
 
+{#if shipSet && tpl}
+  <ShipSetDialog faction={tpl.faction} onClose={() => (shipSet = false)} onAdd={(vs, replace) => { shipSet = false; edT((t) => { const add = vs.map((variant) => ({ variant })); if (replace) { t.ships = add; t.flagship = 0 } else t.ships.push(...add) }) }} />
+{/if}
+
 <style>
+  .only { display: inline-flex; gap: 4px; align-items: center; margin-left: 10px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+  .vl { margin-left: 6px; font-size: 11px; }
   .page { display: grid; grid-template-columns: 260px minmax(0, 1fr); height: 100%; min-height: 0; }
   .left { background: var(--panel); overflow: auto; border-right: 1px solid var(--border); }
   .main { overflow: auto; padding: 12px 16px; }
-  .sect { padding: 8px 10px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; }
+  .sect { padding: 8px 10px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px; justify-content: space-between; align-items: center; }
+  .sect button { white-space: nowrap; }
   .sect button { padding: 1px 6px; font-size: 11px; text-transform: none; }
   .sect2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 4px; display: flex; gap: 10px; align-items: center; }
   .sect2 button { text-transform: none; }
   .list { list-style: none; margin: 0; padding: 0 4px; }
   .list li.on { background: #1f2a38; outline: 1px solid var(--accent-2); border-radius: 4px; }
+  .list li.inactive { opacity: .5; }
+  /* the selected item's bar, as on Encounters and People */
+  .head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; margin: -12px -16px 10px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .head h2 { margin: 0; font-size: 15px; }
+  .head .chk { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; }
+  .spacer { flex: 1; }
+  .sectr { display: inline-flex; gap: 6px; align-items: center; }
+  .sectr .chk { display: inline-flex; gap: 4px; align-items: center; font-size: 11px; text-transform: none; letter-spacing: 0; }
   .li { display: flex; gap: 6px; width: 100%; border: none; background: none; padding: 3px 8px; text-align: left; }
   .li .sub { color: var(--muted); font-size: 11px; margin-left: auto; }
   .pad { padding: 4px 10px; }

@@ -59,7 +59,7 @@ class ProblemsStore {
       const mine = new Set<string>()
       for (const k of IMAGE_KINDS) for (const f of await window.api.listImages(k.folder)) if (f.sourceId === own) mine.add(f.path)
       const imageSizes = await window.api.imageSizes([...mine])
-      for (const c of project.pendingCopies) files[c.to] = true
+      for (const c of project.pendingCopies) files[c.to] = !c.remove
       const ctx = { model, index, defs: app.defs, loaded, rules, styleChecks: app.settings.styleChecks, files, imageSizes, version: versionCtx() }
       const first = checkModel(ctx)
       // #60: a second pass without the optional mods (what still depends on them without a condition)

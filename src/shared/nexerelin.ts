@@ -48,9 +48,9 @@ export function questWatch(q: QuestPlan, m: ModModel, index: GameIndex | null): 
   for (const st of q.stages) fixed(st.marker)
   for (const n of q.nodes) if (n.type === 'wait' && n.mode === 'arrive') fixed(n.entity)
   for (const pl of q.places ?? []) fixed(pl.entity)
-  for (const v of q.variables) if (v.type === 'target' && v.target?.pick === 'market') add(targetKey(q.id, v.name))
+  for (const v of q.variables) if (v.type === 'target' && (v.target?.pick === 'market' || v.target?.pick === 'commodity')) add(targetKey(q.id, v.name))
   // a marker or Arrive at a target's person stands for its market too
-  for (const st of q.stages) { const v = targetVarOf(st.marker); if (v && q.variables.some((x) => x.name === v && x.target?.pick === 'market')) add(targetPartKey(q.id, v, '')) }
+  for (const st of q.stages) { const v = targetVarOf(st.marker); if (v && q.variables.some((x) => x.name === v && (x.target?.pick === 'market' || x.target?.pick === 'commodity'))) add(targetPartKey(q.id, v, '')) }
   return out
 }
 

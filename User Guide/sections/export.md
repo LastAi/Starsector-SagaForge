@@ -20,7 +20,7 @@ written until you press **Export**.
 
 ### The Export dialog
 
-![Export: the version, the release details and every file with its state (descriptions.csv has a changed block)](../img/export.png)
+![Export of Heliopolis: the version, the release details and every file with its state](../img/export.png)
 
 - **Mod version**: the version in `mod_info.json`, shown in the game's launcher. Raise it for each
   update you publish (1.0.0 → 1.1.0). If that version is already marked as released, a note says
@@ -29,9 +29,10 @@ written until you press **Export**.
   [Version Checker](#version-checker).
 - **The file list**: every file Export would write, each with its state: **new**, **changed**,
   **same** (unchanged) or **removed**, and a short summary of what is in it. A shared file whose
-  Saga Forge rows change is marked **block** (see [Owned blocks](#owned-blocks)): in the picture,
-  an item description was edited, so `descriptions.csv` gets its 3 descriptions written again.
-  Content you marked inactive is not exported, and its files from an earlier export are removed.
+  Saga Forge rows change is marked **block** (see [Owned blocks](#owned-blocks)). In the picture
+  nothing changed since the last export, so every file is **same**. Content you marked inactive
+  (quests, people, encounters, named fleets) is not exported, and its files from an earlier export
+  are removed.
 - **Translatable texts** (on by default, for mods that use SagaLib): the dialog goes into
   `rules.csv` as tokens and its texts into `data/sagaforge/text.json`, so others can translate
   the mod without copying it (see [Translation mods](translation.md)). It needs SagaLib 1.2.
@@ -71,10 +72,12 @@ After an export the dialog shows the files written, and **Mark as released**:
   warnings** in [Problems](problems.md): a stage that is gone, a person renamed, a new system
   that would only appear in new games. Each says what happens to players and, where it can, how to
   avoid it.
-- It also packs the **release zip**: `[0.98.5a] Vanguard Compact 1.0.0.zip` (the game version first,
+- It also packs the **release zip**: `[0.98a] The Other Captain 0.1.0.zip` (the game version first,
   as the forum's titles do), with one folder named after the mod, ready to unzip into
-  `Starsector/mods`. It leaves out `sagaforge/` (your plans), the dev-mode test profiles, hidden
-  and temporary files. It goes into the **releases folder** (Settings › Releases folder), never
+  `Starsector/mods`. It leaves out `sagaforge/` (your plans and original images), the dev-mode
+  test profiles, hidden and temporary files. Tick **with the original images** to pack your
+  originals (`sagaforge/originals/`, see [Images › Originals](images.md#originals)) too, for
+  players who want to edit the art; it is remembered per mod. It goes into the **releases folder** (Settings › Releases folder), never
   into a mod or the game.
 
 Mark as released refuses while fields marked **Set later** are still open in active content (see
@@ -89,8 +92,8 @@ Version Checker is a popular mod that tells players when one of their mods has a
 ![Release details opened](../img/export-release.png)
 
 - **Version file**: the web address where you will put the mod's `.version` file (for
-  Vanguard Compact `vgc.version`). Use the raw file's address, e.g.
-  `https://raw.githubusercontent.com/you/repo/main/vgc.version`. Empty: no Version Checker file.
+  Heliopolis `lastai_heliopolis.version`). Use the raw file's address, e.g.
+  `https://raw.githubusercontent.com/you/repo/main/lastai_heliopolis.version`. Empty: no Version Checker file.
 - **Download**: a direct link to the release zip (for example the GitHub release). Host it
   outside the forum, which deletes attachments.
 - **Forum thread**: the number after `topic=` in your mod's thread, or the thread's address.
@@ -112,10 +115,11 @@ are kept for a forum post draft that is coming later; they do nothing yet.
    leave **Add the required mods to mod_info.json dependencies** ticked too.
 4. If errors are listed, Export is blocked: fix them first (see
    [Problems › Fix a problem](problems.md#fix-a-problem)). Read the warnings.
-5. **Export**. The dialog lists the files it wrote (here 4: the changed descriptions, the dialog
-   texts, SagaLib's index and the contact's mission row) and where the old versions went.
+5. **Export**. The dialog lists the files it wrote (here 19, the first export of The Other
+   Captain: its dialog, item, descriptions, pictures, SagaLib's files for its quests, people,
+   system, encounters and crisis bar, and the index) and where the old versions went.
 
-![Exported: 4 files written](../img/export-done.png)
+![Exported: 19 files written](../img/export-done.png)
 
 To try it, link the mod into the game's mods folder (see
 [Getting started and Settings › Choose your mods folder](settings.md#choose-your-mods-folder)),
@@ -134,8 +138,8 @@ new dialog.
    keep **Also pack … .zip into the releases folder** ticked.
 3. **Mark as released**. The button turns into **Marked**, *last release* shows the version and
    date, and a green line says how many files it packed into which zip and what it left out (here
-   38 files into `[0.98.5a] Vanguard Compact 1.0.0.zip`, leaving out 33: the test profiles and
-   Saga Forge's plans). **Show in folder** opens it.
+   33 files into `[0.98a] The Other Captain 0.1.0.zip`, leaving out 40: Saga Forge's plans and the
+   original images). **Show in folder** opens it.
 
 ![Marked as released and packed](../img/export-released.png)
 
@@ -169,7 +173,7 @@ depend on.
    already marked as released; after the export, *last release* next to Mark as released shows
    the version players have now.
 
-![Mark as released shows the last release (1.0.0): the update gets a new version](../img/export-released.png)
+![Mark as released shows the last release (0.1.0): the update gets a new version](../img/export-released.png)
 
 3. **Mark as released** with the new version, and publish the new zip (see
    [Make a release zip](#make-a-release-zip)).

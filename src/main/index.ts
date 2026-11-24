@@ -7,6 +7,7 @@ import { buildIndex, type IndexCache } from './gameindex'
 import { clearSnapshot, importSnapshot, loadStoredSnapshot } from './snapshotstore'
 import { detectInstall, isFile, modsRootFor } from './install'
 import { loadProject, snapshotMod, writeFiles } from './modproject'
+import { modJars } from './jars'
 import { createMod, samePath, workspaceProblem, type WriteRules } from './workspace'
 import { packRelease, releaseDirProblem } from './release'
 import { langCode, modTexts, translatableMods, translationModFiles } from './translations'
@@ -49,8 +50,14 @@ function walkPick(): { used: boolean; value: string | string[] | null } {
 let config: AppConfig
 /** Index caches by key; the target's and (for the version comparison, #47) the other install's. */
 const caches = new Map<string, Promise<IndexCache>>()
+/** #67 U33: the sources that count for the active mod (set by the renderer); null = every source. */
+let visibleIds: Set<string> | null = null
 let win: BrowserWindow | null = null
 let refWin: BrowserWindow | null = null
+/** #67 U44: the token window (a child of the editor's window: above it, not above other apps). */
+let tokWin: BrowserWindow | null = null
+let tokPayload: unknown = null
+let tokBounds: Electron.Rectangle | null = null
 let dirty = false
 let userDefs: ReturnType<typeof loadUserDefs>
 
@@ -79,7 +86,12 @@ function rules(): WriteRules {
 }
 
 function settings(): AppSettings {
-  return { styleChecks: !!config.styleChecks, extensions: { ...config.extensions }, releasesDir: releasesDir(), releasesDirChosen: !!config.releasesDir }
+  return { styleChecks: !!config.styleChecks, extensions: { ...config.extensions }, releasesDir: releasesDir(), releasesDirChosen: !!config.releasesDir, nodeGroupsDir: nodeGroupsDir(), nodeGroupsDirChosen: !!config.nodeGroupsDir }
+}
+
+/** #67 U43: the node group library (chosen in Settings, or Saga Forge's own data folder). */
+function nodeGroupsDir(): string {
+  return config.nodeGroupsDir || path.join(app.getPath('userData'), 'nodegroups')
 }
 
 /** R32: the releases folder (chosen in Settings, or Saga Forge's own data folder). */
@@ -240,10 +252,12 @@ function registerIpc(): void {
     return { id: String(id), layers: layers.map((l) => ({ sourceId: l.sourceId, file: l.file, raw: l.raw })) }
   })
 
-  ipcMain.handle('loadImage', async (_e, gamePath: string, sourceId?: string) => findImage(await getCache(), String(gamePath ?? ''), sourceId ? String(sourceId) : undefined))
+  ipcMain.handle('loadImage', async (_e, gamePath: string, sourceId?: string) => findImage(await getCache(), String(gamePath ?? ''), sourceId ? String(sourceId) : undefined, visibleIds ?? undefined))
+  // #67 U33: the sources that count for the active mod (vanilla, it, its listed mods): image and font lookups prefer them
+  ipcMain.handle('setVisibleSources', (_e, ids: string[]) => { visibleIds = Array.isArray(ids) ? new Set(ids.map(String)) : null })
   ipcMain.handle('readPickedImage', async (_e, abs: string) => readImageFile(String(abs), 'picked'))
   // the Images page and its pickers (R5, R28)
-  ipcMain.handle('listImages', async (_e, folder: string) => listImages(await getCache(), String(folder ?? '')))
+  ipcMain.handle('listImages', async (_e, folder: string) => listImages(await getCache(), String(folder ?? ''), visibleIds ?? undefined))
   // sizes of the active mod's own images, for Check mod (R5)
   ipcMain.handle('imageSizes', async (_e, paths: string[]) => {
     const { src } = await activeSource()
@@ -270,14 +284,17 @@ function registerIpc(): void {
     if (r.canceled) return []
     return opts?.folder ? imagesInFolder(r.filePaths[0]) : r.filePaths
   })
-  ipcMain.handle('loadFont', async (_e, key: string) => findFont(await getCache(), String(key)))
+  ipcMain.handle('loadFont', async (_e, key: string) => findFont(await getCache(), String(key), visibleIds ?? undefined))
   // the reference pages (R8): written to Saga Forge's own data folder, shown in their own window
-  ipcMain.handle('openReference', async (_e, html: string, anchor: string) => {
-    const file = path.join(app.getPath('userData'), 'reference', 'reference.html')
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, String(html))
+  ipcMain.handle('openReference', async (_e, pages: { file: string; html: string }[], page: string, anchor: string) => {
+    // #67 U34: one page per group, each file named reference-<group>.html (nothing else is written)
+    const dir = path.join(app.getPath('userData'), 'reference')
+    fs.mkdirSync(dir, { recursive: true })
+    const safe = (f: string) => /^reference-[a-z0-9-]+\.html$/.test(f)
+    for (const p of Array.isArray(pages) ? pages : []) if (safe(String(p.file))) fs.writeFileSync(path.join(dir, String(p.file)), String(p.html))
+    const file = path.join(dir, safe(String(page)) ? String(page) : 'reference-people.html')
     if (!refWin || refWin.isDestroyed()) {
-      refWin = new BrowserWindow({ width: 1000, height: 760, title: 'Saga Forge reference', autoHideMenuBar: true, backgroundColor: '#12151a', webPreferences: { sandbox: true, contextIsolation: true } })
+      refWin = new BrowserWindow({ width: 1300, height: 820, title: 'Saga Forge reference', autoHideMenuBar: true, backgroundColor: '#12151a', webPreferences: { sandbox: true, contextIsolation: true } })
       refWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     }
     await refWin.loadFile(file, { hash: String(anchor ?? '').replace(/[^a-z0-9-]/g, '') })
@@ -287,6 +304,12 @@ function registerIpc(): void {
   ipcMain.handle('loadProject', async () => {
     const { c, src } = await activeSource()
     return src ? loadProject(c, src) : null
+  })
+
+  // #79: the active mod's jars again (rebuilt while the editor is open), read only
+  ipcMain.handle('modJars', async () => {
+    const { src } = await activeSource()
+    return src ? modJars(src.dir) : []
   })
 
   ipcMain.handle('writeFiles', async (_e, req: WriteRequest) => {
@@ -321,6 +344,58 @@ function registerIpc(): void {
     return file
   })
 
+  // #67 U44: the token window
+  ipcMain.handle('openTokenWindow', async () => {
+    if (tokWin && !tokWin.isDestroyed()) { tokWin.show(); tokWin.focus(); return }
+    const b = win?.getBounds()
+    const def = tokBounds ?? (b ? { x: b.x + b.width - 470, y: b.y + 90, width: 440, height: Math.min(760, b.height - 120) } : { x: 100, y: 100, width: 440, height: 720 })
+    tokWin = new BrowserWindow({ ...def, minWidth: 320, minHeight: 300, parent: win ?? undefined, title: 'Tokens', autoHideMenuBar: true, backgroundColor: '#12151a', minimizable: false,
+      webPreferences: { preload: path.join(__dirname, '../preload/index.js'), contextIsolation: true, sandbox: true, nodeIntegration: false } })
+    tokWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    tokWin.on('close', () => { if (tokWin) tokBounds = tokWin.getBounds() })
+    tokWin.on('closed', () => { tokWin = null })
+    if (process.env.ELECTRON_RENDERER_URL) await tokWin.loadURL(process.env.ELECTRON_RENDERER_URL + '#tokens')
+    else await tokWin.loadFile(path.join(__dirname, '../renderer/index.html'), { hash: 'tokens' })
+  })
+  ipcMain.on('tokensPublish', (_e, p: unknown) => { tokPayload = p; if (tokWin && !tokWin.isDestroyed()) tokWin.webContents.send('tokens', p) })
+  ipcMain.handle('tokensGet', () => tokPayload)
+  ipcMain.on('tokensInsert', (_e, t: string) => { win?.webContents.send('tokenInsert', String(t)); win?.focus() })
+
+  // #67 U43: the node group library (groups used across mods) and sharing groups as files
+  const groupName = (def: unknown) => String((def as { id?: unknown })?.id ?? 'group').toLowerCase().replace(/[^a-z0-9_.]+/g, '_') || 'group'
+  ipcMain.handle('listNodeGroups', async () => {
+    const dir = nodeGroupsDir()
+    if (!fs.existsSync(dir)) return []
+    const out: { file: string; def: unknown }[] = []
+    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.group.json')).sort()) {
+      const t = fs.readFileSync(path.join(dir, f), 'utf8')
+      try { out.push({ file: path.join(dir, f), def: JSON.parse(t) }) } catch { out.push({ file: path.join(dir, f), def: t }) }
+    }
+    return out
+  })
+  ipcMain.handle('saveNodeGroup', async (_e, def: unknown) => {
+    const dir = nodeGroupsDir()
+    fs.mkdirSync(dir, { recursive: true })
+    const file = path.join(dir, `${groupName(def)}.group.json`)
+    fs.writeFileSync(file, JSON.stringify(def, null, 2) + '\n')
+    return file
+  })
+  ipcMain.handle('exportNodeGroup', async (_e, def: unknown) => {
+    const w = walkPick()
+    const file = w.used ? (typeof w.value === 'string' ? w.value : null)
+      : await dialog.showSaveDialog(win!, { title: 'Export the node group', defaultPath: `${groupName(def)}.group.json`, filters: [{ name: 'Saga Forge node group', extensions: ['json'] }] }).then((r) => (r.canceled ? null : r.filePath ?? null))
+    if (!file) return null
+    fs.writeFileSync(file, JSON.stringify(def, null, 2) + '\n')
+    return file
+  })
+  ipcMain.handle('readNodeGroupFile', async () => {
+    const w = walkPick()
+    const file = w.used ? (typeof w.value === 'string' ? w.value : null)
+      : await dialog.showOpenDialog(win!, { title: 'Import a node group', filters: [{ name: 'Saga Forge node group', extensions: ['json'] }], properties: ['openFile'] }).then((r) => (r.canceled ? null : r.filePaths[0]))
+    if (!file) return null
+    return { file, text: fs.readFileSync(file, 'utf8') }
+  })
+
   // #47 §7.2: a named snapshot of the active mod before migrating it
   ipcMain.handle('snapshotMod', async (_e, label: string) => {
     const { src } = await activeSource()
@@ -330,14 +405,14 @@ function registerIpc(): void {
   })
 
   // R32: the release zip and forum post draft, in the releases folder (never in a mod or the game)
-  ipcMain.handle('packRelease', async (_e, req: { version: string; forumPost: string; overwrite?: boolean; notes?: string }) => {
+  ipcMain.handle('packRelease', async (_e, req: { version: string; forumPost: string; overwrite?: boolean; notes?: string; originals?: boolean }) => {
     const { src } = await activeSource()
     if (!src?.writable) throw new Error('No active mod.')
-    return packRelease({ modDir: src.dir, releasesDir: releasesDir(), version: String(req?.version ?? ''), forumPost: String(req?.forumPost ?? ''), overwrite: !!req?.overwrite, rules: rules(), notes: String(req?.notes ?? '') })
+    return packRelease({ modDir: src.dir, releasesDir: releasesDir(), version: String(req?.version ?? ''), forumPost: String(req?.forumPost ?? ''), overwrite: !!req?.overwrite, rules: rules(), notes: String(req?.notes ?? ''), originals: !!req?.originals })
   })
   ipcMain.handle('showInFolder', async (_e, file: string) => {
     const p = path.resolve(String(file))
-    if (p === path.resolve(releasesDir())) { fs.mkdirSync(p, { recursive: true }); await shell.openPath(p) } else shell.showItemInFolder(p)
+    if (p === path.resolve(releasesDir()) || p === path.resolve(nodeGroupsDir())) { fs.mkdirSync(p, { recursive: true }); await shell.openPath(p) } else shell.showItemInFolder(p)
   })
 
   ipcMain.handle('filesExist', async (_e, paths: string[]) => {
@@ -359,6 +434,7 @@ function registerIpc(): void {
       if (problem) throw new Error(problem)
       config.releasesDir = dir
     }
+    else if (key === 'nodeGroupsDir') config.nodeGroupsDir = value ? path.resolve(String(value)) : null
     saveConfig(config)
     return settings()
   })
@@ -421,9 +497,12 @@ function registerIpc(): void {
   })
 }
 
+/** #67: screenshot mode's window size (scripts/smoke.mjs --size WxH), e.g. to check a narrow header or a long form. */
+const smokeSize = smoke && /^\d+x\d+$/.test(process.env.SF_SMOKE_SIZE ?? '') ? process.env.SF_SMOKE_SIZE!.split('x').map(Number) : null
+
 function createWindow(): void {
   win = new BrowserWindow({
-    width: 1500, height: 940, minWidth: 1100, minHeight: 680, backgroundColor: '#12151a', title: 'Saga Forge', autoHideMenuBar: true,
+    width: smokeSize?.[0] ?? 1500, height: smokeSize?.[1] ?? 940, minWidth: 1100, minHeight: 680, backgroundColor: '#12151a', title: 'Saga Forge', autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, '../preload/index.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: true }
   })
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))

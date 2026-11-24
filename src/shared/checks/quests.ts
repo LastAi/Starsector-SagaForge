@@ -3,7 +3,7 @@ import { addNameTokens, nameVersioned } from '../modelversions'
 import type { Problem } from '../api'
 import type { QuestPlan } from '../model'
 import { compileQuest } from '../export/questrules'
-import { beforeStart, reachable } from '../quest'
+import { beforeStart, crossEntries, reachable, startQuestStageProblem } from '../quest'
 import { TOKEN_RE } from '../rules/parse'
 import type { CheckContext } from '.'
 import { prefixProblem, ID_PATTERN } from '.'
@@ -18,7 +18,7 @@ export function questProblems(ctx: CheckContext, q: QuestPlan): Problem[] {
   // #64: with the name tokens the export adds ($<person>_name, _firstName, _lastName)
   const named = addNameTokens(m, nameVersioned(m))
   const phrases = [...named.phrases, ...named.people.flatMap((p) => p.phrases)]
-  const c = compileQuest(q, { sagalib: true, phrases, lockedEntities: lockedEntityIds(m.quests), pools: m.pools ?? [] })
+  const c = compileQuest(q, { sagalib: true, phrases, lockedEntities: lockedEntityIds(m.quests), pools: m.pools ?? [], groups: m.nodeGroups, prefix: m.project.prefix })
   out.push(...c.problems)
   if (!ID_PATTERN.test(q.id)) out.push({ level: 'error', area: 'Quest', message: `Quest id "${q.id}" may only use lowercase letters, digits and _.`, ref: ref() })
   out.push(...interjectionProblems(q))
@@ -30,6 +30,9 @@ export function questProblems(ctx: CheckContext, q: QuestPlan): Problem[] {
   // ":", so a colon in the label cuts it there ("SFR test B: pick me" showed "SFR test B")
   const colon = (where: string, text: string | undefined, sub: string | undefined, key: string) => {
     if (text?.includes(':')) out.push({ level: 'warning', area: 'Quest', ref: ref(sub), key: `optcolon:${q.id}:${key}`, message: `${where} "${text}": the game cuts an option's label at a ":" (it shows "${text.slice(0, text.indexOf(':')).trim()}"). Use a dash or rephrase.` })
+    // #77 (in game, 2026-11-20): the game drops a '"' at the very end of a label
+    // (`Grant VoK's "Agriculture Industrialization"` showed without its last quote)
+    else if (text?.trim().endsWith('"')) out.push({ level: 'warning', area: 'Quest', ref: ref(sub), key: `optquote:${q.id}:${key}`, message: `${where} ${text.trim()}: the game drops a quote mark at the very end of an option's label (it shows ${text.trim().slice(0, -1)}). Put something after it, e.g. a closing word or bracket, or rephrase.` })
   }
   const st = q.start as { kind: string; optionText?: string }
   // a bar scene's option goes through AddBarEvent's parameter, not an options column: colons are fine
@@ -42,7 +45,13 @@ export function questProblems(ctx: CheckContext, q: QuestPlan): Problem[] {
   }
 
   // reachability and dead ends
-  const reach = reachable(q)
+  // #67 U5: nodes another conversation links into count as reached (said once, at the node it enters)
+  const cross = crossEntries(q, m.quests)
+  const own = reachable(q)
+  const reach = reachable(q, [...cross.keys()])
+  for (const [node, from] of cross) {
+    if (!own.has(node)) out.push({ level: 'info', area: 'Quest', ref: ref(node), key: `xreach:${q.id}:${node}`, message: `"${node}" is entered from ${from.map((t) => `"${t}"`).join(', ')} (Link › fire a trigger), not from this quest's start. What follows it counts as reachable.` })
+  }
   for (const n of q.nodes) {
     if (n.type === 'note' || n.type === 'start') continue
     if (!reach.has(n.id)) out.push({ level: 'warning', area: 'Quest', message: `"${n.id}" can't be reached from the start.`, ref: ref(n.id), key: `unreach:${q.id}:${n.id}` })
@@ -67,11 +76,27 @@ export function questProblems(ctx: CheckContext, q: QuestPlan): Problem[] {
     }
   }
   for (const n of q.nodes) {
+    // #67 U3: a Fight node needs a fleet SagaLib can build
+    if (n.type === 'fight') {
+      const fl = n.fleet
+      const where = `Fight "${n.title || n.id}"`
+      if (fl.size === 'template' && !(m.fleets?.templates ?? []).some((t) => t.id === fl.template)) out.push({ level: 'error', area: 'Quest', ref: ref(n.id), message: `${where}: pick one of the mod's named fleets (Fleets page).` })
+      if (fl.size !== 'template' && !fl.faction) out.push({ level: 'error', area: 'Quest', ref: ref(n.id), message: `${where}: pick the fleet's faction.` })
+      else if (fl.size !== 'template' && !ctx.index.factions.some((f) => f.id === fl.faction) && !m.factions.some((f) => f.id === fl.faction)) out.push({ level: 'error', area: 'Quest', ref: ref(n.id), message: `${where}: no faction "${fl.faction}".` })
+      if (fl.size === 'fp' && !((fl.points ?? 0) > 0)) out.push({ level: 'error', area: 'Quest', ref: ref(n.id), message: `${where}: give the fleet some fleet points.` })
+      if (fl.size === 'explicit' && !fl.variants?.length) out.push({ level: 'error', area: 'Quest', ref: ref(n.id), message: `${where}: list at least one ship variant.` })
+      if (fl.flagshipCommander && !peopleIds.has(fl.flagshipCommander)) out.push({ level: 'error', area: 'Quest', ref: ref(n.id), message: `${where}: no person "${fl.flagshipCommander}" to command the flagship.` })
+    }
     if (n.type === 'dialog') {
       if (n.speaker && !peopleIds.has(n.speaker)) out.push({ level: 'error', area: 'Quest', message: `"${n.id}": no person "${n.speaker}".`, ref: ref(n.id) })
       if (n.visual.kind === 'person' && !peopleIds.has(n.visual.person)) out.push({ level: 'error', area: 'Quest', message: `"${n.id}": no person "${n.visual.person}" for the visual.`, ref: ref(n.id) })
+      // #67 U49: a key another Saga Forge mod has but hasn't exported yet: say which mod, and that Export registers it
+      const why = (key: string) => { const u = ctx.index.unexportedIllustrations?.find((x) => x.key === key); return u ? ` ${u.modName} has it, but hasn't been exported since it was added: open ${u.modName} in Saga Forge and Export it (that registers its pictures for the game and other mods).` : '' }
+      // #67 U4: the picture for a female player too
+      const fk = n.visual.kind === 'illustration' ? n.visual.female?.key : undefined
+      if (fk && !ctx.index.illustrations.some((i) => i.key === fk) && !m.project.illustrations?.[fk]) out.push({ level: 'warning', area: 'Quest', message: `"${n.id}": illustration "${fk}" (for a female player) isn't registered by the game or any mod.${why(fk)}`, ref: ref(n.id) })
       if (n.visual.kind === 'illustration' && !ctx.index.illustrations.some((i) => i.key === (n.visual as { key: string }).key) && !m.project.illustrations?.[n.visual.key]) {
-        out.push({ level: 'warning', area: 'Quest', message: `"${n.id}": illustration "${n.visual.key}" isn't registered by the game or any mod.`, ref: ref(n.id) })
+        out.push({ level: 'warning', area: 'Quest', message: `"${n.id}": illustration "${n.visual.key}" isn't registered by the game or any mod.${why(n.visual.key)}`, ref: ref(n.id) })
       }
       for (const d of n.displays) {
         if ((d.kind === 'commodity' || d.kind === 'specialItem') && !itemIds.has(d.item)) out.push({ level: 'error', area: 'Quest', message: `"${n.id}": unknown item "${d.item}".`, ref: ref(n.id) })
@@ -93,10 +118,19 @@ export function questProblems(ctx: CheckContext, q: QuestPlan): Problem[] {
       out.push({ level: 'error', area: 'Quest', message: `"${n.id}": no encounter "${n.encounter}".`, ref: ref(n.id) })
     } else if (n.type === 'end' && n.reward && !rewardIds.has(n.reward)) {
       out.push({ level: 'error', area: 'Quest', message: `"${n.id}": no reward "${n.reward}".`, ref: ref(n.id) })
+    } else if (n.type === 'action') {
+      // #67: a "Give a reward" step with no reward picked, or one that was deleted
+      for (const op of n.ops) if (op.op === 'reward' && !rewardIds.has(op.reward)) out.push({ level: 'error', area: 'Quest', message: op.reward ? `"${n.id}": gives the reward "${op.reward}", which this quest doesn't have.` : `"${n.id}": "Give a reward" has no reward picked.`, ref: ref(n.id) })
     }
   }
   for (const r of q.rewards) for (const it of r.items ?? []) if (!itemIds.has(it.item)) out.push({ level: 'error', area: 'Quest', message: `Reward "${r.id}": unknown item "${it.item}".`, ref: ref() })
   out.push(...targetProblems(q))
+  out.push(...arriveAfterOutcomeProblems(q))
+  // H5: "Start another quest" starts it at a stage
+  for (const n of q.nodes) if (n.type === 'action') for (const o of n.ops) if (o.op === 'startQuest') {
+    const sp = startQuestStageProblem(o, m.quests, q)
+    if (sp) out.push({ level: sp.level, area: 'Quest', ref: ref(n.id), key: sp.level === 'warning' ? `startstage:${q.id}:${n.id}:${o.quest}` : undefined, message: `"${n.title || n.id}" ${sp.message}` })
+  }
   out.push(...earlyTokenProblems(q))
   const stepIds = new Set<string>()
   for (const s of q.stages) {
@@ -161,6 +195,21 @@ export function targetProblems(q: QuestPlan): Problem[] {
     if (!known.has(o.target)) out.push({ level: 'error', area: 'Quest', ref: ref(n.id), message: `"${n.title || n.id}": Spawn at the random target names "${o.target || '?'}", which isn't a target variable of this quest.` })
     else if (!o.type.trim()) out.push({ level: 'error', area: 'Quest', ref: ref(n.id), message: `"${n.title || n.id}": Spawn at the random target needs ${o.kind === 'derelict' ? 'a faction for the derelict' : 'a custom entity type (e.g. supply_cache)'}.` })
   }
+  // #75: commodity targets: what they pick from, the amount, the ops and rewards that use them, the cargo check
+  const commodityVars = new Set(vars.filter((v) => v.target?.pick === 'commodity').map((v) => v.name))
+  for (const v of vars) {
+    const c = v.target?.pick === 'commodity' ? v.target.commodity : undefined
+    if (c?.which === 'list' && !c.ids?.length) out.push({ level: 'error', area: 'Quest', ref: ref(), message: `Target "${v.name}": "these commodities" has no commodity ids yet.` })
+    if (c && !(c.amount.n > 0)) out.push({ level: 'error', area: 'Quest', ref: ref(), message: `Target "${v.name}": the amount must be more than 0 (it is rounded to at least 1 cargo unit).` })
+  }
+  const takes = new Set<string>()
+  for (const n of q.nodes) if (n.type === 'action') for (const o of n.ops) if (o.op === 'targetCargo' || o.op === 'targetCredits') {
+    if (!commodityVars.has(o.target)) out.push({ level: 'error', area: 'Quest', ref: ref(n.id), message: `"${n.title || n.id}": ${o.op === 'targetCargo' ? 'the target\'s goods' : 'credits for the target\'s goods'} names "${o.target || '?'}", which isn't a commodity target of this quest.` })
+    else if (o.op === 'targetCargo' && o.do === 'take') takes.add(o.target)
+  }
+  for (const r of q.rewards) if (r.targetCredits && !commodityVars.has(r.targetCredits.var)) out.push({ level: 'error', area: 'Quest', ref: ref(), message: `Reward ${r.id}: its credits for goods name "${r.targetCredits.var}", which isn't a commodity target of this quest.` })
+  const tested = JSON.stringify(q.nodes)
+  for (const v of takes) if (!tested.includes(`SF_TargetCommodity ${q.id} ${v} has`)) out.push({ level: 'warning', area: 'Quest', ref: ref(), key: `tgthas:${q.id}:${v}`, message: `${q.title} takes target ${v}'s goods but never tests that the player has them: a player without them would lose what they have and still finish. Add the condition "has its goods" to the option or a Branch before.` })
   for (const v of vars) if (v.target?.person?.posts.length && v.target.pick === 'system') out.push({ level: 'error', area: 'Quest', ref: ref(), message: `Target "${v.name}": a person needs a colony, and a system pick has none. Pick a market (or a planet with a colony).` })
   for (const s of q.stages) check(s.marker, `Stage "${s.id}"'s map marker`)
   for (const n of q.nodes) if (n.type === 'wait' && n.mode === 'arrive') {
@@ -320,7 +369,8 @@ export function interjectionProblems(q: QuestPlan): Problem[] {
     if (seen.has(id)) continue
     seen.add(id)
     const n = byId.get(id)
-    if (!n || n.type === 'note') continue
+    // H4: a Wait (an Arrive) ends the interjection's own scene: the export hands back there
+    if (!n || n.type === 'note' || n.type === 'wait') continue
     const outs = q.edges.filter((e) => e.from === id)
     if (n.type === 'link') {
       if (n.mode === 'node') todo.push(n.target)
@@ -331,6 +381,37 @@ export function interjectionProblems(q: QuestPlan): Problem[] {
       out.push({ level: 'error', area: 'Quest', ref: ref(n.id), key: `interject-dead:${q.id}:${n.id}`, message: `${q.title} › ${n.id}${loose.length ? ` (option "${loose[0].text}")` : ''}: this path of the interjection doesn't hand back. End it with a Link: "Hand back" to "${s.option}", or back to the menu.` })
     }
     for (const e of outs) todo.push(e.to)
+  }
+  return out
+}
+
+/**
+ * H8: an Arrive reached from an Encounter's outcome (Defeated / Avoided) with no Stage node on the
+ * way. An Arrive is gated by the quest's step, and the step is still the one set before the
+ * Encounter node, so the player can fly to the place and arrive before the fight is decided.
+ */
+export function arriveAfterOutcomeProblems(q: QuestPlan): Problem[] {
+  const out: Problem[] = []
+  const byId = new Map(q.nodes.map((n) => [n.id, n]))
+  const pass = new Set(['dialog', 'action', 'branch', 'plugin'])
+  for (const enc of q.nodes) {
+    if (enc.type !== 'encounter') continue
+    const seen = new Set<string>()
+    const todo = q.edges.filter((e) => e.from === enc.id && (e.handle === 'defeated' || e.handle === 'avoided')).map((e) => ({ to: e.to, handle: e.handle }))
+    while (todo.length) {
+      const { to, handle } = todo.pop()!
+      if (seen.has(to)) continue
+      seen.add(to)
+      const n = byId.get(to)
+      if (!n) continue
+      if (n.type === 'wait' && n.mode === 'arrive') {
+        out.push({ level: 'warning', area: 'Quest', ref: { page: 'quests', id: q.id, sub: n.id }, key: `arriveafter:${q.id}:${enc.id}:${n.id}`,
+          message: `Arrive "${n.id}" comes after the "${enc.encounter || enc.id}" encounter's ${handle} outcome with no Stage node between them. It is only gated by the stage set before the encounter, so the player can arrive there before the fight is decided. Put a Stage node between the outcome and the Arrive.` })
+        continue
+      }
+      if (!pass.has(n.type)) continue
+      for (const e of q.edges) if (e.from === n.id) todo.push({ to: e.to, handle })
+    }
   }
   return out
 }

@@ -5,6 +5,7 @@
    * quest the designer picks the ending a skip means; the panel shows what that ending sets (computed
    * along the path from the Start node) and gives, and what a skip doesn't do.
    */
+  import { fullName } from '../../../shared/personname'
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
   import { chooseImages } from '../state/imagepicker.svelte'
@@ -33,7 +34,7 @@
   function addChain() {
     const id = uniqueId(`${m.project.prefix}quests`, chains.map((c) => c.id))
     const icon = m.quests.find((q) => q.kind === 'quest' && q.icon)?.icon ?? 'graphics/icons/missions/data_retrieval.png'
-    project.change((mm) => { (mm.project.questSkip ??= []).push({ id, name: project.loaded?.modInfo.name ?? 'Quests', image: icon, quests: [] }) })
+    project.change((mm) => { ((mm.project.questSkip ??= []), mm.project.questSkip).push({ id, name: project.loaded?.modInfo.name ?? 'Quests', image: icon, quests: [] }) })
     app.selected.skipChain = id
     app.selected.skipQuest = null
   }
@@ -116,7 +117,7 @@
     <div class="row status">
       <span>Nexerelin: <b class:good={nex === 'required' || nex === 'optional'}>{nex === 'required' ? 'required' : nex === 'incompatible' ? 'marked incompatible' : 'optional'}</b></span>
       <span class="muted small">{nex === 'required' ? 'In mod_info.json dependencies (Saga › Mods).' : 'Not in mod_info.json: without Nexerelin there is no skip screen and the file is never read.'}{nex === 'none' ? ' It isn\'t in the mod\'s list yet (Problems asks for it).' : ''}{installed ? '' : ' Nexerelin is not installed in your game.'}</span>
-      {#if nex === 'none' && chains.length}<button class="mini" title="List Nexerelin in Saga › Mods as optional (nothing goes into mod_info.json)" onclick={() => project.change((mm) => { (mm.project.mods ??= []).push({ id: NEXERELIN_ID, name: 'Nexerelin', use: 'optional' }) })}>Add as optional</button>{/if}
+      {#if nex === 'none' && chains.length}<button class="mini" title="List Nexerelin in Saga › Mods as optional (nothing goes into mod_info.json)" onclick={() => project.change((mm) => { ((mm.project.mods ??= []), mm.project.mods).push({ id: NEXERELIN_ID, name: 'Nexerelin', use: 'optional' }) })}>Add as optional</button>{/if}
       <button class="mini" onclick={() => (app.selected.sagaOpen = 'mods')}>Saga › Mods</button>
     </div>
 
@@ -198,7 +199,7 @@
               {/each}
             </tbody>
           </table>
-          <div class="sect2">More keys <button class="mini" onclick={() => edEntry((x) => { (x.extra ??= []).push({ key: '$global.', value: 'true' }) })}>+ Key</button></div>
+          <div class="sect2">More keys <button class="mini" onclick={() => edEntry((x) => { ((x.extra ??= []), x.extra).push({ key: '$global.', value: 'true' }) })}>+ Key</button></div>
           {#each entry.extra ?? [] as k, i (i)}
             <div class="row">
               <input type="text" class="mono" value={k.key} placeholder="$global.key" onchange={(e) => { const v = e.currentTarget.value; edEntry((x) => { x.extra![i].key = v }) }} />
@@ -215,7 +216,7 @@
           <div class="sect2">People to show <span class="muted small">(in their market's comm directory; for people the story hid)</span></div>
           <div class="row">
             <select value="" onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; if (v) edEntry((x) => { x.unhide = [...new Set([...(x.unhide ?? []), v])] }) }}>
-              <option value="">+ Person…</option>{#each m.people as p (p.id)}<option value={p.id}>{p.name.first} {p.name.last}</option>{/each}
+              <option value="">+ Person…</option>{#each m.people as p (p.id)}<option value={p.id}>{fullName(p.name)}</option>{/each}
             </select>
             {#each entry.unhide ?? [] as id (id)}<span class="chip">{id}<button class="mini" onclick={() => edEntry((x) => { x.unhide = (x.unhide ?? []).filter((y) => y !== id); if (!x.unhide.length) delete x.unhide })}>✕</button></span>{/each}
           </div>

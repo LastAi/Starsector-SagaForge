@@ -1,8 +1,12 @@
 <script lang="ts">
+  import ConditionsEditor from './ConditionsEditor.svelte'
+  import { tokenField } from '../state/tokens.svelte'
   /** Quest-level settings: id, kind, how it starts, prerequisites, rewards, variables, time limit (PLAN.md §4.4). */
+  import RefButton from '../ui/RefButton.svelte'
+  import { fullName } from '../../../shared/personname'
   import { dropGroupChoices } from '../../../shared/pools'
   import type { QuestPlan, QuestStart, Reward } from '../../../shared/model'
-  import { uniqueId } from '../../../shared/quest'
+  import { uniqueId, renameReward } from '../../../shared/quest'
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
   import { editQuest, editQuestBase, conditionTemplates, bountyChoices } from './edit'
@@ -16,12 +20,20 @@
   import { isValueSetting, settingKey } from '../../../shared/settings'
   import { questWatch } from '../../../shared/nexerelin'
   import { chooseImages } from '../state/imagepicker.svelte'
+  import { mods } from '../state/mods.svelte'
+  import { ruleOptions } from '../../../shared/ruleoptions'
+  import { isVisible } from '../../../shared/modlist'
+  import ShowAllMods from '../ui/ShowAllMods.svelte'
   import { later } from '../ui/later'
   import { DEFAULT_QUEST_ICON, CONTACT_TIMEOUT, BAR_DURATION, BAR_TIMEOUT, BAR_ACCEPTED_TIMEOUT } from '../../../shared/export/runtime'
 
   interface Props { quest: QuestPlan; onChangeId: () => void; onSaveTemplate: () => void }
   let { quest, onChangeId, onSaveTemplate }: Props = $props()
   const qid = $derived(quest.id)
+  // #67 U34: the options an interjection can cut into: those the rules of vanilla and the listed mods answer
+  let ruleRows = $state.raw<import('../../../shared/rules/types').RuleRow[] | null>(null)
+  $effect(() => { if (quest.start.kind === 'interject' && !ruleRows) app.loadRules().then((r) => (ruleRows = r)) })
+  const interjectOptions = $derived(ruleRows ? ruleOptions(ruleRows.filter((r) => isVisible(r.sourceId, mods.visible))).filter((o) => o.answers > 0) : [])
   const ed = (fn: (q: QuestPlan) => void) => editQuest(qid, fn)
   const m = $derived(project.m!)
   /** #64: not part of a version (the quest's kind, on/off, mod conditions). */
@@ -30,11 +42,18 @@
   // #62: the mod's value settings, for "a setting" prerequisites (quest-line switches)
   const settingDefs = $derived((m.project.settings ?? []).filter(isValueSetting))
   const settingOf = (flag: string) => settingDefs.find((s) => settingKey(s.id) === flag.replace(/^!/, ''))
-  const otherQuests = $derived((app.index?.sagaQuests ?? []).filter((x) => x.kind === 'quest' && !m.quests.some((q) => q.id === x.id)))
+  const allOtherQuests = $derived((app.index?.sagaQuests ?? []).filter((x) => x.kind === 'quest' && !m.quests.some((q) => q.id === x.id)))
+  // #60: only the quests of the mods in its list (Saga › Mods), with the switch for all
+  const otherQuests = $derived(mods.filter('quests:other', allOtherQuests, (x) => x.definedBy))
+  const otherHidden = $derived(allOtherQuests.length - otherQuests.length)
   const srcName = (id: string) => app.index?.sources.find((s) => s.id === id)?.name ?? id
-  const allPlaces = $derived([...m.systems.flatMap((s) => s.entities.map((e) => ({ id: e.id, name: `${e.name} (${s.name})` }))), ...(app.index?.places ?? []).map((x) => ({ id: x.id, name: `${x.name} (${srcName(x.definedBy)})` })), ...(app.index?.markets.flatMap((x) => x.entities.map((id) => ({ id, name: x.name }))) ?? [])])
-  const people = $derived([...m.people.map((p) => ({ id: p.id, name: `${p.name.first} ${p.name.last}` })), ...(app.index?.people ?? [])])
+  const allPlaces = $derived([...m.systems.flatMap((s) => s.entities.map((e) => ({ id: e.id, name: `${e.name} (${s.name})` }))), ...(app.index?.places ?? []).map((x) => ({ id: x.id, name: `${x.name} (${srcName(x.definedBy)})`, definedBy: x.definedBy })), ...(app.index?.markets.flatMap((x) => x.entities.map((id) => ({ id, name: x.name, definedBy: x.definedBy }))) ?? [])])
+  const people = $derived([...m.people.map((p) => ({ id: p.id, name: fullName(p.name) })), ...(app.index?.people ?? [])])
+  // #75: the quest's commodity targets (credits for their goods)
+  const commodityTargets = $derived(quest.variables.filter((x) => x.type === 'target' && x.target?.pick === 'commodity').map((x) => x.name))
   const factions = $derived([...m.factions.filter((f) => f.kind === 'addition').map((f) => f.id), ...(app.index?.factions.map((f) => f.id) ?? [])])
+  /** #60: the pickers' faction options keep their source (the mod's own have none: always shown). */
+  const factionOpts = $derived([...m.factions.filter((f) => f.kind === 'addition').map((f) => ({ id: f.id })), ...(app.index?.factions.map((f) => ({ id: f.id, definedBy: f.definedBy })) ?? [])])
   const templates = $derived(conditionTemplates(quest, factions, m.quests, bountyChoices(quest)))
   const items = $derived([...m.items.map((i) => ({ id: i.id, name: i.name })), ...(app.index?.items ?? [])])
   const dropGroupOptions = $derived(dropGroupChoices(m.pools ?? [], app.index))
@@ -79,9 +98,10 @@
   <Field label="Title" for="qs-t" help="The quest's name in the intel screen, the journal and the contact's mission list.">
     <input id="qs-t" type="text" value={quest.title} onchange={(e) => { const v = e.currentTarget.value; ed((q) => { q.title = v }) }} />
   </Field>
-  <Field label="Kind" for="qs-k" help="A quest has a journal entry with stages, a map marker and rewards (runs on SagaLib). A conversation only adds dialog, with nothing in the journal.">
+  <Field label="Kind" for="qs-k" help="A quest has a journal entry with stages, a map marker and rewards (runs on SagaLib). A conversation only adds dialog, with nothing in the journal (no SagaLib unless it uses SF_ commands).">
     <select id="qs-k" value={quest.kind} onchange={(e) => { const v = e.currentTarget.value as 'quest' | 'dialog'; edBase((q) => { q.kind = v }) }}>
-      <option value="quest">Quest (journal, stages; runs on SagaLib)</option><option value="dialog">Conversation only (no SagaLib unless it uses SF_ commands)</option>
+      <!-- #67 U11: short labels (the long ones were cut off); the help below says what each means -->
+      <option value="quest">Quest</option><option value="dialog">Conversation only</option>
     </select>
   </Field>
   <Field label="Inactive" for="qs-in" help={contactOff ? `Not exported: its contact is inactive (People page). Planned content stays in the editor; its problems are warnings.` : 'Planned but not ready: not exported, so not in the game. Its problems become warnings, and its to-dos don\'t hold back a release.'}>
@@ -112,7 +132,7 @@
         </select>
         {#if quest.ownerChange?.do === 'stage'}
           <select value={quest.ownerChange.stage ?? ''} title="The quest moves to this stage; what follows its Stage node in the chart runs (a Branch can test the keys)" onchange={(e) => { const v = e.currentTarget.value; ed((q) => { if (q.ownerChange) q.ownerChange.stage = v }) }}>
-            {#each quest.stages as s (s.id)}<option value={s.id}>{s.title || s.id}</option>{/each}
+            <option value="">stage…</option>{#each quest.stages as s (s.id)}<option value={s.id}>{s.title || s.id}</option>{/each}{#if quest.ownerChange.stage && !quest.stages.some((s) => s.id === quest.ownerChange?.stage)}<option value={quest.ownerChange.stage}>{quest.ownerChange.stage} (missing)</option>{/if}
           </select>
         {/if}
       </span>
@@ -122,7 +142,7 @@
 
 <div class="sect">How it starts</div>
 <div class="grid2">
-  <Field label="Start" for="qs-sk" help="Where the player first meets this quest. The Start node on the chart leads to the first thing they see.">
+  <Field label="Start" ref="quests-start-kinds" for="qs-sk" help="Where the player first meets this quest. The Start node on the chart leads to the first thing they see.">
     <select id="qs-sk" value={quest.start.kind} onchange={(e) => setStartKind(e.currentTarget.value as QuestStart['kind'])}>
       <option value="contact">offered by a contact (person_missions.csv)</option><option value="bar">a bar event (bar_events.csv)</option>
       <option value="option">an option added to a menu</option><option value="trigger">a dialog that opens on a trigger</option><option value="manual">started by another quest</option><option value="interject">an interjection before an existing option</option><option value="barScene">a bar scene (no mission)</option>
@@ -151,7 +171,7 @@
     <Field label="Timeout" help="Days before the contact can offer this mission again after it was offered (vanilla uses 30–60).">
       {@render range('timeout', quest.start.timeout ?? CONTACT_TIMEOUT)}
     </Field>
-    <Field label="Min. rep" for="qs-mr" help="How well the contact must think of the player before offering it (their personal relation).">
+    <Field label="Min. rep" ref="general-rep-levels" for="qs-mr" help="How well the contact must think of the player before offering it (their personal relation).">
       <select id="qs-mr" value={quest.start.minRep ?? ''} onchange={(e) => setStart('minRep', e.currentTarget.value || undefined)}><option value="">any</option>{#each app.defs.repLevels as r (r.id)}<option value={r.id}>{r.name}</option>{/each}</select>
     </Field>
     <Field label="Frequency" for="qs-f" help="Weight against the contact's other missions when the game picks which to offer; vanilla uses 10. Higher = offered more often.">
@@ -161,7 +181,7 @@
       <textarea id="qs-ot" rows="2" value={quest.start.offerText ?? ''} placeholder="e.g. Commodore Reyes is looking for someone to find a missing convoy." onchange={(e) => setStart('offerText', e.currentTarget.value)}></textarea>
     </Field>
     <Field label="Option" for="qs-op" help="The option the player picks in the contact's dialog to hear the offer. Empty: the quest's title.">
-      <input id="qs-op" type="text" value={quest.start.optionText ?? ''} placeholder={quest.title} onchange={(e) => setStart('optionText', e.currentTarget.value)} />
+      <input id="qs-op" type="text" use:tokenField={{ label: 'the start option' }} value={quest.start.optionText ?? ''} placeholder={quest.title} onchange={(e) => setStart('optionText', e.currentTarget.value)} />
     </Field>
   {:else if quest.start.kind === 'bar'}
     <Field label="Frequency" for="qs-bf" help="Weight against other bar events when the game picks one for a bar; vanilla uses 10.">
@@ -177,7 +197,7 @@
       <textarea id="qs-bb" rows="2" value={quest.start.blurb ?? ''} onchange={(e) => setStart('blurb', e.currentTarget.value)}></textarea>
     </Field>
     <Field label="Option" for="qs-bo" help="The bar option that starts the conversation. Empty: the quest's title.">
-      <input id="qs-bo" type="text" value={quest.start.optionText ?? ''} placeholder={quest.title} onchange={(e) => setStart('optionText', e.currentTarget.value)} />
+      <input id="qs-bo" type="text" use:tokenField={{ label: 'the bar option' }} value={quest.start.optionText ?? ''} placeholder={quest.title} onchange={(e) => setStart('optionText', e.currentTarget.value)} />
     </Field>
     <Field label="Duration" help="Days the patron stays at the bar once they appear (vanilla uses 30–40).">
       {@render range('duration', quest.start.duration ?? BAR_DURATION)}
@@ -190,29 +210,29 @@
     </Field>
   {:else if quest.start.kind === 'option'}
     <Field label="Option text" for="qs-ox" help="The option added to the menu, for example at a market or in a person's dialog. It never replaces the menu's own options.">
-      <input id="qs-ox" type="text" value={quest.start.optionText} onchange={(e) => setStart('optionText', e.currentTarget.value)} />
+      <input id="qs-ox" type="text" use:tokenField={{ label: 'the start option' }} value={quest.start.optionText} onchange={(e) => setStart('optionText', e.currentTarget.value)} />
     </Field>
-    <Field label="Menu trigger" for="qs-otr" help="The rules trigger that fills the menu. PopulateOptions is the usual one (markets, people, fleets).">
+    <Field label="Menu trigger" ref="rules-triggers" for="qs-otr" help="The rules trigger that fills the menu. PopulateOptions is the usual one (markets, people, fleets).">
       <input id="qs-otr" type="text" class="mono" value={quest.start.trigger} onchange={(e) => setStart('trigger', e.currentTarget.value)} />
     </Field>
     <Field label="Shown when" help="Condition lines (rules.csv syntax), all true for the option to appear; e.g. $isPerson for any person, $id == vgc_haven for one place.">
-      <LinesInput lines={quest.start.conditions} {templates} onChange={(l) => setStart('conditions', l)} />
+      <ConditionsEditor lines={quest.start.conditions} {templates} onChange={(l) => setStart('conditions', l)} />
     </Field>
   {:else if quest.start.kind === 'trigger'}
-    <Field label="Trigger" for="qs-tt" help="The rules trigger that opens this dialog: OpenCommLink (hailing a fleet or a person), OpenInteractionDialog (docking or visiting a place), …">
+    <Field label="Trigger" ref="rules-triggers" for="qs-tt" help="The rules trigger that opens this dialog: OpenCommLink (hailing a fleet or a person), OpenInteractionDialog (docking or visiting a place), …">
       <input id="qs-tt" type="text" class="mono" value={quest.start.trigger} onchange={(e) => setStart('trigger', e.currentTarget.value)} />
     </Field>
-    <Field label="Conditions" help="Condition lines (rules.csv syntax) that limit where it opens, e.g. $id == vgc_convoy_wreck. Add score:N to the first line to beat vanilla's own rule for that place.">
-      <LinesInput lines={quest.start.conditions} {templates} onChange={(l) => setStart('conditions', l)} />
+    <Field label="Conditions" ref="rules-commands" help="Condition lines (rules.csv syntax) that limit where it opens, e.g. $id == vgc_convoy_wreck. Add score:N to the first line to beat vanilla's own rule for that place.">
+      <ConditionsEditor lines={quest.start.conditions} {templates} onChange={(l) => setStart('conditions', l)} />
     </Field>
   {:else if quest.start.kind === 'interject'}
     <!-- RC-F2: cuts in before an existing option, the way vanilla's salvage "explore stories" do -->
-    <Field label="Option" for="qs-io" help="The existing option it cuts into, by id: salExplore (Explore at a derelict or ruins), … When the player picks it, your scene plays first; every path must then hand back to it (a Link › Hand back).">
+    <Field label="Option" ref="rules-options" for="qs-io" help="The existing option it cuts into, by id: salExplore (Explore at a derelict or ruins), … When the player picks it, your scene plays first; every path must then hand back to it (a Link › Hand back).">
       <input id="qs-io" type="text" class="mono" list="qs-io-list" value={quest.start.option} onchange={(e) => setStart('option', e.currentTarget.value.trim())} />
-      <datalist id="qs-io-list"><option value="salExplore">Explore (derelicts, ruins)</option></datalist>
+      <datalist id="qs-io-list"><option value="salExplore">Explore (derelicts, ruins)</option>{#each interjectOptions.filter((o) => o.id !== 'salExplore') as o (o.id)}<option value={o.id}>{o.text} ({o.offeredIn})</option>{/each}</datalist>
     </Field>
     <Field label="Only when" help="Condition lines (rules.csv syntax) that limit where it cuts in, e.g. $customType == wreck, or $id == one of your objects.">
-      <LinesInput lines={quest.start.conditions} {templates} onChange={(l) => setStart('conditions', l)} />
+      <ConditionsEditor lines={quest.start.conditions} {templates} onChange={(l) => setStart('conditions', l)} />
     </Field>
     <Field label="Chance" for="qs-ip" help="How likely it is to cut in (vanilla's RollProbability, as its salvage stories use). It is rolled per object and per month: the same object gives the same answer all month, and may change next month. 1 = always.">
       <input id="qs-ip" type="number" min="0" max="1" step="0.05" value={quest.start.probability ?? 1} onchange={(e) => { const v = Number(e.currentTarget.value); setStart('probability', v >= 1 ? undefined : Math.max(0, v)) }} />
@@ -223,13 +243,13 @@
   {:else if quest.start.kind === 'barScene'}
     <!-- RC-R6: vanilla's AddBarEvents + AddBarEvent, as its own story bar scenes -->
     <Field label="Option" for="qs-so" help="The bar option that opens the scene, e.g. &quot;Talk to the nervous spacer&quot;. No colon (the game cuts the label there).">
-      <input id="qs-so" type="text" value={quest.start.optionText} onchange={(e) => setStart('optionText', e.currentTarget.value)} />
+      <input id="qs-so" type="text" use:tokenField={{ label: 'the start option' }} value={quest.start.optionText} onchange={(e) => setStart('optionText', e.currentTarget.value)} />
     </Field>
     <Field label="Blurb" for="qs-sb" help="The line in the bar's description that hints at the scene (&quot;A spacer at the corner table keeps glancing your way.&quot;).">
       <textarea id="qs-sb" rows="2" value={quest.start.blurb} onchange={(e) => setStart('blurb', e.currentTarget.value)}></textarea>
     </Field>
     <Field label="Only when" help="Condition lines (rules.csv syntax) for where and when, e.g. $market.id == vgc_haven, $market.factionId == hegemony, or a quest's flag. Empty: every colony's bar.">
-      <LinesInput lines={quest.start.conditions} {templates} onChange={(l) => setStart('conditions', l)} />
+      <ConditionsEditor lines={quest.start.conditions} {templates} onChange={(l) => setStart('conditions', l)} />
     </Field>
     <Field label="Chance" for="qs-sp" help="How likely it is to be in this bar this month (vanilla's RollProbability, as its own bar scenes): it is rolled per colony and per month, so within a month every visit gives the same answer, and next month it may change. A bar shows at most 3 such scenes per visit (vanilla's maxBarEvents). 1 = always.">
       <input id="qs-sp" type="number" min="0" max="1" step="0.05" value={quest.start.probability ?? 1} onchange={(e) => { const v = Number(e.currentTarget.value); setStart('probability', v >= 1 ? undefined : Math.max(0, v)) }} />
@@ -244,7 +264,7 @@
 </div>
 
 <!-- #64: named places: one place used in several spots (start, markers, Arrive), changed once (also in a version) -->
-<div class="sect">Places <button class="mini" onclick={() => ed((q) => { const ids = (q.places ?? []).map((x) => x.id); let n = 1; while (ids.includes(`place${n}`)) n++; (q.places ??= []).push({ id: `place${n}`, name: `Place ${n}`, entity: '' }) })}>+ Place</button></div>
+<div class="sect">Places <button class="mini" onclick={() => ed((q) => { const ids = (q.places ?? []).map((x) => x.id); let n = 1; while (ids.includes(`place${n}`)) n++; ((q.places ??= []), q.places).push({ id: `place${n}`, name: `Place ${n}`, entity: '' }) })}>+ Place</button></div>
 <p class="f-help">A named place stands for an object wherever the quest uses it: pick <span class="mono">named place …</span> as a stage's map marker, an Arrive node's place or a picture, or write <span class="mono">place:&lt;id&gt;</span> in a condition (<span class="mono">$id == place:dock</span>). Change the object here once, also in a version (the versions strip).</p>
 {#each quest.places ?? [] as pl, i (pl.id)}
   <div class="row">
@@ -256,11 +276,11 @@
   </div>
 {/each}
 
-<div class="sect">Prerequisites <select value="" onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; if (v === 'flag') ed((q) => { q.requires.push({ flag: '$global.' }) }); else if (v.startsWith('setting:')) { const s = settingDefs.find((x) => x.id === v.slice(8)); if (s) ed((q) => { q.requires.push(s.type === 'Boolean' ? { flag: settingKey(s.id) } : { flag: settingKey(s.id), is: s.type === 'Radio' ? (s.choices ?? [])[0] ?? s.default : s.default }) }) } else if (v) ed((q) => { q.requires.push({ quest: v, ended: 'success' }) }) }}>
+<div class="sect">Prerequisites <select value="" onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; if (v === 'flag') ed((q) => { q.requires.push({ flag: '$global.' }) }); else if (v.startsWith('setting:')) { const s = settingDefs.find((x) => x.id === v.slice(8)); if (s) ed((q) => { q.requires.push(s.type === 'Boolean' ? { flag: settingKey(s.id) } : { flag: settingKey(s.id), is: s.type === 'Radio' ? (s.choices ?? [])[0] ?? s.default : s.default }) }) } else if (v) { ed((q) => { q.requires.push({ quest: v, ended: 'success' }) }); const o = otherQuests.find((x) => x.id === v); if (o) void mods.picked(o.definedBy, `"${o.title}"`) } }}>
   <option value="">+ add…</option><option value="flag">a flag is set</option>{#each m.quests.filter((x) => x.id !== qid) as o (o.id)}<option value={o.id}>"{o.title}" ended</option>{/each}
   {#if settingDefs.length}<optgroup label="A setting (Saga › Settings): a switch for this quest and the quests after it">{#each settingDefs as s (s.id)}<option value={`setting:${s.id}`}>{s.type === 'Boolean' ? `"${s.label}" is on` : `"${s.label}" is …`}</option>{/each}</optgroup>{/if}
   {#if otherQuests.length}<optgroup label="Other Saga Forge mods' quests">{#each otherQuests as o (o.id)}<option value={o.id}>"{o.title}" ended ({srcName(o.definedBy)})</option>{/each}</optgroup>{/if}
-</select></div>
+</select>{#if otherHidden > 0 || mods.showAll['quests:other']}<ShowAllMods list="quests:other" hidden={otherHidden} />{/if}</div>
 <p class="f-help">All must be true before the quest is offered or starts. A flag line is a memory key (and optionally the value it must have).</p>
 {#each quest.requires as r, i (i)}
   <div class="row">
@@ -275,12 +295,12 @@
       {#if s.type === 'Boolean'}
         <select value={r.flag.startsWith('!') ? 'false' : 'true'} onchange={(e) => { const v = e.currentTarget.value; ed((q) => { const x = q.requires[i] as { flag: string; is?: string }; x.flag = (v === 'false' ? '!' : '') + settingKey(s.id); delete x.is }) }}><option value="true">is on</option><option value="false">is off</option></select>
       {:else if s.type === 'Radio'}
-        <span class="muted">is</span><select value={r.is ?? ''} onchange={(e) => { const v = e.currentTarget.value; ed((q) => { (q.requires[i] as { is?: string }).is = v || undefined }) }}>{#each s.choices ?? [] as c (c)}<option value={c}>{c}</option>{/each}</select>
+        <span class="muted">is</span><select value={r.is ?? ''} onchange={(e) => { const v = e.currentTarget.value; ed((q) => { (q.requires[i] as { is?: string }).is = v || undefined }) }}>{#each s.choices ?? [] as c (c)}<option value={c}>{c}</option>{/each}{#if r.is && !(s.choices ?? []).includes(r.is)}<option value={r.is}>{r.is} (missing)</option>{/if}</select>
       {:else}
         <span class="muted">is</span><input type="text" class="mono short" value={r.is ?? ''} placeholder="(set)" onchange={(e) => { const v = e.currentTarget.value; ed((q) => { (q.requires[i] as { is?: string }).is = v || undefined }) }} />
       {/if}
     {:else}
-      <input type="text" class="mono" value={r.flag} title="Memory key, e.g. $global.vgc_signal_heard" onchange={(e) => { const v = e.currentTarget.value; ed((q) => { (q.requires[i] as { flag: string }).flag = v }) }} />
+      <input type="text" class="mono" value={r.flag} title="Memory key, e.g. $global.vgc_signal_heard" onchange={(e) => { const v = e.currentTarget.value; ed((q) => { (q.requires[i] as { flag: string }).flag = v }) }} /><RefButton ref="rules-memory-keys" title="Memory keys: opens the reference" />
       <span class="muted">is</span>
       <input type="text" class="mono short" value={r.is ?? ''} placeholder="(set)" title="The value it must have; empty = any value (just set)" onchange={(e) => { const v = e.currentTarget.value; ed((q) => { (q.requires[i] as { is?: string }).is = v || undefined }) }} />
     {/if}
@@ -294,7 +314,7 @@
   <div class="reward">
     <div class="grid2">
       <Field label="Reward id" for={`rw-id-${i}`} help="Only for picking it in End nodes and actions; never shown in game.">
-        <span class="row"><input id={`rw-id-${i}`} type="text" class="mono" value={r.id} onchange={(e) => { const v = e.currentTarget.value.trim(); if (v) ed((q) => { q.rewards[i].id = v }) }} /><button class="mini" title="Delete this reward" onclick={() => ed((q) => { q.rewards.splice(i, 1) })}>✕</button></span>
+        <span class="row"><input id={`rw-id-${i}`} type="text" class="mono" value={r.id} onchange={(e) => { const v = e.currentTarget.value.trim(); if (v) ed((q) => { renameReward(q, q.rewards[i].id, v) }) }} /><button class="mini" title="Delete this reward" onclick={() => ed((q) => { q.rewards.splice(i, 1) })}>✕</button></span>
       </Field>
       <Field label="Credits" for={`rw-c-${i}`} help="Added to the player's credits.">
         <input id={`rw-c-${i}`} type="number" value={r.credits ?? 0} onchange={(e) => { const v = Number(e.currentTarget.value); edReward(i, (x) => { x.credits = v || undefined }) }} />
@@ -305,6 +325,15 @@
           <ScaleInput id={`rw-cs-${i}`} value={r.creditsScale} onChange={(v) => edReward(i, (x) => { if (v) x.creditsScale = v; else delete x.creditsScale })} />
         </Field>
       {/if}
+      {#if commodityTargets.length || r.targetCredits}
+        <!-- #75 (SagaLib 1.4): credits worth a multiple of a commodity target's goods -->
+        <Field label="+ for goods" for={`rw-tc-${i}`} help="More credits: this multiple × a commodity target's base price × amount (its _value), added to the credits above when the reward is paid. 1 = what the goods cost at base price. The setting scale doesn't apply to this part. Needs SagaLib 1.4.">
+          <span class="row">
+            <select id={`rw-tc-${i}`} value={r.targetCredits?.var ?? ''} onchange={(e) => { const v = e.currentTarget.value; edReward(i, (x) => { if (v) x.targetCredits = { var: v, mult: x.targetCredits?.mult ?? 1 }; else delete x.targetCredits }) }}><option value="">—</option>{#each commodityTargets as tv (tv)}<option value={tv}>target {tv}</option>{/each}</select>
+            {#if r.targetCredits}<input type="number" class="short" step="any" value={r.targetCredits.mult} title="× base price × amount" onchange={(e) => { const v = Number(e.currentTarget.value); edReward(i, (x) => { if (x.targetCredits) x.targetCredits.mult = v }) }} /><span class="muted small">× base price × amount</span>{/if}
+          </span>
+        </Field>
+      {/if}
       <Field label="XP" for={`rw-x-${i}`} help="Experience points for the player.">
         <input id={`rw-x-${i}`} type="number" value={r.xp ?? 0} onchange={(e) => { const v = Number(e.currentTarget.value); edReward(i, (x) => { x.xp = v || undefined }) }} />
       </Field>
@@ -312,7 +341,7 @@
         <input id={`rw-s-${i}`} type="number" value={r.storyPoints ?? 0} onchange={(e) => { const v = Number(e.currentTarget.value); edReward(i, (x) => { x.storyPoints = v || undefined }) }} />
       </Field>
       <Field label="Reputation" help="Faction and points: 5 = +5 on the faction's relations bar (as vanilla's AdjustRep). Negative lowers it.">
-        <div>{#each r.rep ?? [] as rp, j (j)}<div class="row"><IdInput value={rp.faction} options={factions.map((f) => ({ id: f }))} onCommit={(v) => edReward(i, (x) => { x.rep![j].faction = v })} /><input type="number" class="short" value={rp.amount} onchange={(e) => { const v = Number(e.currentTarget.value); edReward(i, (x) => { x.rep![j].amount = v }) }} /><button class="mini" onclick={() => edReward(i, (x) => { x.rep!.splice(j, 1) })}>✕</button></div>{/each}
+        <div>{#each r.rep ?? [] as rp, j (j)}<div class="row"><IdInput value={rp.faction} options={factionOpts} onCommit={(v) => edReward(i, (x) => { x.rep![j].faction = v })} /><input type="number" class="short" value={rp.amount} onchange={(e) => { const v = Number(e.currentTarget.value); edReward(i, (x) => { x.rep![j].amount = v }) }} /><button class="mini" onclick={() => edReward(i, (x) => { x.rep!.splice(j, 1) })}>✕</button></div>{/each}
           <button class="mini" onclick={() => edReward(i, (x) => { x.rep ??= []; x.rep.push({ faction: factions[0] ?? '', amount: 5 }) })}>+ faction</button></div>
       </Field>
       <Field label="Items" help="Items and quantities put in the player's cargo. A negative quantity takes them.">
@@ -320,7 +349,7 @@
           <button class="mini" onclick={() => edReward(i, (x) => { x.items ??= []; x.items.push({ item: '', qty: 1 }) })}>+ item</button></div>
       </Field>
       <!-- Phase 8a (F7-b) -->
-      <Field label="Random items" help="Rolled from a drop group when the reward is paid, as salvage does: the mod's loot tables (Saga › Pools) or vanilla's groups (rare_tech, ai_cores2, blueprints…). Rolls = random picks from the group; a value instead gives about that many credits' worth. Play mode can't know what comes out. Needs SagaLib 1.2.">
+      <Field label="Random items" ref="loot-drop-groups" help="Rolled from a drop group when the reward is paid, as salvage does: the mod's loot tables (Saga › Pools) or vanilla's groups (rare_tech, ai_cores2, blueprints…). Rolls = random picks from the group; a value instead gives about that many credits' worth. Play mode can't know what comes out. Needs SagaLib 1.2.">
         <div>{#each r.loot ?? [] as l, j (j)}<div class="row"><IdInput value={l.group} options={dropGroupOptions} width="170px" placeholder="drop group" onCommit={(v) => edReward(i, (x) => { x.loot![j].group = v.trim() })} /><label class="small">rolls <input type="number" class="short" min="0" value={l.chances ?? 0} onchange={(e) => { const v = Math.max(0, Math.round(Number(e.currentTarget.value) || 0)); edReward(i, (x) => { x.loot![j].chances = v || undefined }) }} /></label><label class="small">value <input type="number" class="short" min="0" value={l.value ?? 0} onchange={(e) => { const v = Math.max(0, Math.round(Number(e.currentTarget.value) || 0)); edReward(i, (x) => { x.loot![j].value = v || undefined }) }} /></label><button class="mini" onclick={() => edReward(i, (x) => { x.loot!.splice(j, 1); if (!x.loot!.length) x.loot = undefined })}>✕</button></div>{/each}
           <button class="mini" onclick={() => edReward(i, (x) => { x.loot ??= []; x.loot.push({ group: '', chances: 1 }) })}>+ random items</button></div>
       </Field>

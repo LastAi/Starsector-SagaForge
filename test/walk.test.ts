@@ -87,6 +87,25 @@ describe('a colon in an option label (#48, in game)', () => {
   })
 })
 
+describe('a quote mark at the end of an option label (#77, in game)', () => {
+  it('is a warning, since the game drops it; one inside the label is fine', () => {
+    const m = emptyModel('vgh_')
+    const q = newQuest('vgh_q', 'Q')
+    const offer = q.nodes.find((n) => n.id === 'offer') as { options: { id: string; text: string }[] }
+    offer.options[0].text = 'Grant VoK\'s "Agriculture Industrialization"'
+    m.quests = [q]
+    const probs = () => questProblems({ ...ctx(m), defs: defsFor('0.98a') } as unknown as CheckContext, q)
+    const p = probs().find((x) => x.key?.startsWith('optquote:'))
+    expect(p?.level).toBe('warning')
+    expect(p?.message).toContain('it shows Grant VoK\'s "Agriculture Industrialization)')
+    offer.options[0].text = 'Grant "Agriculture Industrialization" (VoK)'
+    expect(probs().some((x) => x.key?.startsWith('optquote:'))).toBe(false)
+    // the start option and an arrival option are checked too
+    q.start = { kind: 'option', trigger: 'PopulateOptions', conditions: [], optionText: 'Ask about "the vault"' }
+    expect(probs().some((x) => x.key === 'optquote:vgh_q:start')).toBe(true)
+  })
+})
+
 describe('new faction defaults (W2)', () => {
   it('use vanilla files that exist and a ship prefix from the name', () => {
     const d = newFactionDoc('vgh_vanguard', 'Vanguard Compact')

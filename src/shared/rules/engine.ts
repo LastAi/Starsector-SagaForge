@@ -133,6 +133,12 @@ export interface PlayContext {
   mods?: Set<string>
   /** #70: faction-to-faction relation levels for SF_FactionRep (the mod's starting relations); undefined = unknown (asked). */
   relation?: RelationLookup
+  /**
+   * #67 U50: what an unknown condition command is assumed to be in this rule when the Test context
+   * doesn't say (undefined = true). Play: false in the game's and other mods' rules, so their rare
+   * checks (someone wants to talk, a priority message) don't take over a plain visit.
+   */
+  assumeFor?: (rule: EngineRule) => boolean | undefined
 }
 
 export interface EngineHooks {
@@ -188,7 +194,7 @@ export class Engine {
     return literal(s)
   }
 
-  evalCondition(c: Condition): boolean {
+  evalCondition(c: Condition, rule?: EngineRule): boolean {
     if (c.kind === 'score') return true
     let r: boolean
     if (c.kind === 'memory') {
@@ -203,15 +209,17 @@ export class Engine {
       const known = hooked ?? builtinCondition(this, c.name, c.args)
       if (known === undefined) {
         const key = assumeKey(c)
-        r = this.ctx.assume[key] ?? this.ctx.assume[c.name] ?? true
-        this.log.push({ kind: 'cond', text: `Assumed ${r ? 'true' : 'false'}: ${key} (the editor can't evaluate ${c.name}; set it in the Test context)` })
+        const set = this.ctx.assume[key] ?? this.ctx.assume[c.name]
+        const dflt = set === undefined && rule ? this.ctx.assumeFor?.(rule) : undefined
+        r = set ?? dflt ?? true
+        this.log.push({ kind: 'cond', text: `Assumed ${r ? 'true' : 'false'}: ${key} (the editor can't evaluate ${c.name}${dflt === false ? `; a check in ${rule?.row.sourceId === 'starsector-core' ? "the game's" : "another mod's"} rules, so Play takes the usual case` : ''}; set it in the Test context)` })
       } else r = known
     }
     return c.negate ? !r : r
   }
 
   matches(rule: EngineRule): boolean {
-    for (const c of rule.conds) if (!this.evalCondition(c)) return false
+    for (const c of rule.conds) if (!this.evalCondition(c, rule)) return false
     return true
   }
 
@@ -335,6 +343,10 @@ export function compare(a: Value | undefined, op: string, b: Value | undefined):
   const na = typeof a === 'number' ? a : typeof a === 'string' && a !== '' && !isNaN(Number(a)) ? Number(a) : NaN
   const nb = typeof b === 'number' ? b : typeof b === 'string' && b !== '' && !isNaN(Number(b)) ? Number(b) : NaN
   const numeric = !isNaN(na) && !isNaN(nb)
+  // #67 U50: "$key != null" / "== null" test whether the key is set (vanilla: $global.ttli_unpaidEventRef != null)
+  if (b === 'null' && (op === '==' || op === '!=')) return (a === undefined || a === 'null') === (op === '==')
+  // two unset keys aren't equal (vanilla: $global.customsInspectionFactionId == $faction.id, no inspection running)
+  if (a === undefined && b === undefined && (op === '==' || op === '!=')) return op === '!='
   switch (op) {
     case '==': return numeric ? na === nb : String(a ?? '') === String(b ?? '') || (a === undefined && (b === false || b === 'false'))
     case '!=': return numeric ? na !== nb : !(String(a ?? '') === String(b ?? '') || (a === undefined && (b === false || b === 'false')))
@@ -384,7 +396,7 @@ export function builtinCommand(e: Engine, name: string, args: string[], rule: En
   switch (name) {
     case 'FireBest': e.fireBest(String(e.resolve(args[0]) ?? args[0]), args[1] === 'true'); return true
     case 'FireAll': e.fireAll(String(e.resolve(args[0]) ?? args[0])); return true
-    case 'EndConversation': case 'DismissDialog': v.ended = true; e.log.push({ kind: 'info', text: 'The dialog closes.' }); return true
+    case 'EndConversation': case 'DismissDialog': v.ended = true; v.options = []; e.log.push({ kind: 'info', text: 'The dialog closes.' }); return true
     case 'AddText': case 'AddTextSmall': {
       const text = e.subst(args[0] ?? '', rule)
       for (const par of paragraphs(text)) e.para({ kind: 'text', text: par, color: args[1], small: name === 'AddTextSmall', ruleId: rule.row.id })

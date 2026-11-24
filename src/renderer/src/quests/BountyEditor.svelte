@@ -38,7 +38,7 @@
       <select id="bt-type" value={b.type ?? 'assassination'} onchange={(e) => { const v = e.currentTarget.value as BountyPlan['type']; ed((x) => { x.type = v }) }}><option>assassination</option><option>destruction</option><option>obliteration</option><option>neutralization</option></select>
     </Field>
     <Field label="Quest" for="bt-q" help="A simple quest the job comes from: its title, offer text, success and failure journal, reward, time limit, prerequisites, contact and random target. Optional.">
-      <select id="bt-q" value={b.quest ?? ''} onchange={(e) => { const v = e.currentTarget.value; ed((x) => { x.quest = v || undefined }) }}><option value="">(none)</option>{#each m.quests.filter((q) => q.kind === 'quest') as q (q.id)}<option value={q.id}>{q.title} ({q.id})</option>{/each}</select>
+      <select id="bt-q" value={b.quest ?? ''} onchange={(e) => { const v = e.currentTarget.value; ed((x) => { x.quest = v || undefined }) }}><option value="">(none)</option>{#each m.quests.filter((q) => q.kind === 'quest') as q (q.id)}<option value={q.id}>{q.title} ({q.id})</option>{/each}{#if b.quest && !m.quests.some((q) => q.kind === 'quest' && q.id === b.quest)}<option value={b.quest}>{b.quest} ({m.quests.some((q) => q.id === b.quest) ? 'not a quest any more' : 'missing'})</option>{/if}</select>
     </Field>
     <Field label="Encounter (the target)" for="bt-e" help="Its fleet is the bounty's target: faction, ships, captain, place, behaviour, comm dialog. Empty: the quest's Encounter node.">
       <select id="bt-e" value={b.encounter ?? ''} onchange={(e) => { const v = e.currentTarget.value; ed((x) => { x.encounter = v || undefined }) }}><option value="">{quest ? `the quest's (${enc?.name ?? 'none'})` : '(pick one)'}</option>{#each m.encounters as e (e.id)}<option value={e.id}>{e.name} ({e.id})</option>{/each}</select>
@@ -50,7 +50,7 @@
       <select id="bt-w" value={b.where ?? ''} onchange={(e) => { const v = e.currentTarget.value; ed((x) => { x.where = v || undefined }) }}>
         <option value="">the encounter's place{enc?.spawn.at ? ` (${enc.spawn.at})` : ''}</option>
         {#each quest ? targetVars(quest) : [] as v (v.name)}<option value={`target:${v.name}`}>random target {v.name} ({v.target.pick})</option>{/each}
-        {#if b.where && !b.where.startsWith('target:')}<option value={b.where}>{b.where}</option>{/if}
+        {#if b.where && !(quest ? targetVars(quest) : []).some((v) => `target:${v.name}` === b.where)}<option value={b.where}>{b.where}{b.where.startsWith('target:') ? ' (missing)' : ''}</option>{/if}
       </select>
     </Field>
   </div>
@@ -86,8 +86,8 @@
   <div class="grid2 wide">
     <Field label="Flagship variant" for="bt-fs" help="MagicLib needs one. Empty: the encounter's first ship (a fleet sized by points has none: set it here)."><input id="bt-fs" type="text" class="mono" value={b.flagship ?? ''} placeholder={from('fleet_flagship_variant')} onchange={(e) => { const v = str(e.currentTarget.value); ed((x) => { x.flagship = v }) }} /></Field>
     <Field label="Match the player's fleet" for="bt-sc" help="Adds ships up to the player's fleet points × this. 0 or empty: no."><input id="bt-sc" type="number" step="0.1" value={b.scaling ?? ''} onchange={(e) => { const v = num(e.currentTarget.value); ed((x) => { x.scaling = v }) }} /></Field>
-    <Field label="Board shows the fleet" for="bt-sf" help="How much of the target fleet the board shows: none, a text, the flagship, the preset ships, vanilla's nine biggest, or all."><select id="bt-sf" value={b.show?.fleet ?? 'flagshipText'} onchange={(e) => { const v = e.currentTarget.value as BountyShowFleet; ed((x) => { x.show = { ...x.show, fleet: v } }) }}>{#each FLEET as f (f)}<option>{f}</option>{/each}</select></Field>
-    <Field label="Board shows where" for="bt-sd" help="How exactly the board says where the target is: none, vague, a distance, the system, vanilla's description, or exact."><select id="bt-sd" value={b.show?.distance ?? 'vanilla'} onchange={(e) => { const v = e.currentTarget.value as BountyShowDistance; ed((x) => { x.show = { ...x.show, distance: v } }) }}>{#each DIST as f (f)}<option>{f}</option>{/each}</select></Field>
+    <Field label="Board shows the fleet" ref="quests-bounty-board" for="bt-sf" help="How much of the target fleet the board shows: none, a text, the flagship, the preset ships, vanilla's nine biggest, or all."><select id="bt-sf" value={b.show?.fleet ?? 'flagshipText'} onchange={(e) => { const v = e.currentTarget.value as BountyShowFleet; ed((x) => { x.show = { ...x.show, fleet: v } }) }}>{#each FLEET as f (f)}<option>{f}</option>{/each}</select></Field>
+    <Field label="Board shows where" ref="quests-bounty-board" for="bt-sd" help="How exactly the board says where the target is: none, vague, a distance, the system, vanilla's description, or exact."><select id="bt-sd" value={b.show?.distance ?? 'vanilla'} onchange={(e) => { const v = e.currentTarget.value as BountyShowDistance; ed((x) => { x.show = { ...x.show, distance: v } }) }}>{#each DIST as f (f)}<option>{f}</option>{/each}</select></Field>
     <Field wide label="Map arrow" help="MagicLib's job_show_arrow."><label class="chk"><input type="checkbox" checked={b.show?.arrow ?? false} onchange={(e) => { const v = e.currentTarget.checked; ed((x) => { x.show = { ...x.show, arrow: v } }) }} /> point at the target on the map once accepted</label></Field>
   </div>
 

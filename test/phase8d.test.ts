@@ -26,12 +26,14 @@ describe('event schedulers export', () => {
     expect(files['data/config/sagaforge/content.csv']).toContain('sed_news,events,data/sagaforge/events/sed_news.json,eight_d')
     expect(needsSagaLib12(EIGHT_D.model())).toBe(true)
   })
-  it('start and end actions are rules on SagaLib\'s triggers', () => {
-    const rules = files['data/campaign/rules.csv']
-    expect(rules).toContain('sed_boom_start,SF_event_sed_boom_start,,"AddCredits 100\n$global.sed_boom_seen = true"')
-    expect(rules).toContain('sed_raid_start,SF_event_sed_raid_start,,SF_Spawn sed_raiders')
-    expect(rules).toContain('sed_raid_end,SF_event_sed_raid_end,,SF_Despawn sed_raiders')
-    expect(rules).not.toContain('sed_boom_end')
+  // #67 U12 (SagaLib 1.4): actions SagaLib runs itself are in the JSON, with no rule (no dialog flashes)
+  it('start and end actions are in the JSON, for SagaLib to run without a dialog', () => {
+    const j = JSON.parse(files['data/sagaforge/events/sed_news.json'])
+    expect(j.entries[0].start).toEqual([{ op: 'credits', amount: 100 }, { op: 'set', key: '$global.sed_boom_seen', value: 'true' }])
+    expect(j.entries[1].start).toEqual([{ op: 'spawn', encounter: 'sed_raiders' }])
+    expect(j.entries[1].end).toEqual([{ op: 'despawn', encounter: 'sed_raiders' }])
+    expect(j.entries[0].end).toBeUndefined()
+    expect(files['data/campaign/rules.csv']).not.toContain('SF_event_')
   })
 })
 
@@ -100,16 +102,19 @@ describe('progress events (8d-3, RC-R12 b)', () => {
     const j = JSON.parse(files['data/sagaforge/progress/sed_unrest.json'])
     expect(j).toMatchObject({ id: 'sed_unrest', max: 1000, negative: true, restartAt: 0, startConditions: [] })
     expect(j.stages.map((s: { id: string; progress: number }) => `${s.id}@${s.progress}`)).toEqual(['rumours@300', 'riots@600', 'settled@1000'])
-    expect(j.stages[1].outcomes).toEqual([{ id: 'calm', weight: 2 }, { id: 'burn', weight: 1 }])
+    expect(j.stages[1].outcomes.map((o: { id: string; weight: number }) => ({ id: o.id, weight: o.weight }))).toEqual([{ id: 'calm', weight: 2 }, { id: 'burn', weight: 1 }])
     expect(j.factors[1]).toEqual({ id: 'boom', desc: 'The market boom', points: 150, conditions: ['$global.sed_boom_active'] })
     expect(files['data/config/sagaforge/content.csv']).toContain('sed_unrest,progress,data/sagaforge/progress/sed_unrest.json,eight_d')
   })
-  it('stage actions are rules on SF_progress triggers; Add progress is SF_Progress', () => {
-    const rules = files['data/campaign/rules.csv']
-    expect(rules).toContain('sed_unrest_rumours,SF_progress_sed_unrest_rumours,,"AddCredits 10')
-    expect(rules).toContain('sed_unrest_riots_calm,SF_progress_sed_unrest_riots_calm,,AddCredits 50')
-    expect(rules).toContain('sed_unrest_riots_burn,SF_progress_sed_unrest_riots_burn,,AdjustRep independent -5')
-    expect(rules).toContain('SF_Progress sed_unrest 250 ""You stirred up the crowd""') // CSV doubles the quotes
+  // #67 U12 (SagaLib 1.4): in the JSON, run by SagaLib without a dialog
+  it('stage and outcome actions are in the JSON; Add progress is a progress op', () => {
+    const j = JSON.parse(files['data/sagaforge/progress/sed_unrest.json'])
+    expect(j.stages[0].actions[0]).toEqual({ op: 'credits', amount: 10 })
+    expect(j.stages[1].outcomes[0].actions).toEqual([{ op: 'credits', amount: 50 }])
+    expect(j.stages[1].outcomes[1].actions).toEqual([{ op: 'rep', faction: 'independent', amount: -5 }])
+    expect(files['data/campaign/rules.csv']).not.toContain('SF_progress_')
+    // Add progress from a quest is still the rule command
+    expect(files['data/campaign/rules.csv']).toContain('SF_Progress sed_unrest 250 ""You stirred up the crowd""') // CSV doubles the quotes
   })
   it('are checked', async () => {
     const { progressProblems } = await import('../src/shared/checks/progress')

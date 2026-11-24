@@ -26,8 +26,10 @@
   import { mods } from '../state/mods.svelte'
   import type { ModsCondition } from '../../../shared/model'
   import NexerelinTab from '../factions/NexerelinTab.svelte'
+  import ResearchTab from '../factions/ResearchTab.svelte'
+  import { VOK_FACTIONS_CSV, VOK_ID, handRows } from '../../../shared/research'
   import { newNexConfig, nexRelationPairs, type NexConfig } from '../../../shared/nexconfig'
-  import { nexListed } from '../../../shared/modlist'
+  import { factionColor, nexListed, useOf } from '../../../shared/modlist'
   import { effectiveConds } from '../../../shared/moduses'
 
   const index = $derived(app.index!)
@@ -124,6 +126,7 @@
       delete mm.factionsRuntime.scripted[e.id]
       delete mm.descriptions[`FACTION:${e.id}`]
       if (e.kind === 'addition') delete mm.nexerelin?.[e.id]
+      if (e.kind === 'addition') delete mm.research?.factions[e.id]
     })
     if (project.loaded?.files[e.file]) project.deletedFactionFiles = [...project.deletedFactionFiles, e.file]
     app.selected.factions = null
@@ -149,6 +152,9 @@
       if (d) { mm.descriptions[`FACTION:${to}`] = d; delete mm.descriptions[`FACTION:${e.id}`] }
       // #63: its Nexerelin config follows (Export removes the old file and writes the new one)
       if (mm.nexerelin?.[e.id]) { mm.nexerelin[to] = mm.nexerelin[e.id]; delete mm.nexerelin[e.id] }
+      // #77: its research stance follows
+      const rf = mm.research?.factions
+      if (rf?.[e.id]) { rf[to] = rf[e.id]; delete rf[e.id] }
       for (const p of mm.people) if (p.faction === e.id) p.faction = to
     })
     if (project.loaded?.files[oldFile]) project.deletedFactionFiles = [...project.deletedFactionFiles, oldFile]
@@ -217,6 +223,8 @@
   // ---- #63: the Nexerelin tab (own factions; shown when the mod lists Nexerelin, or the faction already has a config)
   const nexConfig = $derived(sel ? ((m?.nexerelin?.[sel] as NexConfig | undefined) ?? null) : null)
   const showNex = $derived(!!m && (nexListed(m.project) || !!nexConfig))
+  // #77: the Research tab (own factions; shown when the mod lists VoK, or the faction has a stance or a hand-written row)
+  const showResearch = $derived(!!m && !!sel && (['required', 'optional'].includes(useOf(m.project, VOK_ID)) || !!m.research?.factions[sel] || handRows(project.loaded?.files[VOK_FACTIONS_CSV]?.text, 'factionId').some((r) => r.key === sel)))
   const nexPairs = $derived(tab === 'nexerelin' && sel && m && app.index ? nexRelationPairs(m, sel, effectiveConds(m, app.index, project.loaded?.sourceId ?? '')) : { inConfig: {}, stayWithSagaLib: [] })
   function editNex(fn: (c: NexConfig) => void) {
     const id = sel
@@ -233,7 +241,7 @@
     if (!id || !confirm(`Remove ${id}'s Nexerelin config? Export then removes the file it wrote. Undo can bring it back until you save.`)) return
     project.change((mm) => { delete mm.nexerelin?.[id] })
   }
-  const allFactionOptions = $derived([...index.factions.map((f) => ({ id: f.id, name: f.name })), ...additions.filter((a) => !index.factions.some((f) => f.id === a.id)).map((a) => ({ id: a.id, name: String(a.raw.displayName ?? a.id) })), { id: 'player', name: 'Player' }])
+  const allFactionOptions = $derived([...index.factions.map((f) => ({ id: f.id, name: f.name, definedBy: f.definedBy })), ...additions.filter((a) => !index.factions.some((f) => f.id === a.id)).map((a) => ({ id: a.id, name: String(a.raw.displayName ?? a.id) })), { id: 'player', name: 'Player' }])
   const desc = $derived(sel && m ? descriptionText(`FACTION:${sel}`) : '')
 
   // ---- name lists (R3): selected as "@people:<id>" / "@ships:<id>"
@@ -290,7 +298,7 @@
       <ul class="list">
         {#each overrides.filter((f) => match(f.id, info(f.id)?.name ?? '')) as f (f.id)}
           {@const fi = info(f.id)}
-          <li class:on={sel === f.id}><button class="li" onclick={() => (app.selected.factions = f.id)}><span class="swatch" style="background:{swatch(fi?.color)}"></span>{fi?.name ?? f.id} <span class="badge b-ovr">override</span><span class="sub">{srcName(fi?.definedBy ?? '')}</span></button></li>
+          <li class:on={sel === f.id}><button class="li" onclick={() => (app.selected.factions = f.id)}><span class="swatch" style="background:{swatch(fi ? factionColor(fi, mods.visible) : null)}"></span>{fi?.name ?? f.id} <span class="badge b-ovr">override</span><span class="sub">{srcName(fi?.definedBy ?? '')}</span></button></li>
         {:else}<li class="muted small">None.</li>{/each}
       </ul>
       <div class="sect">Name lists <button disabled={!m} onclick={() => (showNewList = true)} title="Names for this mod's generated people or ships">+ New list</button></div>
@@ -307,7 +315,7 @@
       <ShowAllMods list="factions" hidden={mods.hidden('factions', others, (f) => f.definedBy)} />
       <ul class="list ro">
         {#each mods.filter('factions', others, (f) => f.definedBy) as f (f.id)}
-          <li class:on={sel === f.id}><button class="li" title={f.id} onclick={() => (app.selected.factions = f.id)}><span class="swatch" style="background:{swatch(f.color)}"></span>{f.name}{#if sameName.has(f.name)}<span class="mono idtag">{f.id}</span>{/if}<span class="sub">{srcName(f.definedBy)}</span></button></li>
+          <li class:on={sel === f.id}><button class="li" title={f.id} onclick={() => (app.selected.factions = f.id)}><span class="swatch" style="background:{swatch(factionColor(f, mods.visible))}"></span>{f.name}{#if sameName.has(f.name)}<span class="mono idtag">{f.id}</span>{/if}<span class="sub">{srcName(f.definedBy)}</span></button></li>
         {/each}
       </ul>
     </div>
@@ -335,7 +343,7 @@
         <button class="mini danger" onclick={remove}>Delete</button>
       </div>
       <FactionForm {ed} {edit} factionId={entry.id} bind:tab {showOthers}
-        extraTabs={entry.kind === 'addition' ? [{ id: 'relations', label: 'Relations & changes' }, { id: 'description', label: 'Description' }, ...(showNex ? [{ id: 'nexerelin', label: 'Nexerelin' }] : [])] : [{ id: 'scripted', label: 'Scripted changes' }]}
+        extraTabs={entry.kind === 'addition' ? [{ id: 'relations', label: 'Relations' }, { id: 'description', label: 'Description' }, ...(showNex ? [{ id: 'nexerelin', label: 'Nexerelin' }] : []), ...(showResearch ? [{ id: 'research', label: 'Research' }] : [])] : [{ id: 'scripted', label: 'Scripted changes' }]}
         onCantRemove={(path, value) => (cantRemove = { path, value })}>
         {#snippet extra(t)}
           {#if t === 'scripted'}
@@ -369,6 +377,8 @@
               <div class="gt"><span>Scripted changes</span><span class="badge b-lib">SagaLib, every load</span></div>
               <ScriptedChanges factionId={entry.id} list={scriptedList.filter((c) => c.op !== 'hideFromIntelTab')} onEdit={(fn) => editScripted(entry.id, (l) => { const hide = l.filter((c) => c.op === 'hideFromIntelTab'); const rest = l.filter((c) => c.op !== 'hideFromIntelTab'); fn(rest); l.splice(0, l.length, ...rest, ...hide) })} />
             </div>
+          {:else if t === 'research' && entry.kind === 'addition'}
+            <ResearchTab factionId={entry.id} />
           {:else if t === 'nexerelin' && entry.kind === 'addition'}
             <NexerelinTab factionId={entry.id} config={nexConfig} relations={nexPairs.inConfig} stay={nexPairs.stayWithSagaLib}
               factionOptions={allFactionOptions} onFleets={() => app.go('fleets', `nex=${entry.id}`)}

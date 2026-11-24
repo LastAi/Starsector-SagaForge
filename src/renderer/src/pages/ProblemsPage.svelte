@@ -33,6 +33,7 @@
     if (r.page === 'saga' && r.id === 'events') { app.selected.sagaTab = 'events'; app.selected.eventScheduler = r.sub ?? null }
     // #65
     if (r.page === 'saga' && r.id === 'achievements') { app.selected.sagaTab = 'achievements'; app.selected.sagaOpen = 'achievements'; app.selected.achievement = r.sub ?? null }
+    if (r.page === 'saga' && r.id === 'research') { app.selected.sagaTab = 'research'; app.selected.sagaOpen = 'research'; app.selected.researchTech = r.sub ?? null }
     if (r.page === 'saga' && r.id === 'questskip') { app.selected.sagaTab = 'questskip'; app.selected.sagaOpen = 'questskip'; app.selected.skipChain = r.sub?.split(':')[0] ?? null; app.selected.skipQuest = r.sub?.split(':')[1] ?? null }
   }
 

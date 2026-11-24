@@ -8,17 +8,19 @@
  *   $global.<quest>_state  active | success | fail
  *   $global.<quest>_<var>  quest variables
  */
-import { comboKey, comboOf, resolveRuntime, versionFlag, versionKey, type RtVersion } from './itemversions'
+import { comboKey, comboOf, parseSettingToken, resolveRuntime, rtTokens, versionFlag, versionKey, type RtVersion } from './itemversions'
 import type { Engine, EngineHooks, RuleSet } from './rules/engine'
 import { Engine as RulesEngine } from './rules/engine'
 import { parseCondition } from './rules/parse'
 import type { Phrase, PoolPlan, QuestPlan, Reward, SettingDef, SettingScale, TestProfile } from './model'
-import { runtimeScale, scaleFactor, scaledCredits, scaledPoints, type RuntimeScale } from './settings'
+import { runtimeScale, scaleFactor, scaledCredits, scaledPoints, settingsMemory, valueText, type RuntimeScale } from './settings'
 import { levelAtLeast, repLevelOf } from './replevels'
 import { branchPool, forceKey, rollPool, seedOf, SEED_KEY } from './pools'
 import { javaHash } from './javarandom'
-import { TARGET_DETAILS, targetFactKey, targetKey, targetsPickedAtOffer, targetVars } from './targets'
+import { allowedCommodities, commodityFacts, TARGET_DETAILS, targetCreditsOf, targetFactKey, targetKey, targetsPickedAtOffer, targetVars, VANILLA_GOODS, type CommodityInfo } from './targets'
 import { beforeStart } from './quest'
+import { callResultKey, normalizePluginResult, parsePluginCall, pluginResultTrigger, shortClass, type PluginCall } from './plugins'
+import { firstNamePhrase, type NameParts } from './personname'
 import type { PlayContext } from './rules/engine'
 
 export interface QuestState { state: 'not-started' | 'active' | 'success' | 'fail'; step?: string }
@@ -40,6 +42,8 @@ export interface SimWorld {
   bounties?: { known(id: string): boolean; memKey?(id: string): string | undefined; name?(id: string): string | undefined }
   /** #65: the names of MagicLib achievements, for the Play notice (missing: the id). */
   achievements?: { name?(id: string): string | undefined }
+  /** #77: VoK techs: their names and which are researched from the start (missing: the id, none). */
+  research?: { name?(id: string): string | undefined; fromStart?(id: string): boolean }
   /**
    * #61 (SagaLib 1.3 core.Places.World): the sector as far as quests need it: which places and
    * people exist and who owns each market. Missing: everything exists and nothing is watched.
@@ -49,8 +53,21 @@ export interface SimWorld {
   settings?: SettingDef[]
   /** #62: the encounters' fleets, for the fleet size a setting scales (golden cases: runtime JSON, with per). */
   encounters?: { id: string; fleet: { size: string; points?: number; sizeScale?: SettingScale | RuntimeScale } }[]
+  /**
+   * #75: a commodity as a commodity target needs it (name for texts, econUnit, base price), and
+   * every economy commodity (for "any economy commodity"). Missing: vanilla's goods with neutral numbers.
+   */
+  commodity?(id: string): CommodityInfo | undefined
+  economyCommodities?(): string[]
   /** #61: a quest as SagaLib reads it (Play mode: the plan has no exported ownerChange.markets); missing: the quest itself (golden cases). */
   runtimeQuest?(id: string): RuntimeQuestJson | undefined
+  /**
+   * #79: what a plugin returns (golden cases: the step's value; null = no result or a failure).
+   * Missing, or undefined: Play can't run Java, so it asks (buttons for the node's declared results).
+   */
+  plugin?(call: PluginCall): string | null | undefined
+  /** #79: a person's name as SagaLib creates them (one-name people: first "", the one name last); missing: unknown. */
+  person?(id: string): NameParts | undefined
 }
 
 /** #61: a simulated sector (golden cases; Play mode's "market changes owner" event). */
@@ -63,6 +80,11 @@ export interface SimPlaces {
   /** #70: how faction A stands with B, as a RepLevel name; null = a faction doesn't exist (SagaLib: false), undefined = Play doesn't know (it asks). */
   relation?(a: string, b: string): string | null | undefined
 }
+
+/** #77: Play's own record of a tech it granted (VoK keeps research in Java, not in memory). */
+export const playResearchKey = (techId: string): string => `$global.sagaforge_play_research_${techId}`
+/** #77: Vaults of Knowledge counts in this run (Play's mod switches; unknown = on). */
+const vokOn = (w: SimWorld): boolean => !w.mods || w.mods.enabled.has('aotd_vok')
 
 /** A pool by its runtime id: a named one, or a Random branch's own (<quest>_<node>). */
 export function findPool(w: SimWorld, id: string): PoolPlan | null {
@@ -79,9 +101,30 @@ export interface SimState {
   /** Encounters waiting for the user to pick an outcome (battles can't be simulated). */
   pendingOutcome: { quest: string; node: string; encounter: string } | null
   phraseLog: string[]
+  /** #79: a plugin ran in Play (no Java here): the next FireBest of its result trigger asks what it returned. */
+  pendingPlugin?: { trigger: string; key: string; results: string[]; className: string } | null
+  /** #67 U52: fleets SF_Despawn sent away: SagaLib reports them avoided once the dialog closes. */
+  left?: string[]
 }
 
-export const newSimState = (): SimState => ({ quests: {}, spawned: [], journal: [], pendingOutcome: null, phraseLog: [] })
+export const newSimState = (): SimState => ({ quests: {}, spawned: [], journal: [], pendingOutcome: null, phraseLog: [], pendingPlugin: null })
+
+/** #79: Play-only options standing in for a plugin's result: "__sf_plugin|<trigger>|<key>|<result>" ("" = no result). */
+export const PLUGIN_OPTION = '__sf_plugin|'
+export const pluginOptionId = (trigger: string, key: string, result: string): string => `${PLUGIN_OPTION}${trigger}|${key}|${result}`
+
+/**
+ * #79: the user picked what the plugin returned (Play can't run the mod's Java): the result key as
+ * SF_RunPlugin sets it, then the node's result trigger, as the exported rule does next.
+ */
+export function pluginOutcome(e: Engine, optionId: string): void {
+  const [trigger, key, result] = optionId.slice(PLUGIN_OPTION.length).split('|')
+  e.view.options = []
+  for (const p of e.view.paragraphs) p.previous = true
+  e.log.push({ kind: 'choice', text: result ? `Plugin returned "${result}" (${key} = ${result})` : `Plugin: no result, or it failed (${key} unset)` })
+  e.set(key, result || undefined)
+  e.fireBest(trigger)
+}
 
 export const stepKey = (q: string) => `$global.${q}_step`
 export const stateKey = (q: string) => `$global.${q}_state`
@@ -107,7 +150,7 @@ export function startQuest(e: Engine, w: SimWorld, qid: string, sim: SimState): 
   if (questState(e, qid).state === 'active') return
   e.set(stateKey(qid), 'active')
   for (const v of q?.variables ?? []) if (e.get(varKey(qid, v.name)) === undefined && v.type !== 'target') e.set(varKey(qid, v.name), parseInitial(v.type, v.initial))
-  if (q) applyMockTargets(e, q)
+  if (q) applyMockTargets(e, q, w, () => e.ctx.random())
   // #61: the owners of the markets it watches
   if (q && w.places) rememberOwners(e, w.places, w.runtimeQuest?.(qid) ?? (q as unknown as RuntimeQuestJson))
   sim.quests[qid] = questState(e, qid)
@@ -121,10 +164,12 @@ function parseInitial(type: string, s: string): string | number | boolean {
 }
 
 /** #62 (SagaLib 1.3 QuestLogic.reward): a reward's credits after its setting scale (the memory now). */
-export function rewardCredits(e: Engine, r: Reward | { credits?: number; creditsScale?: SettingScale | RuntimeScale }, w?: SimWorld): number {
+export function rewardCredits(e: Engine, r: Reward | { credits?: number; creditsScale?: SettingScale | RuntimeScale; targetCredits?: { var: string; mult: number } }, w?: SimWorld, quest?: string): number {
   const c = r.credits ?? 0
-  if (!c || !r.creditsScale) return c
-  return scaledCredits(c, scaleFactor(runtimeScale(r.creditsScale, w?.settings ?? []), (k) => e.get(k)))
+  // #75 (SagaLib 1.4 QuestLogic.credits): plus mult × a commodity target's value; the setting scales only the plain credits
+  const t = r.targetCredits && quest ? targetCreditsOf(e.get(targetFactKey(quest, r.targetCredits.var, 'value')), r.targetCredits.mult) : 0
+  if (!c || !r.creditsScale) return c + t
+  return scaledCredits(c, scaleFactor(runtimeScale(r.creditsScale, w?.settings ?? []), (k) => e.get(k))) + t
 }
 
 /** #62 (SagaLib 1.3 EncounterManager): an encounter's fleet points after its setting scale; undefined = not a fleet by points. */
@@ -137,8 +182,9 @@ export function fleetPoints(e: Engine, w: SimWorld, id: string): number | undefi
 
 export function applyReward(e: Engine, q: QuestPlan | undefined, r: Reward, w?: SimWorld): void {
   const p = e.ctx.player
-  const credits = rewardCredits(e, r, w)
-  if (credits !== (r.credits ?? 0)) e.log.push({ kind: 'info', text: `Reward ${r.id}: ${(r.credits ?? 0).toLocaleString('en-US')}¢ scaled by setting ${r.creditsScale?.setting} = ${credits.toLocaleString('en-US')}¢` })
+  const credits = rewardCredits(e, r, w, q?.id)
+  if (r.targetCredits) e.log.push({ kind: 'info', text: `Reward ${r.id}: ${r.targetCredits.mult} × the value of target ${r.targetCredits.var}` })
+  if (credits !== (r.credits ?? 0) && r.creditsScale) e.log.push({ kind: 'info', text: `Reward ${r.id}: ${(r.credits ?? 0).toLocaleString('en-US')}¢ scaled by setting ${r.creditsScale?.setting} = ${credits.toLocaleString('en-US')}¢` })
   if (credits) { p.credits += credits; e.para({ kind: 'gained', text: `Gained ${credits.toLocaleString('en-US')}¢`, color: 'good', highlights: [], ref: 'credits' }) }
   for (const x of r.rep ?? []) {
     p.rep[x.faction] = Math.max(-1, Math.min(1, (p.rep[x.faction] ?? 0) + x.amount * 0.01))
@@ -177,7 +223,7 @@ export function phraseText(e: Engine, p: Phrase): { text: string; chose: string 
  * quest is offered ($global.<quest>_<var> and its facts).
  */
 export const mockTargetId = (q: string, v: string) => `mock_${q}_${v}`
-export function applyMockTargets(e: { get(k: string): unknown; set(k: string, v: never): void; log?: { kind: string; text: string }[] }, q: QuestPlan): void {
+export function applyMockTargets(e: { get(k: string): unknown; set(k: string, v: never): void; log?: { kind: string; text: string }[] }, q: QuestPlan, w?: SimWorld, random: () => number = Math.random): void {
   for (const v of targetVars(q)) {
     if (e.get(targetKey(q.id, v.name)) !== undefined) continue
     const mk = v.target.mock ?? {}
@@ -191,8 +237,21 @@ export function applyMockTargets(e: { get(k: string): unknown; set(k: string, v:
     // Phase 7d: its details (RC-R3) and person (RC-R4)
     for (const d of TARGET_DETAILS) { const x = mk.details?.[d.id]; e.set(targetFactKey(q.id, v.name, d.id), (d.kind === 'bool' ? x === true : x ?? '') as never) }
     if (v.target.person?.posts.length) { set(targetFactKey(q.id, v.name, 'person'), mockTargetId(q.id, v.name) + '_person'); set(targetFactKey(q.id, v.name, 'personName'), mk.personName || 'Mock Person') }
+    // #75: Play can't see the economy: the mock's commodity, else one of the allowed at random; the amount from its econUnit
+    if (v.target.pick === 'commodity') {
+      const c = mockCommodity(v.target, w, random)
+      for (const [k, val] of commodityFacts(q.id, v.name, v.target, c, mk.size ?? 5)) set(k, val)
+      e.log?.push({ kind: 'info', text: `Target ${v.name}: ${c.name} (${c.id}), ${String(e.get(targetFactKey(q.id, v.name, 'amount')))} units, at "${mk.name || `Mock ${v.name}`}"${mk.commodity ? '' : ' (one of the allowed commodities at random; choose one in the target\'s mock)'}` })
+    }
     e.log?.push({ kind: 'info', text: `Target ${v.name}: the mock "${mk.name || `Mock ${v.name}`}" (in game, vanilla's search picks a ${v.target.pick} when the quest ${targetsPickedAtOffer(q) ? 'is offered' : 'starts'})` })
   }
+}
+
+/** #75: Play's stand-in commodity for a commodity target: the mock's, else one of the allowed at random. */
+export function mockCommodity(t: QuestPlan['variables'][number]['target'] & object, w: SimWorld | undefined, random: () => number = Math.random): CommodityInfo {
+  const allowed = allowedCommodities(t) ?? w?.economyCommodities?.() ?? [...VANILLA_GOODS]
+  const id = t.mock?.commodity || allowed[Math.floor(random() * allowed.length)] || 'food'
+  return w?.commodity?.(id) ?? { id, name: id.replace(/_/g, ' '), econUnit: 1, basePrice: 0 }
 }
 
 /**
@@ -205,6 +264,23 @@ export function applyMockTargets(e: { get(k: string): unknown; set(k: string, v:
 export function createdUpFront(e: Engine, q: QuestPlan, fromNode?: string): boolean {
   if (targetsPickedAtOffer(q) || questState(e, q.id).state !== 'not-started') return true
   return !!fromNode && !beforeStart(q).has(fromNode)
+}
+
+/** #67 U3: Play-only options where SF_Fight opens vanilla's battle dialog: "__sf_fight|<trigger>|won" or "|left". */
+export const FIGHT_OPTION = '__sf_fight|'
+
+/**
+ * #67 U3 (SagaLib 1.4, SF_Fight): how the fight went. Won: SagaLib fires "<quest>_<node>_won" in the
+ * same dialog; left: "_left", and the dialog closes when no rule answers it (vanilla's defenders).
+ */
+export function fightOutcome(e: Engine, optionId: string): void {
+  const [trigger, which] = optionId.slice(FIGHT_OPTION.length).split('|')
+  e.view.options = []
+  for (const p of e.view.paragraphs) p.previous = true
+  e.log.push({ kind: 'choice', text: which === 'won' ? 'Fight: the fleet is beaten' : 'Fight: you leave (or lose)' })
+  if (which === 'won') e.para({ kind: 'note', text: '(vanilla\'s battle and salvage screens)', color: 'gray' })
+  const r = e.fireBest(`${trigger}_${which}`)
+  if (!r && which === 'left') { e.view.ended = true; e.log.push({ kind: 'info', text: 'Nothing answers "Left": the dialog closes.' }) }
 }
 
 /** Play-only options offered where vanilla's raid menu would open (RC-F4). */
@@ -244,7 +320,8 @@ export function sagaHooks(w: SimWorld, sim: SimState): EngineHooks {
       const r = phraseText(e, p)
       sim.phraseLog.push(`${tok}: ${r.chose}`)
       e.log.push({ kind: 'info', text: `Phrase ${tok} used ${r.chose}` })
-      return r.text
+      // #79 (SagaLib 1.4): a one-name person's $<id>_firstName falls back to the one name
+      return firstNamePhrase(tok, p.owner, r.text, p.owner ? w.person?.(p.owner) : undefined)
     },
     condition(e, name, args) {
       switch (name) {
@@ -262,9 +339,21 @@ export function sagaHooks(w: SimWorld, sim: SimState): EngineHooks {
           if (a !== b && (!w.places?.relation || w.places.relation(a, b) === undefined)) return undefined
           return factionRep(w.places, a, b, args[2]) ?? false
         }
+        // #77 (SagaLib 1.4's VoK bridge): the player's research as Play granted it; another faction's: Play asks
+        case 'SF_HasResearch': {
+          if (!args[0] || !vokOn(w)) return false
+          if (args[1] && args[1] !== 'player') return undefined
+          return e.get(playResearchKey(args[0])) === true || !!w.research?.fromStart?.(args[0])
+        }
         case 'SF_AtStep': return questState(e, args[0]).state === 'active' && questState(e, args[0]).step === args[1]
         case 'SF_QuestDone': { const s = questState(e, args[0]).state; return args[1] && args[1] !== 'any' ? s === args[1] : s === 'success' || s === 'fail' }
         case 'SF_QuestState': { const s = questState(e, args[0]).state; return s === (args[1] === 'notStarted' ? 'not-started' : args[1]) }
+        // #75 (SagaLib 1.4): the player has the commodity target's amount in cargo
+        case 'SF_TargetCommodity': {
+          if (args[2] !== 'has') return false
+          const id = e.get(targetFactKey(args[0], args[1], 'commodityId')), n = Number(e.get(targetFactKey(args[0], args[1], 'amount')))
+          return id !== undefined && Number.isFinite(n) && (e.ctx.player.cargo[String(id)] ?? 0) >= n
+        }
         case 'SF_IsTarget': {
           // as SagaLib: the place ($id), its market or its system is the picked target; or its person / spawn (Phase 7d)
           const part = args[2] === 'person' || args[2] === 'spawned' ? args[2] : ''
@@ -296,6 +385,54 @@ export function sagaHooks(w: SimWorld, sim: SimState): EngineHooks {
           const pick = rollPool(pool, { get: (k) => e.get(k), set: (k, v) => e.set(k, v as never) }, (line) => e.evalCondition(parseCondition(line)), base, object, f === undefined ? null : String(f))
           e.log.push({ kind: 'script', text: `Pool ${pool.name || pool.id} picked ${pick}${f !== undefined ? ' (forced)' : ''}` })
           return pick !== 'nothing'
+        }
+        case 'SF_Fight': {
+          // #67 U3 (SagaLib 1.4): vanilla's battle can't be simulated: Play asks how it went (fightOutcome)
+          const [fq, fn] = args
+          const node = w.quests.find((q) => q.id === fq)?.nodes.find((x) => x.id === fn)
+          const fl = node?.type === 'fight' ? node.fleet : undefined
+          const what = fl ? (fl.name || (fl.size === 'template' ? `named fleet ${fl.template}` : `${fl.faction}, ${fl.size === 'fp' ? `${fl.points ?? 0} fleet points` : `${fl.variants?.length ?? 0} ships`}`)) : `${fq} ${fn}`
+          e.para({ kind: 'note', text: `(vanilla's battle dialog opens here: ${what})`, color: 'gray' })
+          const trig = `${fq}_${fn}`
+          e.view.options = [
+            { id: `${FIGHT_OPTION}${trig}|won`, text: `(Play) ${node?.type === 'fight' && node.engageText ? node.engageText : 'Engage'}: win the fight`, order: 0, enabled: true },
+            { id: `${FIGHT_OPTION}${trig}|left`, text: '(Play) Leave (or lose)', order: 1, enabled: true }
+          ]
+          e.log.push({ kind: 'info', text: `SagaLib's fight with ${what}: Play asks how it went.` })
+          return true
+        }
+        case 'SF_RunPlugin': {
+          // #79 (SagaLib 1.4, golden case plugins.json): the line as core.Plugins reads it, the result in its key
+          const call = parsePluginCall(args, (k) => e.get(k))
+          if (!call) { e.log.push({ kind: 'warn', text: 'SF_RunPlugin: no class name' }); return true }
+          const key = callResultKey(call)
+          const what = `${call.className}${Object.keys(call.args).length ? ` (${Object.entries(call.args).map(([k, v]) => `${k}=${v}`).join(', ')})` : ''}`
+          const given = w.plugin?.(call)
+          if (given !== undefined) {
+            const r = normalizePluginResult(given)
+            e.set(key, r ?? undefined)
+            e.log.push({ kind: 'script', text: `Plugin ${what} returned ${r === null ? 'no result' : `"${r}"`}` })
+            return true
+          }
+          // Play mode: the mod's Java runs only in game; a Plugin node with results asks at its result trigger
+          e.set(key, undefined)
+          e.para({ kind: 'note', text: `(the plugin ${shortClass(call.className)} runs here in game)`, color: 'gray' })
+          const n = call.quest && call.node ? w.quests.find((q) => q.id === call.quest)?.nodes.find((x) => x.id === call.node) : undefined
+          const results = n?.type === 'plugin' ? [...new Set(n.results.filter((r) => r && r !== 'next'))] : []
+          sim.pendingPlugin = results.length && call.quest && call.node ? { trigger: pluginResultTrigger(call.quest, call.node), key, results, className: call.className } : null
+          e.log.push({ kind: 'info', text: `Plugin ${what} runs here in game (Play can't run Java)${sim.pendingPlugin ? ': pick what it returns' : ''}` })
+          return true
+        }
+        case 'FireBest': {
+          // #79: Play asks what the plugin returned, where the exported rule fires the node's result trigger
+          const p = sim.pendingPlugin
+          if (!p || args[0] !== p.trigger) return false
+          sim.pendingPlugin = null
+          e.view.options = [
+            ...p.results.map((r, i) => ({ id: pluginOptionId(p.trigger, p.key, r), text: `(Play) The plugin returns "${r}"`, order: i, enabled: true })),
+            { id: pluginOptionId(p.trigger, p.key, ''), text: '(Play) No result, or the plugin fails', order: p.results.length, enabled: true }
+          ]
+          return true
         }
         case 'BarCMD': {
           // RC-R6: back to the bar's own menu (other patrons, Leave): outside this conversation
@@ -341,6 +478,37 @@ export function sagaHooks(w: SimWorld, sim: SimState): EngineHooks {
           e.log.push({ kind: 'script', text: `MagicLib achievement ${id} unlocked (in game only with MagicLib; it stays unlocked in every save)` })
           return true
         }
+        case 'SF_GrantResearch': {
+          // #77 (SagaLib 1.4): VoK marks the tech researched for the player's faction; without VoK nothing happens
+          const id = args[0] ?? ''
+          if (!vokOn(w)) { e.log.push({ kind: 'info', text: `SF_GrantResearch ${id}: nothing happens (Vaults of Knowledge is off)` }); return true }
+          if (e.get(playResearchKey(id)) === true || w.research?.fromStart?.(id)) { e.log.push({ kind: 'script', text: `Research ${id}: already researched` }); return true }
+          e.set(playResearchKey(id), true)
+          const name = w.research?.name?.(id) ?? id
+          e.para({ kind: 'note', text: `(Vaults of Knowledge) Research completed: ${name}`, color: 'h' })
+          e.log.push({ kind: 'script', text: `Research ${id} granted to the player's faction (in game only with Vaults of Knowledge)` })
+          return true
+        }
+        case 'SF_TargetCommodity': {
+          // #75 (SagaLib 1.4 core/Commodities): take / give the target's commodity, or mult × its value in credits
+          const [qid, v, what] = args
+          const id = e.get(targetFactKey(qid, v, 'commodityId'))
+          if (id === undefined) { e.log.push({ kind: 'warn', text: `SF_TargetCommodity: target ${v} of ${qid} has no commodity picked` }); return true }
+          const p = e.ctx.player
+          if (what === 'credits') {
+            const c = targetCreditsOf(e.get(targetFactKey(qid, v, 'value')), args[3] === undefined ? 1 : Number(args[3]))
+            if (c) { p.credits += c; e.para({ kind: c >= 0 ? 'gained' : 'lost', text: `${c >= 0 ? 'Gained' : 'Lost'} ${Math.abs(c).toLocaleString('en-US')}¢`, color: c >= 0 ? 'good' : 'bad', highlights: [], ref: 'credits' }) }
+            return true
+          }
+          if (what !== 'take' && what !== 'give') { e.log.push({ kind: 'warn', text: `SF_TargetCommodity: unknown "${what}" (take, give, has or credits)` }); return true }
+          const n = Number(e.get(targetFactKey(qid, v, 'amount'))) || 0
+          const key = String(id)
+          const name = String(e.get(targetFactKey(qid, v, 'commodity')) ?? key)
+          if (what === 'give') p.cargo[key] = (p.cargo[key] ?? 0) + n
+          else p.cargo[key] = Math.max(0, (p.cargo[key] ?? 0) - n)
+          e.para({ kind: what === 'give' ? 'gained' : 'lost', text: `${what === 'give' ? 'Gained' : 'Lost'} ${n.toLocaleString('en-US')}× ${name}`, color: what === 'give' ? 'good' : 'bad', highlights: [], ref: key })
+          return true
+        }
         case 'SF_Start': startQuest(e, w, args[0], sim); return true
         case 'SF_Step': {
           const [qid, step] = args
@@ -349,7 +517,7 @@ export function sagaHooks(w: SimWorld, sim: SimState): EngineHooks {
           const q = quest(qid)
           const st = q?.stages.find((s) => s.id === step)
           sim.quests[qid] = questState(e, qid)
-          sim.journal.push({ quest: qid, text: st?.journal || st?.title || step, day: e.ctx.day })
+          sim.journal.push({ quest: qid, text: e.subst(st?.journal || st?.title || step), day: e.ctx.day }) // #75: tokens filled, as SagaLib's intel
           e.log.push({ kind: 'script', text: `Journal: ${q?.title ?? qid} → ${st?.title ?? step}` })
           // a stage marked success/fail ends the quest
           if (st?.kind === 'success' || st?.kind === 'fail') { endQuest(e, qid, st.kind === 'success'); sim.quests[qid] = questState(e, qid) }
@@ -377,7 +545,14 @@ export function sagaHooks(w: SimWorld, sim: SimState): EngineHooks {
           e.log.push({ kind: 'script', text: `Fleet spawned: ${args[0]}${pts !== undefined && en?.fleet.sizeScale ? ` (${Math.round(pts * 10) / 10} fleet points: ${en.fleet.points ?? 50} scaled by setting ${en.fleet.sizeScale.setting})` : ''}` })
           return true
         }
-        case 'SF_Despawn': sim.spawned = sim.spawned.filter((x) => x !== args[0]); e.log.push({ kind: 'script', text: `Fleet leaves: ${args[0]}` }); return true
+        case 'SF_Despawn': {
+          // #67 U52: no id = the fleet you're talking to (an encounter's comm link); SagaLib resolves it as avoided
+          const id = args[0] || String(e.get('$entity.sagaforge_encounter') ?? '')
+          sim.spawned = sim.spawned.filter((x) => x !== id)
+          if (id) sim.left = [...(sim.left ?? []).filter((x) => x !== id), id]
+          e.log.push({ kind: 'script', text: `Fleet leaves: ${id || '(the fleet you are talking to)'}; SagaLib reports it avoided once the dialog closes` })
+          return true
+        }
         case 'SF_BackToMenu': {
           // back to the menu; with no menu here (a wreck, an entity) the dialog closes
           e.view.options = []
@@ -439,7 +614,7 @@ export function applyProfile(ctx: PlayContext, prof: TestProfile, quests: QuestP
   if (pl.commission) { ctx.player.commission = pl.commission; ctx.memory.set('$player.commissionFactionId', pl.commission); ctx.memory.set('$global.commissionFaction', pl.commission) }
   for (const [f, r] of Object.entries(pl.rep ?? {})) ctx.player.rep[f] = r
   for (const c of pl.cargo ?? []) ctx.player.cargo[c.item] = (ctx.player.cargo[c.item] ?? 0) + c.qty
-  if (pl.gender) ctx.player.gender = pl.gender
+  if (pl.gender) { ctx.player.gender = pl.gender; ctx.memory.set('$player.gender', pl.gender) }
 }
 
 /** A test profile from the current play state ("Copy from Play mode"). */
@@ -514,7 +689,30 @@ export const versionedId = (v: VersionedJson): string => (v.kind === 'factions' 
 
 /** Every mod an item's runtime versions name. */
 export function runtimeMentioned(item: { versions?: RtVersion[] }): string[] {
-  return [...new Set((item.versions ?? []).flatMap((v) => [...(v.modsWith ?? []), ...(v.modsWithout ?? []), ...(v.modsAny ?? []).flat()]))].sort()
+  return [...new Set((item.versions ?? []).flatMap((v) => [...(v.modsWith ?? []), ...(v.modsWithout ?? []), ...(v.modsAny ?? []).flat(), ...rtTokens(v)]))].sort()
+}
+
+/** #67 U18 (SagaLib 1.4, core.Settings.recordKey): a setting's value when the game started, kept in the save. */
+export const settingRecordKey = (id: string): string => `$global.sagaforge_setting_${id}`
+
+/**
+ * As core.Settings.record: every value field not recorded yet in this save gets its value now (the
+ * player's when it reads as the field's type, else the default), as text ("true", "Hard", "5").
+ * Recorded once: a later change in LunaLib's menu doesn't change it.
+ */
+export function recordSettings(e: Mem, defs: SettingDef[], player: Record<string, unknown> = {}): void {
+  for (const [k, v] of settingsMemory(defs, player)) {
+    const rk = settingRecordKey(k.slice('$global.'.length))
+    if (e.get(rk) === undefined) e.set(rk, valueText(v) as never)
+  }
+}
+
+/** As core.Versions.counts: a mod counts by the start record; a setting token when its recorded value is that value. */
+function versionCounts(e: Mem, w: NonNullable<SimWorld['mods']>, owner: string, x: string): boolean {
+  const t = parseSettingToken(x)
+  if (!t) return modCounts(e, w, owner, x)
+  const rec = e.get(settingRecordKey(t.id))
+  return rec !== undefined && String(rec) === t.value
 }
 
 /**
@@ -527,7 +725,7 @@ export function chooseVersions(e: Mem, w: NonNullable<SimWorld['mods']>, items: 
     const id = versionedId(v)
     const k = versionKey(v.kind, id)
     if (e.get(k) !== undefined) continue
-    const on = runtimeMentioned(v.item).filter((m) => modCounts(e, w, v.owner, m))
+    const on = runtimeMentioned(v.item).filter((m) => versionCounts(e, w, v.owner, m))
     e.set(k, comboKey(on) as never)
     if (v.kind === 'quest') for (const m of on) e.set(versionFlag(id, m), true as never)
   }

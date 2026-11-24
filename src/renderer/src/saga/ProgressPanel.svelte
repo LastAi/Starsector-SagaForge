@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ConditionsEditor from '../quests/ConditionsEditor.svelte'
+  // #67 U45: the condition pickers (only those that work outside a dialog are offered)
+  let { templates = [] }: { templates?: { label: string; line: string }[] } = $props()
   /**
    * Saga › Progress (Phase 8d-3, RC-R12 b; DESIGN-PHASE8.md "8d"): the mod's own progress events,
    * a bar in the intel screen like vanilla's colony crises: stages at progress values (each runs
@@ -65,14 +68,14 @@
           <span class="row">max <input type="number" class="short" min="1" value={sel.max} onchange={(e) => { const v = Math.max(1, Math.round(Number(e.currentTarget.value) || 1000)); edP((p) => { p.max = v }) }} />
             <label class="chk"><input type="checkbox" checked={!!sel.negative} onchange={(e) => { const v = e.currentTarget.checked; edP((p) => { p.negative = v || undefined }) }} /> bad for the player</label></span>
         </Field>
-        <Field label="Starts when" for="pe-sc" help="Conditions, one per line, for the event to appear (checked a few times a day). Empty: as soon as a game has the mod. An &quot;Add progress&quot; action also starts it.">
-          <textarea id="pe-sc" class="mono" rows="2" value={sel.startConditions.join('\n')} onchange={(e) => { const v = lines(e.currentTarget.value); edP((p) => { p.startConditions = v }) }}></textarea>
+        <Field label="Starts when" ref="rules-conditions" help="Conditions for the event to appear (checked a few times a day). Empty: as soon as a game has the mod. An &quot;Add progress&quot; action also starts it. Outside any dialog: only $global and $player keys exist.">
+          <ConditionsEditor lines={sel.startConditions} {templates} scope="global" placeholder="No conditions: it starts as soon as a game has the mod." onChange={(l) => edP((p) => { p.startConditions = l })} />
         </Field>
         <Field label="After the last" help="When the bar reaches the last stage: the event ends (it isn't started again), or it starts over from a lower value (the stages repeat).">
           <span class="row"><label class="chk"><input type="checkbox" checked={sel.restartAt !== undefined && sel.restartAt >= 0} onchange={(e) => { const v = e.currentTarget.checked; edP((p) => { p.restartAt = v ? 0 : undefined }) }} /> starts over at</label>
             {#if sel.restartAt !== undefined && sel.restartAt >= 0}<input type="number" class="short" min="0" value={sel.restartAt} onchange={(e) => { const v = Math.max(0, Math.round(Number(e.currentTarget.value) || 0)); edP((p) => { p.restartAt = v }) }} />{:else}<span class="muted small">(the event ends)</span>{/if}</span>
         </Field>
-        <Field label="Intel tab" for="pe-t" help="An extra tab it is listed under (it is always under Major events), e.g. Colony threats or the mod's faction id.">
+        <Field label="Intel tab" ref="saga-intel-tabs" for="pe-t" help="An extra tab it is listed under (it is always under Major events), e.g. Colony threats or the mod's faction id.">
           <input id="pe-t" type="text" value={sel.tag ?? ''} onchange={(e) => { const v = e.currentTarget.value.trim(); edP((p) => { p.tag = v || undefined }) }} />
         </Field>
         <Field label="Icon" for="pe-i" help="An image path for the event (e.g. graphics/icons/intel/…); empty: vanilla's unknown-event icon.">
@@ -86,9 +89,9 @@
         <div class="row fac">
           <input type="text" value={f.desc} title="Shown in the event's list" placeholder="what it is" onchange={(e) => { const v = e.currentTarget.value; edP((p) => { p.factors[i].desc = v }) }} />
           <input type="number" class="short" value={f.points} title="Points per month" onchange={(e) => { const v = Math.round(Number(e.currentTarget.value) || 0); edP((p) => { p.factors[i].points = v }) }} />
-          <textarea class="mono" rows="1" value={f.conditions.join('\n')} title="Conditions" placeholder="conditions (empty: always)" onchange={(e) => { const v = lines(e.currentTarget.value); edP((p) => { p.factors[i].conditions = v }) }}></textarea>
           <button class="mini" onclick={() => edP((p) => { p.factors.splice(i, 1) })}>✕</button>
         </div>
+        <div class="faccond"><ConditionsEditor lines={f.conditions} {templates} scope="global" placeholder="No conditions: every month." onChange={(l) => edP((p) => { p.factors[i].conditions = l })} /></div>
       {/each}
 
       {#if st}
@@ -124,7 +127,7 @@
         {:else}
           <OpsEditor label="When reached" ops={st.actions} edit={(fn) => edS((s) => fn(s.actions))} />
         {/if}
-        <p class="muted small">The actions run as rules outside any dialog, quietly unless a rule adds options. The game also shows an update with the stage's title.</p>
+        <p class="muted small">SagaLib 1.4 runs the actions itself, without a dialog (what they give shows as campaign messages); an action that needs a dialog (a raw rules line) stays a rule. The game also shows an update with the stage's title.</p>
         <p><button class="mini danger" onclick={() => { const id = st.id; edP((p) => { p.stages = p.stages.filter((x) => x.id !== id) }); stId = null }}>Delete stage</button></p>
       {/if}
       <p><button class="mini danger" onclick={() => { if (!confirm(`Delete the progress event "${sel.name}"?`)) return; const id = sel.id; project.change((mm) => { mm.progress = (mm.progress ?? []).filter((x) => x.id !== id) }); selId = null }}>Delete progress event</button></p>
@@ -146,7 +149,6 @@
   .grid2 { display: grid; grid-template-columns: 110px minmax(0, 520px); gap: 4px 10px; align-items: start; }
   .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   .fac { margin: 3px 0; }
-  .fac textarea { width: 260px; }
   .chk { display: flex; gap: 6px; align-items: center; }
   input.short { width: 64px; }
   input.short2 { width: 110px; }
@@ -154,4 +156,5 @@
   .outcome { border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; margin: 6px 0; max-width: 640px; }
   .small { font-size: 12px; }
   h3 { margin: 16px 0 6px; font-size: 13px; }
+  .faccond { margin: 0 0 8px 18px; }
 </style>

@@ -10,6 +10,9 @@
   import { uniqueId, slug } from '../../../shared/quest'
   import type { TestProfile, Phrase } from '../../../shared/model'
   import SagaCard from '../graph/SagaCard.svelte'
+  import LaneBand from '../graph/LaneBand.svelte'
+  import FlowApi from '../graph/FlowApi.svelte'
+  import { storylines } from '../../../shared/storylines'
   import PhraseEditor from '../quests/PhraseEditor.svelte'
   import PoolsPanel from '../saga/PoolsPanel.svelte'
   import ScatterPanel from '../saga/ScatterPanel.svelte'
@@ -18,6 +21,8 @@
   import ModsPanel from '../saga/ModsPanel.svelte'
   import SettingsPanel from '../saga/SettingsPanel.svelte'
   import AchievementsPanel from '../saga/AchievementsPanel.svelte'
+  import ResearchPanel from '../saga/ResearchPanel.svelte'
+  import { VOK_ID } from '../../../shared/research'
   import QuestSkipPanel from '../saga/QuestSkipPanel.svelte'
   import { nexListed, useOf } from '../../../shared/modlist'
   import { MAGICLIB_ID } from '../../../shared/achievements'
@@ -28,13 +33,13 @@
   import { inactiveQuests } from '../../../shared/inactive'
 
   // screenshot mode: "saga::<tab>"
-  let tab = $state<'board' | 'timeline' | 'flags' | 'profiles' | 'phrases' | 'pools' | 'scatter' | 'events' | 'progress' | 'mods' | 'settings' | 'achievements' | 'questskip'>(((app.smoke ? app.smokeArg : null) ?? app.selected.sagaTab ?? 'board') as 'board')
+  let tab = $state<'board' | 'timeline' | 'flags' | 'profiles' | 'phrases' | 'pools' | 'scatter' | 'events' | 'progress' | 'mods' | 'settings' | 'achievements' | 'questskip' | 'research'>(((app.smoke ? app.smokeArg : null) ?? app.selected.sagaTab ?? 'board') as 'board')
   $effect(() => { app.selected.sagaTab = tab })
   // #60: the header pill and Problems open Saga › Mods while this page is open
   $effect(() => { const want = app.selected.sagaOpen; if (want) { tab = want as typeof tab; app.selected.sagaOpen = null } })
   // screenshot mode: "saga:<item id>:<tab>" selects that item in the tab (pool, profile, event scheduler, progress event, scatter)
   if (app.smoke && app.selected.saga) {
-    const key = ({ pools: 'pool', profiles: 'profile', events: 'eventScheduler', progress: 'progressEvent', scatter: 'scatterItem', settings: 'setting' } as Record<string, string>)[app.smokeArg ?? '']
+    const key = ({ pools: 'pool', profiles: 'profile', events: 'eventScheduler', progress: 'progressEvent', scatter: 'scatterItem', settings: 'setting', research: 'researchTech' } as Record<string, string>)[app.smokeArg ?? '']
     if (key) app.selected[key] = app.selected.saga
   }
   const m = $derived(project.m)
@@ -46,38 +51,64 @@
     const s = q.start
     return s.kind === 'contact' ? (s.person ? `contact: ${personLook(s.person)?.name ?? s.person}` : `any contact tagged ${[s.tagsAll, s.tagsAny].filter(Boolean).join(' / ') || '?'}`) : s.kind === 'bar' ? 'bar event' : s.kind === 'option' ? `option: ${s.optionText}` : s.kind === 'trigger' ? `on ${s.trigger}` : 'started by another quest'
   }
+  /**
+   * #67 U19 (user, 2026-11-21): storylines. One lane per questline (prerequisites, one quest starting
+   * another), left to right by step; the quests with no link in a last lane. Only story links are
+   * drawn; a selected card also shows the flags it shares with other quests (and the side panel lists them).
+   */
   let nodes = $state.raw<Node[]>([])
   let edges = $state.raw<Edge[]>([])
+  // screenshot mode: "saga:<quest id>:board" selects that card
+  let boardSel = $state<string | null>(app.smoke && app.smokeArg === 'board' ? app.selected.saga ?? null : null)
+  // a flag that gates a quest's start, set by another quest, counts as a story link ("unlocks")
+  const setters = (key: string): string[] => [...new Set((reg.get(key)?.setBy ?? []).map((u: { quest?: string }) => u.quest).filter(Boolean) as string[])]
+  const lines = $derived(m ? storylines(m.quests, setters) : { lanes: [], links: [] })
+  /** A quest's flags shared with other quests: the ones it sets that others read, and the ones it reads that others set. */
+  const sharedFlags = $derived.by(() => {
+    const out: { key: string; dir: 'sets' | 'reads'; others: string[] }[] = []
+    if (!boardSel) return out
+    for (const e of reg.values()) {
+      const setters = [...new Set(e.setBy.map((u: { quest?: string }) => u.quest).filter(Boolean) as string[])]
+      const readers = [...new Set(e.readBy.map((u: { quest?: string }) => u.quest).filter(Boolean) as string[])]
+      if (setters.includes(boardSel)) { const o = readers.filter((r) => r !== boardSel); if (o.length) out.push({ key: e.key, dir: 'sets', others: o }) }
+      if (readers.includes(boardSel)) { const o = setters.filter((s) => s !== boardSel); if (o.length) out.push({ key: e.key, dir: 'reads', others: o }) }
+    }
+    return out.sort((a, b) => a.dir.localeCompare(b.dir) || a.key.localeCompare(b.key))
+  })
+  const COL_W = 260, ROW_H = 140, HEAD = 46, GAP = 24, PAD = 14
+  const LINK_STYLE: Record<string, string> = { requires: 'stroke:#4fb3ff;stroke-width:2', starts: 'stroke:#6fd07a;stroke-width:2', unlocks: 'stroke:#e0b050;stroke-width:1.5' }
+  /** How a link reads in the side panel, from the quest before it / after it. */
+  const linkText = (l: { kind: string; label: string }, after: boolean): string =>
+    l.kind === 'requires' ? (after ? `prerequisite: ${l.label}` : 'needs it') : l.kind === 'unlocks' ? (after ? `its start needs ${l.label}` : `sets ${l.label}, which its start needs`) : l.label
   $effect(() => {
     if (!m) { nodes = []; edges = []; return }
-    void JSON.stringify(m.quests.map((q) => [q.id, q.title, q.requires, q.start])), void JSON.stringify(m.project.saga.positions)
+    void JSON.stringify(m.quests.map((q) => [q.id, q.title, q.requires, q.start])), void boardSel
     void JSON.stringify(m.people.map((p) => p.inactive)), void JSON.stringify(m.quests.map((q) => q.inactive))
     const off = inactiveQuests(m)
-    nodes = m.quests.map((q, i) => {
-      const p = m.project.saga.positions[q.id] ?? [40 + (i % 4) * 260, 40 + Math.floor(i / 4) * 170]
-      const people = [...new Set(q.nodes.flatMap((n) => (n.type === 'dialog' && n.speaker ? [personLook(n.speaker)?.name ?? n.speaker] : [])))]
-      return { id: q.id, type: 'card', position: { x: p[0], y: p[1] }, data: { quest: q, start: startText(q), people, problems: problems.live.filter((x) => x.ref?.id === q.id && x.level === 'error').length, inactive: off.has(q.id) } }
-    })
-    const es: Edge[] = []
-    for (const q of m.quests) {
-      for (const r of q.requires) {
-        if ('quest' in r) es.push({ id: `req:${r.quest}>${q.id}`, source: r.quest, target: q.id, label: r.ended === 'any' ? 'ended' : r.ended, style: 'stroke:#4fb3ff;stroke-width:2' })
+    const ns: Node[] = []
+    const cols = Math.max(1, ...lines.lanes.flatMap((l) => l.quests.map((q) => q.col + 1)))
+    let y = 0
+    for (const lane of lines.lanes) {
+      const h = HEAD + lane.rows * ROW_H + PAD
+      ns.push({ id: lane.id, type: 'lane', position: { x: -PAD, y }, data: { title: lane.title, count: lane.quests.length, alone: lane.alone, w: cols * COL_W + PAD, h }, draggable: false, selectable: false, zIndex: -1 })
+      for (const lq of lane.quests) {
+        const q = m.quests.find((x) => x.id === lq.id)!
+        const people = [...new Set(q.nodes.flatMap((n) => (n.type === 'dialog' && n.speaker ? [personLook(n.speaker)?.name ?? n.speaker] : [])))]
+        ns.push({ id: q.id, type: 'card', position: { x: lq.col * COL_W, y: y + HEAD + lq.row * ROW_H }, draggable: false, selected: q.id === boardSel,
+          data: { quest: q, start: startText(q), people, problems: problems.live.filter((x) => x.ref?.id === q.id && x.level === 'error').length, inactive: off.has(q.id) } })
       }
+      y += h + GAP
     }
-    // dashed: a quest sets a flag another quest reads
-    for (const e of reg.values()) {
-      const setters = new Set(e.setBy.map((u: { quest?: string }) => u.quest).filter(Boolean) as string[])
-      const readers = new Set(e.readBy.map((u: { quest?: string }) => u.quest).filter(Boolean) as string[])
-      for (const s of setters) for (const r of readers) if (s !== r && m.quests.some((q) => q.id === s) && m.quests.some((q) => q.id === r)) {
-        // drawn above the cards: between two close cards the flag's name is wider than the gap
-        es.push({ id: `flag:${e.key}:${s}>${r}`, source: s, target: r, sourceHandle: 'flag-out', targetHandle: 'flag-in', label: e.key.replace(/^\$global\./, ''), style: 'stroke:#c9a0ff;stroke-dasharray:5 4', zIndex: 1000 })
-      }
+    nodes = ns
+    const es: Edge[] = lines.links.map((l) => ({ id: `${l.kind}:${l.from}>${l.to}`, source: l.from, target: l.to, label: l.kind === 'unlocks' ? undefined : l.label, style: LINK_STYLE[l.kind] }))
+    // the selected quest's shared flags, dashed
+    for (const f of sharedFlags) for (const o of f.others) {
+      const [s, r] = f.dir === 'sets' ? [boardSel!, o] : [o, boardSel!]
+      es.push({ id: `flag:${f.key}:${s}>${r}`, source: s, target: r, sourceHandle: 'flag-out', targetHandle: 'flag-in', label: f.key.replace(/^\$global\./, ''), style: 'stroke:#c9a0ff;stroke-dasharray:5 4', zIndex: 1000 })
     }
     edges = es
   })
-  function onDragStop({ nodes: moved }: { nodes: Node[] }) {
-    project.change((mm) => { for (const n of moved) mm.project.saga.positions[n.id] = [Math.round(n.position.x), Math.round(n.position.y)] })
-  }
+  const titleOf = (id: string) => m?.quests.find((q) => q.id === id)?.title ?? id
 
   // ---- timeline: quests in the order a player can reach them
   const timeline = $derived.by(() => {
@@ -121,10 +152,11 @@
   }
 
   $effect(() => { if (tab === 'flags') app.loadRules() })
-  const nodeTypes = { card: SagaCard }
+  const nodeTypes = { card: SagaCard, lane: LaneBand }
 </script>
 
 <div class="page">
+  <div class="top">
   <div class="toolbar">
     <div class="seg">
       <button class:on={tab === 'board'} onclick={() => (tab = 'board')}>Board</button>
@@ -141,20 +173,46 @@
       <!-- #65: mod-specific tools, shown when the mod lists the mod (Saga › Mods) or already uses them (PLAN.md §10.1) -->
       {#if m && (['required', 'optional'].includes(useOf(m.project, MAGICLIB_ID)) || m.project.achievements?.length || tab === 'achievements')}<button class:on={tab === 'achievements'} onclick={() => (tab = 'achievements')} title="MagicLib achievements: quest endings unlock them (MagicLib's list, shared by every save)">Achievements ({m.project.achievements?.length ?? 0})</button>{/if}
       {#if m && (nexListed(m.project) || m.project.questSkip?.length || tab === 'questskip')}<button class:on={tab === 'questskip'} onclick={() => (tab = 'questskip')} title="Nexerelin's new-game &quot;skip quests&quot; screen: the mod's quest chains and what skipping each quest means">Quest skip ({m.project.questSkip?.length ?? 0})</button>{/if}
+      {#if m && (['required', 'optional'].includes(useOf(m.project, VOK_ID)) || m.research?.techs.length || tab === 'research')}<button class:on={tab === 'research'} onclick={() => (tab = 'research')} title="AoTD Vaults of Knowledge: the mod's own techs (its own tree in VoK's research screen); quests unlock or grant them">Research ({m.research?.techs.length ?? 0})</button>{/if}
     </div>
-    <span class="muted small">{tab === 'board' ? 'Solid arrows: prerequisites. Dashed: a flag one quest sets and another reads. Drag cards; double-click opens the quest.' : ''}</span>
+  </div>
+  <!-- #67 U20: the explanation below the tabs (in the tab row it squeezed the tabs into two lines) -->
+  {#if tab === 'board'}<div class="tabhelp muted small">One lane per questline: <span class="k req">blue</span> a prerequisite, <span class="k st">green</span> one quest starts or goes on in another, <span class="k un">gold</span> a flag one quest sets that another's start needs. Click a card for the flags it shares with other quests; double-click opens it.</div>{/if}
   </div>
 
   {#if !m}
     <div class="center muted">Pick or create an active mod first.</div>
   {:else if tab === 'board'}
+    <div class="boardwrap" class:withside={!!boardSel}>
     <div class="board">
-      <SvelteFlow bind:nodes bind:edges {nodeTypes} colorMode="dark" fitView fitViewOptions={{ maxZoom: 1 }} nodesConnectable={false} zoomOnDoubleClick={false}
-        onnodedragstop={({ nodes: ns }) => onDragStop({ nodes: ns })} onnodeclick={({ node, event }) => { if ((event as MouseEvent).detail === 2) app.go('quests', node.id) }} proOptions={{ hideAttribution: true }}>
+      <SvelteFlow bind:nodes bind:edges {nodeTypes} colorMode="dark" minZoom={0.2} nodesConnectable={false} nodesDraggable={false} zoomOnDoubleClick={false}
+        onnodeclick={({ node, event }) => { if (node.type !== 'card') return; if ((event as MouseEvent).detail === 2) app.go('quests', node.id); else boardSel = boardSel === node.id ? null : node.id }}
+        onpaneclick={() => (boardSel = null)} proOptions={{ hideAttribution: true }}>
         <Background gap={20} />
         <Controls showLock={false} />
+        <!-- #67 U19: fitted when it fits at 70%, else its top-left corner at 70% -->
+        <FlowApi onReady={(api) => setTimeout(() => api.opening('top'), 150)} />
       </SvelteFlow>
       {#if !m.quests.length}<div class="overlay muted">No quests yet. Create one on the Quests page.</div>{/if}
+    </div>
+    {#if boardSel}
+      {@const q = m.quests.find((x) => x.id === boardSel)}
+      {@const ins = lines.links.filter((l) => l.to === boardSel)}
+      {@const outs = lines.links.filter((l) => l.from === boardSel)}
+      <!-- #67 U19: the selected quest: its story links and the flags it shares -->
+      <aside class="bside">
+        <div class="bh"><b>{q?.title ?? boardSel}</b><button class="mini" onclick={() => app.go('quests', boardSel)}>Open</button></div>
+        <div class="bsect">Comes after</div>
+        {#each ins as l (l.from + l.kind)}<div class="row1"><button class="lnk" onclick={() => (boardSel = l.from)}>{titleOf(l.from)}</button><span class="muted">{linkText(l, true)}</span></div>{:else}<div class="muted">Nothing: available from the start (its own start conditions apply).</div>{/each}
+        <div class="bsect">Leads to</div>
+        {#each outs as l (l.to + l.kind)}<div class="row1"><button class="lnk" onclick={() => (boardSel = l.to)}>{titleOf(l.to)}</button><span class="muted">{linkText(l, false)}</span></div>{:else}<div class="muted">No other quest.</div>{/each}
+        <div class="bsect">Flags shared with other quests (dashed on the board)</div>
+        {#each sharedFlags as f (f.dir + f.key)}
+          <div class="flag"><span class="mono">{f.key.replace(/^\$global\./, '')}</span> <span class="muted">{f.dir === 'sets' ? 'set here, read by' : 'read here, set by'}</span>
+            <span class="others">{#each f.others as o (o)}<button class="lnk chipl" onclick={() => (boardSel = o)}>{titleOf(o)}</button>{/each}</span></div>
+        {:else}<div class="muted">None.</div>{/each}
+      </aside>
+    {/if}
     </div>
   {:else if tab === 'timeline'}
     <div class="scroll pad">
@@ -218,7 +276,7 @@
                 <tr><td>{q.title}</td>
                   <td><select value={s?.state ?? 'not-started'} onchange={(e) => { const v = e.currentTarget.value as 'not-started'; edProf((p) => { if (v === 'not-started') delete p.quests[q.id]; else p.quests[q.id] = { state: v, step: p.quests[q.id]?.step ?? q.stages[0]?.id } }) }}>
                     <option value="not-started">not started</option><option value="active">active</option><option value="success">succeeded</option><option value="fail">failed</option></select></td>
-                  <td>{#if s && s.state === 'active'}<select value={s.step ?? ''} onchange={(e) => { const v = e.currentTarget.value; edProf((p) => { p.quests[q.id].step = v }) }}>{#each q.stages as st (st.id)}<option value={st.id}>{st.title}</option>{/each}</select>{/if}</td></tr>
+                  <td>{#if s && s.state === 'active'}<select value={s.step ?? ''} onchange={(e) => { const v = e.currentTarget.value; edProf((p) => { p.quests[q.id].step = v || undefined }) }}><option value="">— stage —</option>{#each q.stages as st (st.id)}<option value={st.id}>{st.title}</option>{/each}{#if s.step && !q.stages.some((st) => st.id === s.step)}<option value={s.step}>{s.step} (missing)</option>{/if}</select>{/if}</td></tr>
               {/each}
             </tbody>
           </table>
@@ -242,7 +300,7 @@
             <Field label="Start at" for="tp-sa" help="An entity or market id: with dev mode on, the profile puts the player's fleet there, at a new game or (SagaLib 1.2) from the Ctrl+F9 dev menu mid-game.">
               <input id="tp-sa" type="text" class="mono" value={prof.player.startAt ?? ''} placeholder="e.g. vgc_haven" onchange={(e) => { const v = e.currentTarget.value; edProf((p) => { p.player.startAt = v || undefined }) }} />
             </Field>
-            <Field label="Reputation" help="Faction and relation from -1 to 1 (0.5 = Welcoming…). Others are left as they are.">
+            <Field label="Reputation" ref="general-rep-levels" help="Faction and relation from -1 to 1 (0.5 = Welcoming…). Others are left as they are.">
               <div>{#each Object.entries(prof.player.rep ?? {}) as [f, r] (f)}<div class="row"><span class="mono">{f}</span><input type="number" step="0.05" min="-1" max="1" value={r} onchange={(e) => { const v = Number(e.currentTarget.value); edProf((p) => { p.player.rep![f] = v }) }} /><button class="mini" onclick={() => edProf((p) => { delete p.player.rep![f] })}>✕</button></div>{/each}
                 <IdInput value="" options={factions} placeholder="+ faction" clearOnCommit onCommit={(v) => { if (v) edProf((p) => { (p.player.rep ??= {})[v] = 0.5 }) }} /></div>
             </Field>
@@ -260,9 +318,9 @@
   {:else if tab === 'scatter'}
     <ScatterPanel />
   {:else if tab === 'events'}
-    <EventsPanel />
+    <EventsPanel {templates} />
   {:else if tab === 'progress'}
-    <ProgressPanel />
+    <ProgressPanel {templates} />
   {:else if tab === 'mods'}
     <ModsPanel />
   {:else if tab === 'settings'}
@@ -271,6 +329,8 @@
     <AchievementsPanel />
   {:else if tab === 'questskip'}
     <QuestSkipPanel />
+  {:else if tab === 'research'}
+    <ResearchPanel />
   {:else if tab === 'phrases'}
     <div class="scroll pad">
       <p class="muted small">Phrases used by any text of the mod. A character's own phrases are on the People page; one-off variations are added inside a Dialog node. SagaLib fills them in, in game.</p>
@@ -292,6 +352,18 @@
   .seg button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
   .cnt { background: var(--warn); color: #000; border-radius: 8px; padding: 0 5px; font-size: 11px; margin-left: 4px; }
   .board { position: relative; min-height: 0; background: #0f1216; }
+  /* #67 U19: the board and, with a card selected, its side panel */
+  .boardwrap { display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .boardwrap.withside { grid-template-columns: minmax(0, 1fr) 300px; }
+  .bside { border-left: 1px solid var(--border); background: var(--panel); overflow: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+  .bh { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 4px; }
+  .bsect { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding-top: 8px; }
+  .lnk { border: none; background: none; color: var(--accent); padding: 0; font-size: inherit; cursor: pointer; text-align: left; }
+  .k { font-weight: 600; } .k.req { color: #4fb3ff; } .k.st { color: #6fd07a; } .k.un { color: #e0b050; }
+  .row1 { display: flex; flex-direction: column; padding: 2px 0; }
+  .flag { padding: 3px 0; border-bottom: 1px solid #1c232d; }
+  .others { display: flex; flex-wrap: wrap; gap: 3px 4px; margin-top: 2px; }
+  .lnk.chipl { border: 1px solid var(--border); border-radius: 9px; padding: 0 7px; font-size: 11px; }
   .overlay { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
   .scroll { overflow: auto; min-height: 0; }
   .pad { padding: 10px 14px; }
@@ -315,6 +387,7 @@
   .li { width: 100%; text-align: left; border: none; background: none; padding: 4px 8px; }
   .grid2 { display: grid; grid-template-columns: 110px minmax(0, 420px); gap: 2px 10px; align-items: center; }
   p.f-help { margin: 0 0 4px; }
+  .tabhelp { padding: 3px 12px 4px; border-bottom: 1px solid var(--border); }
   .row { display: flex; gap: 6px; align-items: center; margin-bottom: 3px; font-size: 12px; }
   .row input { padding: 2px 6px; }
   .mini { padding: 0 8px; font-size: 11px; }

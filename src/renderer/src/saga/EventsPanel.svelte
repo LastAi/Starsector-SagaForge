@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ConditionsEditor from '../quests/ConditionsEditor.svelte'
+  // #67 U45: the condition pickers (only those that work outside a dialog are offered)
+  let { templates = [] }: { templates?: { label: string; line: string }[] } = $props()
   import VersionStrip from '../ui/VersionStrip.svelte'
   import { itemVer } from '../state/itemver.svelte'
   /**
@@ -9,12 +12,16 @@
    */
   import type { ActionOp, EventSchedulerPlan, WorldEventPlan } from '../../../shared/model'
   import { EVENT_OPS, eventActiveKey, eventForceKey } from '../../../shared/export/events'
-  import { uniqueId } from '../../../shared/quest'
+  import { uniqueId, firstStageOf } from '../../../shared/quest'
+  import StartQuestOp from '../quests/StartQuestOp.svelte'
+  import RepTargetFields from '../quests/RepTargetFields.svelte'
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
   import Field from '../ui/Field.svelte'
   import ModsCond from '../ui/ModsCond.svelte'
   import IdInput from '../ui/IdInput.svelte'
+  import PluginFields from '../quests/PluginFields.svelte'
+  import { pluginClassChoices } from '../../../shared/plugins'
 
   const m = $derived(project.m!)
   const list = $derived(m.events ?? [])
@@ -25,8 +32,9 @@
   const ev = $derived(sel?.events.find((e) => e.id === (evId ?? sel.events[0]?.id)) ?? null)
 
   const TAGS = ['Major events', 'Colony threats', 'Hostilities', 'Military', 'Exploration', 'Story']
-  const places = $derived([...m.systems.flatMap((sy) => sy.entities.flatMap((e) => [{ id: e.id, name: `${e.name} (${sy.name})` }, ...(e.market && e.market.id !== e.id ? [{ id: e.market.id, name: `${e.market.name} market` }] : [])])), ...(app.index?.markets ?? []).map((x) => ({ id: x.id, name: `${x.name} market` }))])
-  const factions = $derived([...m.factions.filter((f) => f.kind === 'addition').map((f) => f.id), ...(app.index?.factions ?? []).map((f) => f.id)])
+  const places = $derived([...m.systems.flatMap((sy) => sy.entities.flatMap((e) => [{ id: e.id, name: `${e.name} (${sy.name})` }, ...(e.market && e.market.id !== e.id ? [{ id: e.market.id, name: `${e.market.name} market` }] : [])])), ...(app.index?.markets ?? []).map((x) => ({ id: x.id, name: `${x.name} market`, definedBy: x.definedBy }))])
+  // #60: index factions keep their source (the mod's own have none: always shown)
+  const factions = $derived([...m.factions.filter((f) => f.kind === 'addition').map((f) => ({ id: f.id })), ...(app.index?.factions ?? []).map((f) => ({ id: f.id, definedBy: f.definedBy }))])
   const deferred = $derived(m.systems.flatMap((s) => s.entities.filter((e) => !!e.appears)))
 
   const edS = (fn: (s: EventSchedulerPlan) => void) => { const id = sel?.id; if (id) itemVer.edit<EventSchedulerPlan>('events', id, (s) => fn(s)) }
@@ -45,18 +53,20 @@
     evId = id
   }
 
-  const OPS: Record<string, string> = { set: 'Set a flag', unset: 'Clear a flag', rep: 'Reputation', credits: 'Credits', item: 'Give items', spawn: 'Spawn an encounter', despawn: 'Despawn an encounter', placeEntity: 'Place an object', removeEntity: 'Remove an object', startQuest: 'Start a quest', storyPoints: 'Story points', xp: 'Experience', progress: 'Add progress', line: 'Script line' }
+  const OPS: Record<string, string> = { set: 'Set a flag', unset: 'Clear a flag', rep: 'Reputation', credits: 'Credits', item: 'Give items', spawn: 'Spawn an encounter', despawn: 'Despawn an encounter', placeEntity: 'Place an object', removeEntity: 'Remove an object', startQuest: 'Start a quest', storyPoints: 'Story points', xp: 'Experience', progress: 'Add progress', plugin: "Run a plugin (the mod's Java)", line: 'Script line' }
   function fresh(op: ActionOp['op']): ActionOp {
     switch (op) {
+      // #79 (SagaLib 1.4): the mod's own plugin class; no quest here, so its context has no quest or node
+      case 'plugin': return { op, className: pluginClassChoices(project.loaded?.jars).find((c) => c.name.startsWith('plugin'))?.id ?? '', args: [] }
       case 'set': return { op, key: `$global.${ev?.id ?? 'event'}_happened`, value: 'true' }
       case 'unset': return { op, key: '' }
-      case 'rep': return { op, faction: factions[0] ?? '', amount: 5 }
+      case 'rep': return { op, faction: factions[0]?.id ?? '', amount: 5 }
       case 'credits': return { op, amount: 1000 }
       case 'item': return { op, item: '', qty: 1 }
       case 'spawn': case 'despawn': return { op, encounter: m.encounters[0]?.id ?? '' }
       case 'placeEntity': return { op, entity: deferred[0]?.id ?? '' }
       case 'removeEntity': return { op, entity: '' }
-      case 'startQuest': return { op, quest: m.quests[0]?.id ?? '' }
+      case 'startQuest': return { op, quest: m.quests[0]?.id ?? '', stage: m.quests[0] ? firstStageOf(m.quests[0]) : undefined }
       case 'storyPoints': return { op, amount: 1 }
       case 'xp': return { op, amount: 1000 }
       case 'progress': return { op, event: m.progress?.[0]?.id ?? '', points: 100, text: '' }
@@ -76,6 +86,8 @@
     {/if}
     <p class="muted small pad">Things that happen in the sector without the player starting them, like vanilla's bounties and hostilities: a scheduler keeps some of its events running and starts new ones every few days. Each event can post a news item and run actions when it starts and ends. Needs SagaLib 1.2.</p>
   </div>
+  <!-- #67 U16: the strip and the form share the right column -->
+  <div class="main">
   {#if sel}<VersionStrip kind="events" id={sel.id} what="this scheduler and its events" />{/if}
   <div class="scroll pad">
     {#if sel}
@@ -129,8 +141,8 @@
           <Field label="At once" help="Normally an event runs once at a time, and when it comes back its new news item replaces the old one. Tick to let it start again while it still runs: each run gets its own news item and end (e.g. several raids at once).">
             <label class="chk"><input type="checkbox" checked={!!ev.stack} onchange={(e) => { const v = e.currentTarget.checked; edE((x) => { x.stack = v || undefined }) }} /> can run several at once</label>
           </Field>
-          <Field label="Conditions" for="we-c" help="One condition per line, as in rules.csv ($global.x == true, $player.level >= 10, a quest done…). All must hold for it to be picked.">
-            <textarea id="we-c" class="mono" rows="2" value={ev.conditions.join('\n')} onchange={(e) => { const v = e.currentTarget.value.split('\n').map((l) => l.trim()).filter(Boolean); edE((x) => { x.conditions = v }) }}></textarea>
+          <Field label="Conditions" ref="rules-conditions" help="All must hold for it to be picked. It runs outside any dialog: only $global and $player keys exist.">
+            <ConditionsEditor lines={ev.conditions} {templates} scope="global" placeholder="No conditions: it can always be picked." onChange={(l) => edE((x) => { x.conditions = l })} />
           </Field>
           <Field label="News item" help="Shown in the intel screen when the event starts, like vanilla's notifications.">
             <label class="chk"><input type="checkbox" checked={!!ev.news} onchange={(e) => { const v = e.currentTarget.checked; edE((x) => { x.news = v ? { title: x.name, text: '', days: 30 } : undefined }) }} /> post a news item</label>
@@ -143,7 +155,7 @@
             <Field label="Text" for="we-x" help="The entry's text when the player opens it.">
               <textarea id="we-x" rows="3" value={n.text} onchange={(e) => { const v = e.currentTarget.value; edE((x) => { if (x.news) x.news.text = v }) }}></textarea>
             </Field>
-            <Field label="Intel tab" help="Where it is listed in the intel screen (vanilla's tags; another word makes a tab of its own).">
+            <Field label="Intel tab" ref="saga-intel-tabs" help="Where it is listed in the intel screen (vanilla's tags; another word makes a tab of its own).">
               <IdInput value={n.tag ?? 'Major events'} options={TAGS.map((t) => ({ id: t }))} width="180px" onCommit={(v) => edE((x) => { if (x.news) x.news.tag = v.trim() || undefined })} />
             </Field>
             <Field label="On the map" help="An object or market the entry points at on the map (empty: none).">
@@ -167,29 +179,32 @@
               {#if op.op === 'set'}<input type="text" class="mono" value={op.key} title="Memory key" onchange={(e) => setOp(part, i, 'key', e.currentTarget.value)} /><span>=</span><input type="text" class="mono short" value={op.value} title="Value" onchange={(e) => setOp(part, i, 'value', e.currentTarget.value)} />
               {:else if op.op === 'unset'}<input type="text" class="mono" value={op.key} title="Memory key" onchange={(e) => setOp(part, i, 'key', e.currentTarget.value)} />
               {:else if op.op === 'credits' || op.op === 'storyPoints' || op.op === 'xp'}<input type="number" value={op.amount} title="Amount" onchange={(e) => setOp(part, i, 'amount', Number(e.currentTarget.value))} />
-              {:else if op.op === 'rep'}<IdInput value={op.faction ?? ''} options={factions.map((f) => ({ id: f }))} width="140px" placeholder="faction" onCommit={(v) => setOp(part, i, 'faction', v)} /><input type="number" class="short" value={op.amount} title="points" onchange={(e) => setOp(part, i, 'amount', Number(e.currentTarget.value))} />
+              {:else if op.op === 'rep'}<RepTargetFields faction={op.faction} person={op.person} {factions} onChange={(f, p) => { setOp(part, i, 'faction', f); setOp(part, i, 'person', p) }} /><input type="number" class="short" value={op.amount} title="points" onchange={(e) => setOp(part, i, 'amount', Number(e.currentTarget.value))} />
               {:else if op.op === 'item'}<IdInput value={op.item} options={[...m.items.map((x) => ({ id: x.id, name: x.name })), ...(app.index?.items ?? [])]} width="140px" placeholder="item id" onCommit={(v) => setOp(part, i, 'item', v)} /><input type="number" class="short" value={op.qty} title="Quantity" onchange={(e) => setOp(part, i, 'qty', Number(e.currentTarget.value))} />
               {:else if op.op === 'spawn' || op.op === 'despawn'}<select value={op.encounter} onchange={(e) => setOp(part, i, 'encounter', e.currentTarget.value)}><option value="">—</option>{#each m.encounters as en (en.id)}<option value={en.id}>{en.name}</option>{/each}</select>
-              {:else if op.op === 'startQuest'}<select value={op.quest} onchange={(e) => setOp(part, i, 'quest', e.currentTarget.value)}>{#each m.quests as x (x.id)}<option value={x.id}>{x.title}</option>{/each}</select>
+              {:else if op.op === 'startQuest'}<StartQuestOp quest={op.quest} stage={op.stage} quests={m.quests} onChange={(qq, st) => { setOp(part, i, 'quest', qq); setOp(part, i, 'stage', st) }} />
               {:else if op.op === 'placeEntity'}<select value={op.entity} onchange={(e) => setOp(part, i, 'entity', e.currentTarget.value)}><option value="">—</option>{#each deferred as d (d.id)}<option value={d.id}>{d.name} ({d.id})</option>{/each}</select>
               {:else if op.op === 'removeEntity'}<IdInput value={op.entity} options={places} width="170px" placeholder="object id" onCommit={(v) => setOp(part, i, 'entity', v)} />
               {:else if op.op === 'progress'}<select value={op.event} onchange={(e) => setOp(part, i, 'event', e.currentTarget.value)}><option value="">—</option>{#each m.progress ?? [] as pe (pe.id)}<option value={pe.id}>{pe.name}</option>{/each}</select><input type="number" class="short" value={op.points} title="Points (negative lowers it)" onchange={(e) => setOp(part, i, 'points', Number(e.currentTarget.value))} /><input type="text" value={op.text ?? ''} placeholder="text in the event's list" title="Shown in the event's one-time factors" onchange={(e) => setOp(part, i, 'text', e.currentTarget.value)} />
+              {:else if op.op === 'plugin'}<PluginFields compact className={op.className} args={op.args} onClass={(v) => setOp(part, i, 'className', v)} onArgs={(a) => setOp(part, i, 'args', a)} />
               {:else if op.op === 'line'}<input type="text" class="mono" value={op.line} onchange={(e) => setOp(part, i, 'line', e.currentTarget.value)} />{/if}
               <button class="mini" onclick={() => edE((x) => { x[part].splice(i, 1) })}>✕</button>
             </div>
           {/each}
         {/each}
-        <p class="muted small">The actions run as rules (triggers SF_event_{ev.id}_start and _end) outside any dialog. A spawned encounter appears at its own place (Encounters › At); remove it in the end actions.</p>
+        <p class="muted small">SagaLib 1.4 runs the actions itself, without a dialog (what they give shows as campaign messages); an action that needs a dialog (a raw rules line) stays a rule on the triggers SF_event_{ev.id}_start and _end. A spawned encounter appears at its own place (Encounters › At); remove it in the end actions.</p>
         <p><button class="mini danger" onclick={() => { const id = ev.id; edS((s) => { s.events = s.events.filter((x) => x.id !== id) }); evId = null }}>Delete event</button></p>
       {:else}<p class="muted">No events yet: + New.</p>{/if}
     {:else}<p class="muted">No event scheduler yet: + New.</p>{/if}
+  </div>
   </div>
 </div>
 
 <style>
   .split { display: grid; grid-template-columns: 260px minmax(0, 1fr); height: 100%; min-height: 0; }
   .side { border-right: 1px solid var(--border); overflow: auto; background: var(--panel); }
-  .scroll { overflow: auto; }
+  .main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .scroll { overflow: auto; flex: 1; min-height: 0; }
   .pad { padding: 10px 14px; }
   .sect, .sect2 { display: flex; justify-content: space-between; align-items: center; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 8px 10px 4px; }
   .sect2 { padding: 14px 0 4px; justify-content: flex-start; gap: 10px; }

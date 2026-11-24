@@ -6,6 +6,7 @@
 import type { Problem } from './api'
 import { eventRules } from './export/events'
 import { progressRules } from './export/progress'
+import { encounterOutcomeRules, encounterStateKey, fleetDefeatsKey } from './export/encounteroutcomes'
 import type { ModModel } from './serialize'
 import type { RuleRow } from './rules/types'
 import { compileQuest } from './export/questrules'
@@ -13,6 +14,8 @@ import { parseConditions, parseScript, TOKEN_RE } from './rules/parse'
 import { prereqConditions } from './export/questrules'
 import { targetKeys } from './targets'
 import { defaultOf, settingKey, TYPE_LABEL, valueSettings } from './settings'
+import { unlockFlag } from './research'
+import { callResultKey, parsePluginCall } from './plugins'
 
 export interface FlagUse { where: string; quest?: string; node?: string; detail: string }
 export interface FlagEntry {
@@ -73,6 +76,15 @@ export function buildRegistry(m: ModModel, handRules: RuleRow[], externalRules: 
         // Phase 7a: the pick, for the rules that follow, and the pool's last pick
         entry('$sagaforge_pick').setBy.push({ ...use, detail: s.raw })
         entry(`$global.sagaforge_pool_${s.args[0]}_last`).setBy.push({ ...use, detail: s.raw })
+      } else if (s.kind === 'command' && s.name === 'SF_RunPlugin') {
+        // #79: SagaLib keeps what the plugin returned ($global.<quest>_<node>_result), unset for no result
+        const call = parsePluginCall(s.args, () => '')
+        if (call) {
+          const e = entry(callResultKey(call))
+          e.setBy.push({ ...use, detail: `${s.raw} (set by SagaLib to what the plugin ${call.className} returns; unset for no result or a failure)` })
+          // generated: an Action's plugin result nothing reads is no problem
+          e.generated = true
+        }
       }
     }
     for (const tok of `${r.text}\n${r.options}`.match(TOKEN_RE) ?? []) {
@@ -92,11 +104,13 @@ export function buildRegistry(m: ModModel, handRules: RuleRow[], externalRules: 
   }
   for (const q of m.quests) for (const r of q.rewards) if (r.creditsScale?.setting) entry(settingKey(r.creditsScale.setting)).readBy.push({ where: `${q.title} (reward ${r.id})`, quest: q.id, detail: 'scales the credits' })
   for (const en of m.encounters) if (en.fleet.sizeScale?.setting) entry(settingKey(en.fleet.sizeScale.setting)).readBy.push({ where: `encounter ${en.name || en.id}`, detail: 'scales the fleet size' })
+  // #77: Vaults of Knowledge reads a tech's "unlocked by a quest" flag (its otherReq)
+  for (const t of m.research?.techs ?? []) if (t.quest && t.id) entry(unlockFlag(t.id)).readBy.push({ where: `Research "${t.name || t.id}"`, detail: 'read by Vaults of Knowledge: the tech can be researched once it is true (otherReq)' })
   // #70: SagaLib sets the away flag of a person with a presence rule (daily and on load)
   for (const p of m.people) if (p.presence) entry(`$global.sagaforge_away_${p.id}`).setBy.push({ where: `${p.name.first} ${p.name.last}`.trim() || p.id, detail: 'set by SagaLib: true while their market\'s owner doesn\'t get on with their faction (People › Presence)' })
   for (const q of m.quests) {
     let c
-    try { c = compileQuest(q, { sagalib: true, phrases }) } catch { continue }
+    try { c = compileQuest(q, { sagalib: true, phrases, groups: m.nodeGroups, prefix: m.project.prefix }) } catch { continue }
     for (const r of c.rows) scanRow(r, { where: q.title, quest: q.id, node: c.nodeOf[r.id] })
     for (const g of c.generatedFlags) entry(g.key).generated = true
     // prerequisites read keys too
@@ -132,6 +146,8 @@ export function buildRegistry(m: ModModel, handRules: RuleRow[], externalRules: 
     }
   }
   for (const p of phrases) for (const cs of p.cases) for (const l of cs.when) scanRow({ id: '', trigger: '', conditions: l, script: '', text: '', options: '', notes: '', sourceId: '', file: '', line: 0 }, { where: `phrase ${p.token}` })
+  // #67 (found building The Other Captain, 2026-11-24): a Dialog node's own phrases read keys too
+  for (const q of m.quests) for (const n of q.nodes) if (n.type === 'dialog') for (const p of n.phrases) for (const cs of p.cases) for (const l of cs.when) scanRow({ id: '', trigger: '', conditions: l, script: '', text: '', options: '', notes: '', sourceId: '', file: '', line: 0 }, { where: `${q.title || q.id} › phrase ${p.token}` })
   for (const prof of m.testProfiles) for (const k of Object.keys(prof.flags)) if (!reg.has(k)) { /* profiles only use keys; not a definition */ }
   for (const r of handRules) scanRow(r, { where: `rules.csv line ${r.line} (${r.id})` })
   // Phase 8d: world events set $global.<event>_active while they run; their conditions and actions use and set keys
@@ -141,14 +157,18 @@ export function buildRegistry(m: ModModel, handRules: RuleRow[], externalRules: 
       for (const l of e.conditions) scanRow({ id: '', trigger: '', conditions: l, script: '', text: '', options: '', notes: '', sourceId: '', file: '', line: 0 }, { where: `world event ${e.name || e.id}` })
     }
   }
-  for (const r of eventRules(m.events ?? [])) scanRow(r, { where: `world event (${r.id})` })
+  for (const r of eventRules(m.events ?? [], 'plan', undefined, true)) scanRow(r, { where: `world event (${r.id})` })
   // Phase 8d-3: progress events set $global.<event>_stage (and _<stage>_outcome); their factors and actions use keys
   for (const p of m.progress ?? []) {
     entry(`$global.${p.id}_stage`).setBy.push({ where: `progress event ${p.name || p.id}`, detail: 'the last stage reached' })
     for (const s of p.stages) if (s.outcomes?.length) entry(`$global.${p.id}_${s.id}_outcome`).setBy.push({ where: `progress event ${p.name || p.id}`, detail: `outcome of stage ${s.id}` })
     for (const l of [...p.startConditions, ...p.factors.flatMap((f) => f.conditions)]) scanRow({ id: '', trigger: '', conditions: l, script: '', text: '', options: '', notes: '', sourceId: '', file: '', line: 0 }, { where: `progress event ${p.name || p.id}` })
   }
-  for (const r of progressRules(m.progress ?? [])) scanRow(r, { where: `progress event (${r.id})` })
+  for (const r of progressRules(m.progress ?? [], 'plan', undefined, true)) scanRow(r, { where: `progress event (${r.id})` })
+  // #67 U46: encounters' own outcome actions set keys; SagaLib records how each encounter ended (only listed when read)
+  for (const r of encounterOutcomeRules(m.encounters, 'plan', undefined, true)) scanRow(r, { where: `encounter ${r.id.replace(/_(defeated|avoided)$/, '')}: when ${/_defeated$/.test(r.id) ? 'defeated' : 'avoided'}` })
+  for (const e of m.encounters) reg.get(encounterStateKey(e.id))?.setBy.push({ where: `encounter ${e.name || e.id}`, detail: 'set by SagaLib: spawned, defeated or avoided' })
+  for (const t of m.fleets?.templates ?? []) reg.get(fleetDefeatsKey(t.id))?.setBy.push({ where: `named fleet ${t.name || t.id}`, detail: 'set by SagaLib: +1 each time it is beaten' })
   // SagaLib's own keys (Phase 7e: decivilised colonies, scatter; pools; days): set by the library at runtime
   for (const e of reg.values()) if (!e.setBy.length && e.key.startsWith('$global.sagaforge_')) e.external = 'SagaLib'
   // keys set by vanilla or other mods
@@ -190,7 +210,8 @@ export function flagProblems(reg: Map<string, FlagEntry>, prefix: string): Probl
       const s = suggest(e.key, reg)
       out.push({
         level: 'warning', area: 'Flags', ref, key: `flagunset:${e.key}`,
-        message: `${e.key} is read (${e.readBy[0].where}) but nothing sets it.${s ? ` Did you mean ${s}?` : ''}`,
+        // #67 U46: a flag about a fight: where to set it when a fleet is beaten
+        message: `${e.key} is read (${e.readBy[0].where}) but nothing sets it.${s ? ` Did you mean ${s}?` : ''}${/fought|fight|defeat|beat|won|kill|destroy/i.test(e.key) ? ' To set it when a fleet is beaten: Encounters › Outcomes › When defeated › Set a flag.' : ''}`,
         fixes: s ? [{ label: `Use ${s}`, action: 'renameFlag', arg: { from: e.key, to: s } }] : undefined
       })
     }

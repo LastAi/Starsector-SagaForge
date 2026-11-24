@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ConditionsEditor from './ConditionsEditor.svelte'
+  import { tokenField } from '../state/tokens.svelte'
   /** One phrase (PLAN.md §4.3): cases with conditions, first match or random, and an otherwise text. */
   import type { Phrase } from '../../../shared/model'
   import LinesInput from './LinesInput.svelte'
@@ -26,16 +28,16 @@
   {#each phrase.cases as c, i (i)}
     <div class="case">
       {#if phrase.mode === 'first-match'}
-        <div class="when"><span class="muted">if</span><LinesInput lines={c.when} {templates} rows={1} onChange={(l) => up((p) => { p.cases[i].when = l })} /></div>
+        <div class="when"><span class="muted">if</span><ConditionsEditor lines={c.when} {templates} compact onChange={(l) => up((p) => { p.cases[i].when = l })} /></div>
         <!-- #60: a phrase case only with / without optional mods (exported as SF_HasMod lines) -->
         <ModsCond compact value={c.mods} onChange={(v) => up((p) => { if (v) p.cases[i].mods = v; else delete p.cases[i].mods })} />
       {/if}
-      <div class="txt"><input type="text" value={c.text} placeholder="text for this case" onchange={(e) => { const v = e.currentTarget.value; up((p) => { p.cases[i].text = v }) }} />
+      <div class="txt"><input type="text" use:tokenField={{ label: `phrase ${phrase.token}` }} value={c.text} placeholder="text for this case" onchange={(e) => { const v = e.currentTarget.value; up((p) => { p.cases[i].text = v }) }} />
         <button class="mini" onclick={() => up((p) => { p.cases.splice(i, 1) })}>✕</button></div>
     </div>
   {/each}
   <div class="row"><button class="mini" onclick={() => up((p) => { p.cases.push({ when: [], text: '' }) })}>+ case</button></div>
-  <div class="txt"><span class="muted">{phrase.mode === 'random' ? 'or' : 'otherwise'}</span><input type="text" value={phrase.otherwise ?? ''} placeholder="(empty)" onchange={(e) => { const v = e.currentTarget.value; up((p) => { p.otherwise = v }) }} /></div>
+  <div class="txt"><span class="muted">{phrase.mode === 'random' ? 'or' : 'otherwise'}</span><input type="text" use:tokenField={{ label: `phrase ${phrase.token}` }} value={phrase.otherwise ?? ''} placeholder="(empty)" onchange={(e) => { const v = e.currentTarget.value; up((p) => { p.otherwise = v }) }} /></div>
 </div>
 
 <style>

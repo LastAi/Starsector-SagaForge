@@ -2,8 +2,10 @@
  * Task #64 (PLAN.md §10.6): which version of each item the editors show (the versions strip), the
  * item as it looks in that version, and edits routed into that version's fields.
  */
-import { comboKey, comboOf, editInVersion, resolveItem, subsets, type Versioned } from '../../../shared/itemversions'
-import { findVersionable, type VKind } from '../../../shared/modelversions'
+import { comboKey, comboOf, editInVersion, isSettingToken, modsOnly, resolveItem, tokensPossible, type Versioned } from '../../../shared/itemversions'
+import { neverPairs, possible, versionCells } from '../../../shared/modlist'
+import { findVersionable, settingKinds, type VKind } from '../../../shared/modelversions'
+import { tokenValid } from '../../../shared/settings'
 import type { ModModel } from '../../../shared/serialize'
 import { project } from './project.svelte'
 import { mods } from './mods.svelte'
@@ -15,19 +17,29 @@ class ItemVersionState {
   /** "kind:id" → the open cell's key ("base", "mod1", "mod1+mod2"). */
   open = $state<Record<string, string>>({})
 
-  /** The optional mods' combinations (2 mods → Base, Mod1, Mod2, both), at most 4 mods. */
-  cells(): string[][] {
-    return subsets(mods.optional().map((x) => x.id), 4)
+  /**
+   * The optional mods' combinations (2 mods → Base, Mod1, Mod2, both), at most 4 mods; none holding
+   * two mods that never run together (#76). #67 U18: plus the cells of the settings marked for
+   * versions (not for items and descriptions: they follow the installed mods at startup).
+   */
+  cells(kind?: VKind): string[][] {
+    return versionCells(project.m?.project, 4, !kind || settingKinds(kind))
   }
 
-  /** The mods of the open cell (empty = base); a cell whose mods are no longer optional falls back to base. */
+  /**
+   * The mods of the open cell (empty = base); a cell whose mods are no longer optional, or never run
+   * together, falls back to base. #67 U18: a setting token stays valid while its setting exists, is
+   * marked for versions and can have that value.
+   */
   combo(kind: VKind, id: string | null | undefined): string[] {
     if (!id) return []
     const k = this.open[`${kind}:${id}`]
     if (!k || k === 'base') return []
     const opt = new Set(mods.optional().map((x) => x.id))
+    const defs = project.m?.project.settings
     const c = comboOf(k)
-    return c.every((x) => opt.has(x)) ? c : []
+    const ok = (x: string) => (isSettingToken(x) ? settingKinds(kind) && tokenValid(x, defs) : opt.has(x))
+    return c.every(ok) && tokensPossible(c) && possible(modsOnly(c), neverPairs(project.m?.project)) ? c : []
   }
 
   select(kind: VKind, id: string, mods: string[]): void {

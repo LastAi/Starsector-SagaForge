@@ -6,6 +6,7 @@
 import type { GameDefinitions } from '../defs/types'
 import { newContext, newPlayer, type PlayContext } from './engine'
 import type { Value } from './parse'
+import { firstNameOf, fullName } from '../personname'
 
 export interface TestContext {
   playerFirst: string
@@ -80,8 +81,9 @@ export function buildTokens(t: TestContext, defs: GameDefinitions, look: Lookup)
   const p = t.person ? look.person(t.person) : null
   if (p) {
     const pf = p.gender === 'FEMALE'
-    put('personName', `${p.first} ${p.last}`.trim())
-    put('personFirstName', p.first)
+    put('personName', fullName(p))
+    // #79 (SagaLib 1.4): a one-name person's first-name tokens are the one name
+    put('personFirstName', firstNameOf(p))
     put('personLastName', p.last)
     put('personRank', p.rank)
     put('personPost', p.post)
@@ -115,9 +117,16 @@ export function contextFrom(t: TestContext, defs: GameDefinitions, look: Lookup)
   const fid = t.faction || p?.faction || ''
   if (fid) { mem.set('$faction.id', fid); mem.set('$entity.faction.id', fid) }
   if (t.market) { mem.set('$market.id', t.market); mem.set('$hasMarket', true); mem.set('$menuState', 'main') }
+  // #67 U50: the market's owner, as in game ("At a market of…" conditions were never true in Play)
+  const mf = t.market ? look.market(t.market)?.faction : ''
+  if (mf) mem.set('$market.factionId', mf)
   if (t.entity && !t.person) { mem.set('$id', t.entity); mem.set('$entity.id', t.entity) }
   for (const [k, v] of Object.entries(PLACE_PRESETS.find((p) => p.id === t.place)?.memory ?? {})) mem.set(k, parseValue(v))
   mem.set('$player.credits', t.credits)
+  // #67 U50: the usual case, transponder on (vanilla's plain docking needs it; the memory fields can turn it off)
+  mem.set('$player.transponderOn', true)
+  // #67: conditions on the player's gender ("Player is female", U4's pictures) read it from memory, as in game
+  mem.set('$player.gender', t.playerGender)
   if (t.commission) { mem.set('$player.commissionFactionId', t.commission); mem.set('$global.commissionFaction', t.commission) }
   // #70: SagaLib's away flags (the memory fields below can still override them)
   for (const id of t.away ?? []) mem.set(`$global.sagaforge_away_${id}`, true)

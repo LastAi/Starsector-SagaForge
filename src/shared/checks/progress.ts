@@ -6,6 +6,7 @@ import type { CheckContext } from '.'
 import { prefixProblem } from '.'
 import { EVENT_OPS } from '../export/events'
 import { MAX_PROGRESS_STAGES } from '../export/progress'
+import { startQuestStageProblem } from '../quest'
 
 export function progressProblems(ctx: CheckContext): Problem[] {
   const out: Problem[] = []
@@ -33,6 +34,8 @@ export function progressProblems(ctx: CheckContext): Problem[] {
       for (const op of [...s.actions, ...(s.outcomes ?? []).flatMap((o) => o.actions)]) {
         if (!EVENT_OPS.includes(op.op)) out.push({ level: 'error', area: 'Progress', ref, message: `${who}, stage "${s.title || s.id}": "${op.op}" can't run here (no quest of its own).` })
         if ((op.op === 'spawn' || op.op === 'despawn') && op.encounter && !m.encounters.some((x) => x.id === op.encounter)) out.push({ level: 'error', area: 'Progress', ref, message: `${who}, stage "${s.title || s.id}": there is no encounter "${op.encounter}".` })
+        if (op.op === 'rep' && op.person === '$person') out.push({ level: 'error', area: 'Progress', ref, message: `${who}, stage "${s.title || s.id}": reputation with "the person you're talking to" - nobody is talked to when a stage runs. Name the person.` })
+        if (op.op === 'startQuest') { const sp = startQuestStageProblem(op, m.quests); if (sp) out.push({ level: sp.level, area: 'Progress', ref, key: sp.level === 'warning' ? `pestartstage:${p.id}:${s.id}:${op.quest}` : undefined, message: `${who}, stage "${s.title || s.id}" ${sp.message}` }) }
         if (op.op === 'progress' && op.event === p.id) out.push({ level: 'warning', area: 'Progress', ref, key: `peself:${p.id}:${s.id}`, message: `${who}, stage "${s.title || s.id}" adds progress to itself: it may reach the next stage at once.` })
       }
       if (s.outcomes?.length) {
@@ -55,5 +58,6 @@ function hasPointsFrom(m: CheckContext['model'], id: string): boolean {
   return m.quests.some((q) => q.nodes.some((n) => n.type === 'action' && adds(n.ops))) ||
     (m.events ?? []).some((s) => s.events.some((e) => adds(e.start) || adds(e.end))) ||
     (m.progress ?? []).some((p) => p.stages.some((s) => adds(s.actions) || (s.outcomes ?? []).some((o) => adds(o.actions)))) ||
+    m.encounters.some((e) => adds(e.onDefeated ?? []) || adds(e.onAvoided ?? [])) ||
     m.quests.some((q) => q.nodes.some((n) => n.type === 'action' && n.ops.some((o) => o.op === 'line' && o.line.includes(`SF_Progress ${id} `))))
 }

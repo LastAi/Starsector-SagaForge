@@ -5,7 +5,8 @@
 import type { ModModel } from './serialize'
 import type { QuestPlan } from './model'
 import type { RuleRow } from './rules/types'
-import { clone, comboKey, mentionedMods, resolveItem, subsets, versionFlag, type Versioned } from './itemversions'
+import { clone, comboKey, isSettingToken, mentionedMods, resolveItem, subsets, versionFlag, type Versioned } from './itemversions'
+import { firstNameOf, fullName, storedName } from './personname'
 
 /** The kinds of item that can have versions, with how to find them in the model. */
 export type VKind = 'person' | 'quest' | 'encounter' | 'system' | 'events' | 'pool' | 'factions' | 'item' | 'description'
@@ -18,7 +19,7 @@ export const VKIND_LABEL: Record<VKind, string> = {
 /** Every versionable item of the model: kind, id, label and the item itself (live, for edits). */
 export function versionables(m: ModModel): { kind: VKind; id: string; label: string; item: Versioned }[] {
   const out: { kind: VKind; id: string; label: string; item: Versioned }[] = []
-  for (const p of m.people) out.push({ kind: 'person', id: p.id, label: `${p.name.first} ${p.name.last}`.trim() || p.id, item: p })
+  for (const p of m.people) out.push({ kind: 'person', id: p.id, label: fullName(p.name) || p.id, item: p })
   for (const q of m.quests) out.push({ kind: 'quest', id: q.id, label: q.title || q.id, item: q })
   for (const e of m.encounters) out.push({ kind: 'encounter', id: e.id, label: e.name || e.id, item: e })
   for (const s of m.systems) out.push({ kind: 'system', id: s.id, label: s.name || s.id, item: s })
@@ -44,6 +45,15 @@ export function findVersionable(m: ModModel, kind: VKind, id: string): Versioned
     case 'description': return (m.descriptions[id] as Versioned | undefined) ?? null
   }
 }
+
+/**
+ * #67 U18: kinds whose versions may depend on a setting fixed at new game (chosen per save). Items
+ * and descriptions follow the installed mods when the game starts up, before any save, so not them.
+ */
+export const settingKinds = (kind: VKind): boolean => kind !== 'item' && kind !== 'description'
+
+/** #67 U18: some version depends on a setting (SagaLib 1.4's settingsWith). */
+export const usesSettingVersions = (m: ModModel): boolean => versionables(m).some((v) => !!v.item.versions?.some((x) => x.mods.some(isSettingToken)))
 
 /** True when anything in the mod has versions. */
 export const hasVersions = (m: ModModel): boolean => versionables(m).some((v) => !!v.item.versions?.length)
@@ -219,7 +229,9 @@ export function addNameTokens(m: ModModel, versioned: (id: string) => boolean = 
     people: m.people.map((p) => {
       if (!used(p.id)) return p
       const have = new Set(p.phrases.map((x) => x.token))
-      const text = { name: `${p.name.first} ${p.name.last}`.trim(), firstName: p.name.first, lastName: p.name.last }
+      // #79: a one-name person's first-name token is the one name (as SagaLib fills $personFirstName)
+      const sn = storedName(p)
+      const text = { name: fullName(sn), firstName: firstNameOf(sn), lastName: sn.last }
       const extra = NAME_TOKENS.map(([w]) => nameToken(p.id, w)).filter((t) => !have.has(t))
       if (!extra.length) return p
       return { ...p, phrases: [...p.phrases, ...NAME_TOKENS.filter(([w]) => !have.has(nameToken(p.id, w))).map(([w]) => ({ token: nameToken(p.id, w), owner: p.id, mode: 'first-match' as const, cases: [], otherwise: text[w] }))] }

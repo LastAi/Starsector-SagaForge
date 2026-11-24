@@ -12,12 +12,15 @@
  *  - A rule's script runs after its text (FORMATS.md), so displays placed between paragraphs make
  *    the text after them AddText lines.
  */
+import { expandGroups, type NodeGroupDef } from '../nodegroups'
 import type { RuleRow } from '../rules/types'
 import type { BranchNode, DialogNode, Display, OptionDef, Phrase, PoolPlan, QEdge, QNode, QuestPlan, Visual } from '../model'
 import type { Problem } from '../api'
 import { paragraphs, parseCondition } from '../rules/parse'
 import { arriveTakesOver, targetPartOf, targetVarOf } from '../targets'
-import { BOUNTY_WAIT_OUTCOMES } from '../quest'
+import { BOUNTY_WAIT_OUTCOMES, startQuestLines } from '../quest'
+import { unlockFlag } from '../research'
+import { pluginLine, pluginResultKey, pluginResultTrigger } from '../plugins'
 
 export interface CompileOptions {
   /** The mod uses SagaLib (quests always do; dialog-only content may not). */
@@ -35,6 +38,9 @@ export interface CompileOptions {
   lockedEntities?: Set<string>
   /** Phase 7a: the mod's named pools, to check a Random branch's pool exists. */
   pools?: PoolPlan[]
+  /** #67 U43: the mod's node groups, for placed groups (expanded first); the mod's prefix for {{prefix}}. */
+  groups?: NodeGroupDef[]
+  prefix?: string
 }
 
 export interface CompiledQuest {
@@ -95,7 +101,9 @@ export const BACK_TO_BAR = 'BarCMD returnFromEvent true'
 
 const quote = (s: string) => `"${s.replace(/"/g, "'")}"`
 
-export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest {
+export function compileQuest(plan: QuestPlan, opts: CompileOptions): CompiledQuest {
+  // #67 U43: placed node groups are their normal nodes here
+  const q = expandGroups(plan, opts.groups, opts.prefix)
   const rows: RuleRow[] = []
   const nodeOf: Record<string, string> = {}
   const problems: Problem[] = []
@@ -108,9 +116,12 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
   const outOf = (n: string, handle: string) => q.edges.find((e) => e.from === n && e.handle === handle)
   const ref = (node: string, sub?: string) => ({ page: 'quests' as const, id: q.id, sub: sub ? `${node}/${sub}` : node })
   let line = 0
+  // #79: the node of every row in order (nodeOf keeps the last one of an id), for the duplicate-id check
+  const rowNode: string[] = []
   const push = (r: Omit<RuleRow, 'notes' | 'sourceId' | 'file' | 'line'> & { notes?: string }, node: string) => {
     rows.push({ notes: '', ...r, sourceId: opts.sourceId ?? 'plan', file: `quest ${q.id}`, line: ++line })
     nodeOf[r.id] = node
+    rowNode.push(node)
   }
 
   // Option ids: an option leading to a Link (mode option) uses the linked id itself.
@@ -140,6 +151,20 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
   // ---- entries
   const start = q.nodes.find((n) => n.type === 'start')
   const startEdge = start ? outOf(start.id, 'next') : undefined
+  // H4: an interjection's own scene, up to its first Wait: a branch that ends there (Stage → Arrive)
+  // hands back to the option it cut into, so the quest goes on and vanilla's own dialog (salvage) too
+  const interjectPart = new Set<string>()
+  if (q.start.kind === 'interject' && start) {
+    const todo = [start.id]
+    while (todo.length) {
+      const id = todo.pop()!
+      const n = byId.get(id)
+      if (!n || interjectPart.has(id) || n.type === 'wait') continue
+      interjectPart.add(id)
+      if (n.type === 'link' && n.mode === 'node') todo.push(n.target)
+      for (const e of q.edges) if (e.from === id) todo.push(e.to)
+    }
+  }
   // the start rule's own tests after the designer's: the prerequisites, then (#71) the quest's state
   const prereqConds = [...prereqConditions(q), ...startStateConditions(q)]
   const entry: Record<string, Entry> = {}
@@ -195,7 +220,11 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
    */
   const cont = (n: QNode, script: string[] = [], to = outOf(n.id, 'next')?.to): string[] => {
     const lines = jumpTo(to)
-    if (lines.length || script.some((l) => /^(EndConversation|DismissDialog|SF_BackToMenu|BarCMD)\b/.test(l.trim()))) return lines
+    // SalvageDefenderInteraction hands the dialog to vanilla's battle screen with an object's defenders
+    // (Heliopolis, 2026-11-20): going back to the menu after it would cut the battle off
+    if (lines.length || script.some((l) => /^(EndConversation|DismissDialog|SF_BackToMenu|BarCMD|SalvageDefenderInteraction)\b/.test(l.trim()))) return lines
+    // H4: in an interjection, the step is set and an Arrive comes next: hand back to the option it cut into
+    if (q.start.kind === 'interject' && q.start.option && to && byId.get(to)?.type === 'wait' && interjectPart.has(n.id)) return [`$option = ${q.start.option} 0`, 'FireBest DialogOptionSelected']
     // RC-R6: a bar scene's loose end goes back to the bar (vanilla's bar waits for returnFromEvent)
     if (q.start.kind === 'barScene') return [BACK_TO_BAR]
     const how = opts.sagalib ? 'goes back to the menu, or closes where there is none (a wreck)' : 'goes back to the menu (FireAll PopulateOptions)'
@@ -206,6 +235,9 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     return [BACK_TO_MENU]
   }
   const linkJump = (l: Extract<QNode, { type: 'link' }>): string[] => {
+    // #67 U7: close the dialog (a comm link, a fleet that leaves), vanilla's own command
+    // #67 U43: in a fleet's comm dialog, back to the fleet screen (vanilla's cutCommLinkNoText)
+    if (l.mode === 'close') return l.toFleet ? ['ShowDefaultVisual', 'EndConversation NO_CONTINUE'] : ['EndConversation']
     // RC-R6: vanilla's way back from a bar scene (with "Continue" so the last text can be read);
     // in a bar scene, "back to the menu" is the bar's menu too
     if (l.mode === 'bar' || (l.mode === 'menu' && q.start.kind === 'barScene')) return [BACK_TO_BAR]
@@ -260,14 +292,17 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
   }
 
   // ---- nodes
+  // #67 (found building The Other Captain, 2026-11-24): a show-once option that leads straight into an
+  // Action, Stage, End or Branch node sets its asked flag there too (it only did for Dialog and Wait targets)
+  const enterPick = (nid: string, en: Entry): string[] => { const so = singleOption(nid); return so && en?.trigger === 'DialogOptionSelected' ? pickScript(so.node, so.opt) : [] }
   for (const n of q.nodes) {
     const en = entry[n.id]
     switch (n.type) {
       case 'dialog': compileDialog(n, en); break
       case 'branch': compileBranch(n, en); break
       case 'action': {
-        const script: string[] = []
-        for (const op of n.ops) script.push(...actionLines(op))
+        const script: string[] = [...enterPick(n.id, en)]
+        for (const op of n.ops) script.push(...actionLines(op, n.id))
         script.push(...cont(n))
         push({ id: nodeRuleId(q, n.id), trigger: en.trigger, conditions: en.conds.join('\n'), script: script.join('\n'), text: '', options: '' }, n.id)
         break
@@ -276,18 +311,32 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
         const st = q.stages.find((s) => s.id === n.stage)
         if (!st) problems.push({ level: 'error', area: 'Quest', message: `Stage node: no stage "${n.stage}" in the outline.`, ref: ref(n.id) })
         usesSagaLib = true
-        const script = [`SF_Step ${q.id} ${n.stage}`, ...cont(n)]
+        const script = [...enterPick(n.id, en), `SF_Step ${q.id} ${n.stage}`, ...cont(n)]
         push({ id: nodeRuleId(q, n.id), trigger: en.trigger, conditions: en.conds.join('\n'), script: script.join('\n'), text: '', options: '' }, n.id)
         break
       }
       case 'end': {
         usesSagaLib = true
-        const script = [`SF_End ${q.id} ${n.outcome === 'abandon' ? 'fail' : n.outcome}`]
+        const script = [...enterPick(n.id, en), `SF_End ${q.id} ${n.outcome === 'abandon' ? 'fail' : n.outcome}`]
         if (n.reward) script.unshift(`SF_Reward ${q.id} ${n.reward}`)
         // #65: a MagicLib achievement unlocked at this ending (after SF_End: MagicLib's notice follows the reward lines)
         if (n.achievement) script.push(`SF_Achievement ${n.achievement}`)
+        // #77 (SagaLib 1.4): VoK techs the player gets as researched at this ending (SagaLib's VoK bridge)
+        for (const t of n.research ?? []) if (t) script.push(`SF_GrantResearch ${t}`)
         script.push(...cont(n))
         push({ id: nodeRuleId(q, n.id), trigger: en.trigger, conditions: en.conds.join('\n'), script: script.join('\n'), text: '', options: '' }, n.id)
+        break
+      }
+      case 'fight': {
+        // #67 U3 (SagaLib 1.4): SF_Fight builds the node's fleet (quest JSON "fights") and opens vanilla's
+        // battle dialog; afterwards SagaLib fires "<quest>_<node>_won" in the same dialog, or "_left"
+        // (no rule for it: the dialog closes, as after vanilla's salvage defenders)
+        usesSagaLib = true
+        push({ id: nodeRuleId(q, n.id), trigger: en.trigger, conditions: en.conds.join('\n'), script: `SF_Fight ${q.id} ${n.id}`, text: '', options: '' }, n.id)
+        const trig = nodeTrigger(q, n.id)
+        push({ id: `${nodeRuleId(q, n.id)}_won`, trigger: `${trig}_won`, conditions: '', script: cont(n, [], outOf(n.id, 'won')?.to).join('\n'), text: '', options: '' }, n.id)
+        const left = outOf(n.id, 'left')
+        if (left) push({ id: `${nodeRuleId(q, n.id)}_left`, trigger: `${trig}_left`, conditions: '', script: cont(n, [], left.to).join('\n'), text: '', options: '' }, n.id)
         break
       }
       case 'raid': {
@@ -311,6 +360,24 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
         push({ id: `${rid}_done`, trigger: `${trig}_done`, conditions: '', script: cont(n, [], outOf(n.id, 'done')?.to).join('\n'), text: '', options: '' }, n.id)
         if (backLines.length) push({ id: `${rid}_back`, trigger: `${trig}_back`, conditions: '', script: backLines.join('\n'), text: '', options: '' }, n.id)
         if (!n.objective?.trim()) problems.push({ level: 'error', area: 'Quest', message: `Raid "${n.title || n.id}": the objective needs a name (it is shown in the raid menu).`, ref: ref(n.id) })
+        break
+      }
+      case 'plugin': {
+        // #79 (SagaLib 1.4): SF_RunPlugin stores what the plugin returns in $global.<quest>_<node>_result,
+        // then (with declared results) the node's "_result" trigger: one rule per connected result, and
+        // a fallback without conditions (FireBest prefers a matching result rule) for no result, another
+        // result or a failure. A result not connected takes the fallback too (checks/plugins.ts).
+        usesSagaLib = true
+        const line = pluginLine(n.className, n.args, { quest: q.id, node: n.id })
+        const results = [...new Set(n.results.filter((r) => r && r !== 'next' && outOf(n.id, r)))]
+        if (!results.length) {
+          push({ id: nodeRuleId(q, n.id), trigger: en.trigger, conditions: en.conds.join('\n'), script: [line, ...cont(n)].join('\n'), text: '', options: '' }, n.id)
+          break
+        }
+        const trig = pluginResultTrigger(q.id, n.id)
+        push({ id: nodeRuleId(q, n.id), trigger: en.trigger, conditions: en.conds.join('\n'), script: [line, `FireBest ${trig}`].join('\n'), text: '', options: '' }, n.id)
+        for (const r of results) push({ id: `${nodeRuleId(q, n.id)}_${r}`, trigger: trig, conditions: `${pluginResultKey(q.id, n.id)} == ${r}`, script: cont(n, [], outOf(n.id, r)?.to).join('\n'), text: '', options: '' }, n.id)
+        push({ id: `${nodeRuleId(q, n.id)}_next`, trigger: trig, conditions: '', script: cont(n).join('\n'), text: '', options: '' }, n.id)
         break
       }
       case 'encounter': {
@@ -407,7 +474,34 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     // the offer of a contact or bar quest: vanilla's hub needs $missionId to accept it (docs/FORMATS.md, Hub missions)
     if (startEdge?.to === n.id && (q.start.kind === 'contact' || q.start.kind === 'bar')) enterScript.unshift(`$missionId = ${q.id}`)
     const conds = [...en.conds, ...n.conditions]
-    const script: string[] = [...enterScript, ...visualLines(n.visual)]
+    // #67 U4 (task #81): a picture by the player's gender: FireBest picks the female one when its
+    // condition holds (one more condition than the default rule), plain rules.csv, no SagaLib
+    const v = n.visual
+    let visual = visualLines(v)
+    if (v.kind === 'illustration' && v.female?.key) {
+      const vt = `${nodeTrigger(q, n.id)}_visual`
+      push({ id: `${nodeRuleId(q, n.id)}_visual`, trigger: vt, conditions: '', script: visual.join('\n'), text: '', options: '' }, n.id)
+      push({ id: `${nodeRuleId(q, n.id)}_visual_f`, trigger: vt, conditions: '$player.gender == FEMALE', script: visualLines({ kind: 'illustration', ...v.female }).join('\n'), text: '', options: '' }, n.id)
+      visual = [`FireBest ${vt}`]
+    }
+    const script: string[] = [...enterScript, ...visual]
+    /*
+     * #67 U6: first-time and repeat text. The first visit sets a "seen" flag; a second rule with the
+     * flag as one more condition (FireBest picks the rule with more conditions) shows the repeat text
+     * with the same displays and options. 'visit' expires when the game unpauses (`= true 0`, the
+     * dialog's own memory: vanilla's pattern for once-per-visit lines); 'ever' is a $global flag.
+     */
+    const rep = n.repeat?.text.trim() ? n.repeat : undefined
+    const seenKey = rep ? (rep.scope === 'ever' ? `$global.${q.id}_${n.id}_seen` : `$${q.id}_${n.id}_seen`) : ''
+    const repScript: string[] = [...script]
+    if (rep) {
+      generatedFlags.push({ key: seenKey, node: n.id, option: '', scope: rep.scope === 'ever' ? 'ever' : 'conversation' })
+      script.push(rep.scope === 'ever' ? `${seenKey} = true` : `${seenKey} = true 0`)
+      if (rep.highlights?.length) repScript.push(`SetTextHighlights ${rep.highlights.map(quote).join(' ')}`)
+      for (const d of n.displays) repScript.push(...displayLines(d, opts.itemKind))
+    }
+    // lines both rules run (the options and what follows them)
+    const both = (...lines: string[]) => { script.push(...lines); repScript.push(...lines) }
     // text and displays: displays placed before the last paragraph split the text into AddText lines
     const paras = paragraphs(n.text)
     const displays = [...n.displays].sort((a, b) => (a.at ?? 1e9) - (b.at ?? 1e9))
@@ -446,9 +540,9 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     const ordered = n.options.map((o, i) => ({ o, i, oid: optId(n, o) }))
     if (!conditional) {
       optionsCol = ordered.map(({ o, i, oid }) => `${i + 1}:${oid}:${o.text}`).join('\n')
-      script.push(...optLines)
+      both(...optLines)
     } else if (n.options.length) {
-      script.push(`FireAll ${nodeTrigger(q, n.id)}_options`)
+      both(`FireAll ${nodeTrigger(q, n.id)}_options`)
       for (const { o, i, oid } of ordered) {
         const c: string[] = [...(o.showIf ?? [])]
         if (o.showOnce) c.push(o.showOnce === 'ever' ? `!$global.${q.id}_${o.id}_asked` : `!$${q.id}_${n.id}_${o.id}_asked`)
@@ -459,15 +553,17 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     // options disabled under conditions: their own FireAll rule after the options exist
     const condDisabled = n.options.filter((o) => o.disabledIf?.length)
     if (condDisabled.length) {
-      script.push(`FireAll ${nodeTrigger(q, n.id)}_state`)
+      both(`FireAll ${nodeTrigger(q, n.id)}_state`)
       condDisabled.forEach((o, i) => push({ id: `${q.id}_${n.id}_d${i + 1}`, trigger: `${nodeTrigger(q, n.id)}_state`, conditions: (o.disabledIf ?? []).join('\n'), script: `SetEnabled ${optId(n, o)} false`, text: '', options: '' }, n.id))
     }
-    script.push(...n.script)
-    if (!n.options.length) script.push(...cont(n, script))
+    both(...n.script)
+    if (!n.options.length) both(...cont(n, script))
     if (n.options.length > 10) problems.push({ level: 'warning', area: 'Quest', message: `"${n.title ?? n.id}" has ${n.options.length} options; only the first 10 get a number key.`, ref: ref(n.id) })
     if (n.options.length && n.options.every((o) => o.showOnce) && (incoming.get(n.id)?.length ?? 0) > 1) {
       problems.push({ level: 'warning', area: 'Quest', message: `Every option of "${n.title ?? n.id}" is show-once and the node can be returned to: the player could be left with no options.`, ref: ref(n.id) })
     }
+    // #67 U6: the repeat rule; its flag scores high so FireBest prefers it also over phrase variants
+    if (rep) push({ id: `${nodeRuleId(q, n.id)}_again`, trigger: en.trigger, conditions: [...conds, `${seenKey} score:1000`].join('\n'), script: repScript.join('\n'), text: rep.text.trim(), options: optionsCol }, n.id)
     // phrases without SagaLib: one rule per combination of cases (up to 4)
     const nodePhrases = [...n.phrases, ...opts.phrases].filter((p) => n.text.includes(p.token))
     if (nodePhrases.length && !opts.sagalib) {
@@ -492,10 +588,10 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     for (const c of n.cases) {
       const e = outOf(n.id, c.id)
       if (!e) problems.push({ level: 'error', area: 'Quest', message: `Branch case "${c.label}" leads nowhere.`, ref: ref(n.id, c.id) })
-      push({ id: `${nodeRuleId(q, n.id)}_${c.id}`, trigger: en.trigger, conditions: [...en.conds, ...c.conditions].join('\n'), script: jumpTo(e?.to).join('\n'), text: '', options: '' }, n.id)
+      push({ id: `${nodeRuleId(q, n.id)}_${c.id}`, trigger: en.trigger, conditions: [...en.conds, ...c.conditions].join('\n'), script: [...enterPick(n.id, en), ...jumpTo(e?.to)].join('\n'), text: '', options: '' }, n.id)
     }
     const els = outOf(n.id, 'else')
-    if (els) push({ id: `${nodeRuleId(q, n.id)}_else`, trigger: en.trigger, conditions: en.conds.join('\n'), script: jumpTo(els.to).join('\n'), text: '', options: '' }, n.id)
+    if (els) push({ id: `${nodeRuleId(q, n.id)}_else`, trigger: en.trigger, conditions: en.conds.join('\n'), script: [...enterPick(n.id, en), ...jumpTo(els.to)].join('\n'), text: '', options: '' }, n.id)
     else if (!n.cases.length) problems.push({ level: 'error', area: 'Quest', message: 'Branch has no cases.', ref: ref(n.id) })
     // FireBest picks the most specific case: equal condition counts are ambiguous, unless the two
     // cases can't both hold (#59: other states of one bounty, $x vs !$x, == different values)
@@ -526,10 +622,10 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     else problems.push({ level: 'warning', area: 'Quest', key: `randomelse:${q.id}:${n.id}`, message: `Random branch "${n.title ?? n.id}": "otherwise" leads nowhere. It is taken for the nothing share, and when no case can be picked (limits used up, conditions false); then the conversation stops here.`, ref: ref(n.id) })
   }
 
-  function actionLines(op: Extract<QNode, { type: 'action' }>['ops'][number]): string[] {
+  function actionLines(op: Extract<QNode, { type: 'action' }>['ops'][number], node: string): string[] {
     switch (op.op) {
       case 'credits': return [op.amount >= 0 ? `AddCredits ${op.amount}` : `SubCredits ${-op.amount}`]
-      case 'rep': return [op.person ? `AdjustRepActivePerson ${op.amount}` : `AdjustRep ${op.faction} ${op.amount}`]
+      case 'rep': return [repLine(op)]
       case 'item': return [itemLine(op.item, op.qty, opts.itemKind)]
       case 'set': return [`${op.key} = ${op.value}${op.days !== undefined ? ` ${op.days}` : ''}`]
       case 'unset': return [`unset ${op.key}`]
@@ -539,16 +635,24 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
       case 'placeEntity': usesSagaLib = true; return op.entity ? [`SF_PlaceEntity ${op.entity}`] : []
       case 'removePerson': usesSagaLib = true; return op.person ? [`SF_RemovePerson ${op.person}`] : []
       case 'removeEntity': usesSagaLib = true; return op.entity ? [`SF_RemoveEntity ${op.entity}${op.decivilize ? ' decivilize' : ''}`] : []
-      case 'startQuest': usesSagaLib = true; return [`SF_Start ${op.quest}`]
+      case 'startQuest': usesSagaLib = true; return startQuestLines(op)
       case 'storyPoints': return [`AddStoryPoints ${op.amount}`]
       case 'xp': return [`AddXP ${op.amount}`]
       case 'spawnAtTarget': usesSagaLib = true; return op.target && op.type ? [`SF_SpawnAtTarget ${q.id} ${op.target} ${op.kind} ${op.type}${op.where ? ` ${op.where}` : ''}`] : []
+      // #75 (SagaLib 1.4): a commodity target's goods and credits
+      case 'targetCargo': usesSagaLib = true; return op.target ? [`SF_TargetCommodity ${q.id} ${op.target} ${op.do === 'give' ? 'give' : 'take'}`] : []
+      case 'targetCredits': usesSagaLib = true; return op.target ? [`SF_TargetCommodity ${q.id} ${op.target} credits ${Number.isFinite(op.mult) ? op.mult : 1}`] : []
       case 'line': if (/^\s*SF_/.test(op.line)) usesSagaLib = true; return [op.line]
       case 'progress': usesSagaLib = true; return op.event ? [`SF_Progress ${op.event} ${Math.round(op.points)}${op.text?.trim() ? ` "${op.text.trim().replace(/"/g, "'")}"` : ''}`] : []
       // #59 (SagaLib 1.3): through SagaLib's guarded MagicLib bridge
       case 'startBounty': usesSagaLib = true; return op.bounty ? [`SF_StartBounty ${op.bounty}`] : []
       // #65 (SagaLib 1.3): through SagaLib's guarded MagicLib bridge
       case 'achievement': usesSagaLib = true; return op.achievement ? [`SF_Achievement ${op.achievement}`] : []
+      // #77: VoK's otherReq is a plain global flag (no SagaLib); granting needs SagaLib 1.4's VoK bridge
+      case 'unlockResearch': return op.tech ? [`${unlockFlag(op.tech)} = true`] : []
+      case 'grantResearch': usesSagaLib = true; return op.tech ? [`SF_GrantResearch ${op.tech}`] : []
+      // #79 (SagaLib 1.4): the mod's own plugin; its result is kept in $global.<quest>_<node>_result
+      case 'plugin': usesSagaLib = true; return op.className.trim() ? [pluginLine(op.className, op.args, { quest: q.id, node })] : []
     }
   }
 
@@ -582,6 +686,17 @@ export function compileQuest(q: QuestPlan, opts: CompileOptions): CompiledQuest 
     if (r.conditions.split('\n').some((l) => /^\s*score\s*:/i.test(l))) {
       problems.push({ level: 'error', area: 'Quest', message: `Rule ${r.id}: a condition line that is only "score:N" makes the game crash while loading rules. Put the score at the end of another condition ("$id == x score:100").`, ref: ref(nodeOf[r.id] ?? '') })
     }
+  }
+
+  // #79: two rules with one id (a node "x_ok" next to node "x" with a case or result "ok"): the game
+  // keeps only one of them, so one way of the quest silently does nothing
+  {
+    const seen = new Map<string, string>()
+    rows.forEach((r, i) => {
+      const other = seen.get(r.id)
+      if (other === undefined) { seen.set(r.id, rowNode[i]); return }
+      problems.push({ level: 'error', area: 'Quest', key: `ruledup:${q.id}:${r.id}`, ref: ref(rowNode[i]), message: `Two rules get the id ${r.id} (from "${other}" and "${rowNode[i]}"): the game keeps only one. Rename one of the nodes, or the case or result that makes the id.` })
+    })
   }
 
   // SagaLib's commands written as condition lines (SF_BountyState, SF_QuestDone … in a Branch case) need it too
@@ -622,6 +737,18 @@ export function itemLine(item: string, qty: number, itemKind?: CompileOptions['i
   return itemKind?.(item) === 'special' ? `AddRemoveAnyItem SPECIAL ${item} ${qty}` : `AddRemoveCommodity ${item} ${qty}`
 }
 
+/**
+ * H6: a reputation change. A named person: vanilla's AdjustRepPerson <person> <limit> <points>
+ * (it finds the person in ImportantPeople, where SagaLib puts the mod's people; the limit caps it,
+ * COOPERATIVE going up and VENGEFUL going down, as vanilla's rules do). "$person" = the person
+ * you are talking to (AdjustRepActivePerson). Else the faction.
+ */
+export function repLine(r: { faction?: string; person?: string; amount: number }): string {
+  if (r.person === '$person') return `AdjustRepActivePerson ${r.amount}`
+  if (r.person) return `AdjustRepPerson ${r.person} ${r.amount >= 0 ? 'COOPERATIVE' : 'VENGEFUL'} ${r.amount}`
+  return `AdjustRep ${r.faction} ${r.amount}`
+}
+
 export function displayLines(d: Display, itemKind?: CompileOptions['itemKind']): string[] {
   switch (d.kind) {
     case 'credits': return [d.amount >= 0 ? `AddCredits ${d.amount}` : `SubCredits ${-d.amount}`]
@@ -632,7 +759,7 @@ export function displayLines(d: Display, itemKind?: CompileOptions['itemKind']):
     case 'ship': return [d.remove ? `SF_RemoveShip ${d.variant}` : `SF_AddShip ${d.variant}`]
     case 'storyPoints': return [`AddStoryPoints ${d.amount}`]
     case 'xp': return [`AddXP ${d.amount}`]
-    case 'rep': return [d.person ? `AdjustRepActivePerson ${d.amount}` : `AdjustRep ${d.faction} ${d.amount}`]
+    case 'rep': return [repLine(d)]
     case 'text': return [`${d.small ? 'AddTextSmall' : 'AddText'} ${quote(d.text)}${d.color ? ` ${d.color}` : ''}`]
     case 'cost': return d.items.map((x) => `ShowResCost ${x.item} ${x.qty} true`)
     case 'capacity': return ['ShowRemainingCapacity']

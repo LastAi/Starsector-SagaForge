@@ -1,5 +1,5 @@
 /**
- * Builds a test mod (Phase 7, 8, tasks #27, #60, #61-#65, #70) (test/fixtures/phase7/<name>.ts) into D:\ModTools\mods\<name> with the
+ * Builds a test mod (Phase 7, 8, tasks #27, #60, #61-#65, #67, #70, #75, #77, #79, #80) (test/fixtures/phase7/<name>.ts) into D:\ModTools\mods\<name> with the
  * same save + export code and write guard the app uses. Run: npx jiti scripts/build-test-mod.ts
  * seven_a [<mods folder>]. Never writes outside the mods folder.
  */
@@ -26,8 +26,13 @@ import { SEVENTY_A } from '../test/fixtures/seventy'
 import { SIXTYTWO_A } from '../test/fixtures/sixtytwo'
 import { SIXTYTHREE_A } from '../test/fixtures/sixtythree'
 import { SIXTYFIVE_A } from '../test/fixtures/sixtyfive'
+import { SEVENTYFIVE_A } from '../test/fixtures/seventyfive'
+import { SEVENTYSEVEN_A } from '../test/fixtures/seventyseven'
+import { SEVENTYNINE_A } from '../test/fixtures/seventynine'
+import { EIGHTY_A } from '../test/fixtures/eighty'
+import { SCRATCH67 } from '../test/fixtures/scratch67'
 
-const MODS: Record<string, TestModDef> = { seven_a: SEVEN_A, seven_b: SEVEN_B, seven_c: SEVEN_C, seven_d: SEVEN_D, seven_e: SEVEN_E, grid_test: GRID_TEST, drop_merge_test: DROP_MERGE_TEST, eight_a: EIGHT_A, eight_a_twin: EIGHT_A_TWIN, eight_c: EIGHT_C, eight_c_xx: EIGHT_C_XX, eight_d: EIGHT_D, sixty_a: SIXTY_A, sixtyfour_a: SIXTYFOUR_A, sixtyfour_b: SIXTYFOUR_B, twentyseven_a: TWENTYSEVEN_A, sixtyone_a: SIXTYONE_A, seventy_a: SEVENTY_A, sixtytwo_a: SIXTYTWO_A, sixtythree_a: SIXTYTHREE_A, sixtyfive_a: SIXTYFIVE_A }
+const MODS: Record<string, TestModDef> = { seven_a: SEVEN_A, seven_b: SEVEN_B, seven_c: SEVEN_C, seven_d: SEVEN_D, seven_e: SEVEN_E, grid_test: GRID_TEST, drop_merge_test: DROP_MERGE_TEST, eight_a: EIGHT_A, eight_a_twin: EIGHT_A_TWIN, eight_c: EIGHT_C, eight_c_xx: EIGHT_C_XX, eight_d: EIGHT_D, sixty_a: SIXTY_A, sixtyfour_a: SIXTYFOUR_A, sixtyfour_b: SIXTYFOUR_B, twentyseven_a: TWENTYSEVEN_A, sixtyone_a: SIXTYONE_A, seventy_a: SEVENTY_A, sixtytwo_a: SIXTYTWO_A, sixtythree_a: SIXTYTHREE_A, sixtyfive_a: SIXTYFIVE_A, seventyfive_a: SEVENTYFIVE_A, seventyseven_a: SEVENTYSEVEN_A, seventynine_a: SEVENTYNINE_A, eighty_a: EIGHTY_A, EditorScratchpadMod: SCRATCH67 }
 
 async function main() {
   const name = process.argv[2]

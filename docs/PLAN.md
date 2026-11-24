@@ -622,7 +622,7 @@ interface ItemDef {
 - Commodities are rows in `data/campaign/commodities.csv`, special items rows in
   `data/campaign/special_items.csv`, in the mod's owned block (§6). **No SagaLib needed.**
 - **Presets** fill tags and columns: *Quest item* (`nonecon`, `no_loss_from_combat`,
-  `hide_in_codex`, price 0, can't be sold), *Trade good*, *Rare valuable*. Columns the form
+  `hide_in_codex`, price 0, can't be sold), *Trade good* (an economy commodity), *Rare valuable*, *Special trade good* (H7: a special item to buy and sell, not in the economy: price 1500, stacks of 100). Columns the form
   doesn't show get the values vanilla uses for the closest vanilla item, shown under "Other
   columns" (verify in M0 which columns a non-economic commodity needs).
 - Special items use vanilla's `GenericSpecialItemPlugin`, so no code. An item with its own
@@ -1131,7 +1131,7 @@ that mod reads. Saga Forge does the same, driven by **one list per mod**: the ot
 content for.
 
 **Where.** Stored in `sagaforge/project.json` → `mods: [{ id, name, use: 'required' | 'optional' |
-'incompatible', minVersion?, reason? }]`, next to the prefix and the target game version (#47). A
+'incompatible', minVersion?, reason?, neverWith? }]`, next to the prefix and the target game version (#47). A
 mod that isn't in the list is not used. The list is edited in a new **Saga › Mods** tab, a table of
 the installed mods with these columns:
 
@@ -1140,6 +1140,7 @@ the installed mods with these columns:
 | Mod | name, id and version |
 | Use | required / optional / incompatible / not used |
 | Min version | the lowest version of that mod this one needs |
+| Never with | the mods no player runs together with it (#76, §10.8): built-in pairs greyed "known" (AoTD's Theory of Toolbox and the modules that need it, with Industrial.Evolution), more added by hand as `neverWith: [modId…]` on the entry. Their combinations get no versions cell, no combination check and no Play mode combination |
 | Used by | what in this mod uses it |
 | Unlocks | the tools that appear when it's selected, e.g. "Nexerelin: Sector condition, faction config tab" |
 | Reason | incompatible only |
@@ -1147,6 +1148,9 @@ the installed mods with these columns:
 A **pill in the header**, next to the prefix and the target-version pill ("Works with: Nexerelin,
 LunaLib"), opens the same tab, so the reason a list is filtered is visible from every page. It's
 built there without a mock-up first, and can move if it doesn't fit (§10.7, question 2).
+**For the user-experience pass (#67, user, 2026-11-19):** the pill's label lists mod names ("Works
+with: AoTD - Dreams …"), which is cut off and reads oddly. Change it to a fixed, generic label such
+as **"Cross Mod Support"**, and leave its hover tooltip as it is (the full list of mods).
 
 **What each choice does:**
 
@@ -1220,7 +1224,9 @@ scene are written like this:
   the node's options trigger, carrying the conditions.
 - A check plays every combination of the mod's optional mods (2 mods = 4 combinations) and
   reports a node left with no options, or a Branch with no case, in any of them. Play mode's
-  switches show each combination.
+  switches show each combination. Combinations holding two mods that never run together (§10.8,
+  Saga › Mods "Never with") are skipped: turning one on in Play mode turns the other off, and
+  "Only with A and B" for such a pair is a warning (no player sees it).
 - `SF_HasMod` tests whether a mod is enabled, not its version. A minimum version
   (`SF_HasMod A 1.2`) can be added later if needed.
 
@@ -1436,7 +1442,11 @@ exist" stayed in #61, as general protection. The design as built:
    - **Shared drop groups**: Phase 8a's warning already covered loot pools; it now covers the mod's
      hand-written rows too.
 7. Economy mods review (AoTD, Industrial.Evolution) and commodity targets (§10.7, question 6):
-   **#66**.
+   **#66**. **Reviewed 2026-11-19**: the decisions and designs are §10.8 (formats: FORMATS.md, "Economy
+   and colony mods"). Build: commodity targets, mods that never run together, Vaults of Knowledge
+   research, Industrial.Evolution faction lists: **#75**, **#76**, **#77**, **#78**. **#76 built
+   2026-11-19** (editor only: `neverPairs`, `versionCells` and `switchPlay` in `shared/modlist.ts`;
+   tests `test/never76.test.ts`).
 
 MagicLib bounties (#27, #59) follow §10.1 (optional by default) whichever is built first.
 **#27 built 2026-11-18** (format and export, no SagaLib change; DESIGN-MAGICLIB-BOUNTIES.md; in
@@ -1473,7 +1483,10 @@ Mod1 and Mod2.
 - **The editor**: a versions strip at the top of each editor that supports versions, built from the
   optional mods (2 mods → Base, Mod1, Mod2, both). Picking a version shows the item as it will be
   in that version. A field changed there becomes that version's value, with **Revert**, like a
-  faction override's `set` entries (§4.1).
+  faction override's `set` entries (§4.1). There is no cell for a combination holding two mods
+  that never run together (§10.8; e.g. VoK and Industrial.Evolution optional → Base, VoK, IndEvo),
+  and the versions checks skip it. A version stored for such a combination is a warning ("never
+  applies"). SagaLib is unchanged: if a player enables both anyway, the usual inheritance applies.
 - **Inheritance**: the most specific matching version wins, field by field (both → Mod1 or Mod2 →
   Base). So the "both" version above only holds the dialog swap. If Mod1 and Mod2 set the same
   field differently, the editor asks for the value in the "both" cell.
@@ -1495,6 +1508,14 @@ Mod1 and Mod2.
   - Names in dialog use the person's name token, so a version's name shows everywhere. A check
     warns when a text spells out a versioned name literally.
 - **Play mode and the Test context** get a version switch (the optional mods' switches).
+- **Versions by a setting fixed at new game** (#67 U18, user 2026-11-21; SagaLib 1.4): an on/off or
+  choice setting of the mod's own (Saga › Settings) marked "Versions may depend on it" adds cells:
+  each value alone and each value with each optional mod. In the plan a version's `mods` holds the
+  token `setting:<id>=<value>`; SagaLib's files get `settingsWith: ["<id>=<value>"]`. SagaLib records
+  every setting's value when the game starts (`$global.sagaforge_setting_<id>`) and picks the version
+  from that, once, like mods; changing the setting later in LunaLib's menu doesn't change the save's
+  versions (conditions still read the value now). Not for items and descriptions (they follow the
+  installed mods at startup). Play mode uses the Test context's values.
 
 **What can have versions:**
 
@@ -1553,7 +1574,209 @@ editor has to know Mod1's places and people. Today it doesn't, for two reasons:
    exists. Commodity targets leave #53's deferred list and go to "Cross-mod support: economy mods
    review (AoTD, Industrial.Evolution) and commodity targets" (#66), a review like #31 that runs
    after #65. Economy mods will probably need their own tabs and tools, shown only when the mod is
-   in Saga › Mods (§10.1).
+   in Saga › Mods (§10.1). Decided in §10.8.
+
+### 10.8 Economy mods and commodity targets (task #66, 2026-11-19)
+
+Reviewed from the installed mods (read only; FORMATS.md, "Economy and colony mods"): AoTD Theory of
+Toolbox 1.0.13, Vaults of Knowledge 5.0.7, Seats of Power 3.2.1, Dreams of Past 3.0.6, Building Menu
+Overhaul 2.1.0, Industrial.Evolution 4.1.b, and the other installed mods with commodities, industries or
+colony content (RAT 3.3.1, UAF 0.8.4c, HMI 0.5.0e, Arma Armatura 3.3.8, Crew Replacer 0.7.8,
+Second-in-Command 2.1.1, Nexerelin 0.12.2d). Given by the user: **AoTD and Industrial.Evolution are
+never played together** (a mod may support both optionally; narrowed 2026-11-19 to Theory of Toolbox
+and the AoTD modules that need it, as Dreams of Past runs with IndEvo), and AoTD's Theory of Toolbox ships its
+own `starfarer.api.jar` that players copy over the game's. SagaLib may be split into support modules
+if needed.
+
+**What the review found, in short:**
+- Only **Theory of Toolbox** changes how the economy works: it replaces the sector's economy
+  object, the commodity-on-market objects and the main submarket plugins, and changes how many cargo
+  units an economy unit is per commodity. Vanilla's commodity search still runs on it, but **max
+  demand is always 0 or 1**, and deficit and surplus are AoTD's own numbers. Its replacement API jar
+  changes one method body (`BaseIndustry.getMaxDeficit`, only while ToT is enabled) and no
+  signatures, so SagaLib runs unchanged with it.
+- **Vaults of Knowledge** adds research. Its techs and the factions' research stance are **merged data
+  files** another mod can add rows to. Granting a tech or asking whether one is researched is Java only.
+- **Industrial.Evolution** adds content (45 industries, 3 commodities, 42 items) to a vanilla economy.
+  It replaces vanilla's `commerce`, and a few merged lists take another mod's factions.
+- **Seats of Power, Dreams of Past, BMO** and the other mods add ids or player-only systems, with no
+  format a quest, faction or location would write.
+
+| Candidate | Decision | Why | Work |
+|---|---|---|---|
+| **Commodity targets** (DESIGN-PHASE7 q. 6) | **Build** | Vanilla's own "deliver X where it's short" missions use it, and it's the one random-target kind left that a quest mod commonly wants. The delicate part is ToT: designed below so the same quest reads right with vanilla's economy, ToT's or IndEvo's. No bridge: it uses vanilla's `HubMissionWithSearch`, like the other targets. | **Task #75** |
+| **Mods that never run together** | **Build** | With both AoTD and IndEvo optional, the versions strip offers an "AoTD + IndEvo" cell, and the combination checks and Play mode play a combination no player has. Telling the editor removes that work and those false Problems. Editor only. | **Task #76** |
+| **AoTD Vaults of Knowledge: research** | **Build**: data + a small bridge | "Finish the quest, unlock a technology" is the most natural economy reward. Techs and faction stances are merged data files, which is optional by nature (§10.1). A quest can make a tech researchable with a plain global flag (`otherReq`), and that needs no bridge. Granting a tech or branching on "has researched" needs VoK's Java API: a bridge in SagaLib. | **Task #77** |
+| **Industrial.Evolution: faction lists** | **Build**, small, data only | A faction mod's own faction can be offered an embassy and opted out of custom orders through IndEvo's merged lists. That's two switches on the faction, rows in files only IndEvo reads. Everything else a quest mod wants from IndEvo (its items as rewards, its industries and conditions on the mod's markets, its drop groups in loot) already works through §10.1, §10.2 and §10.6 once IndEvo is listed. | **Task #78** |
+| AoTD Theory of Toolbox | **No** tab or tool; covered in commodity targets | Nothing in it is content a quest, faction or location writes. Trade contracts and Grand Wonders are code-only registrations. A mod's own economy commodity without an `aotd_econ_sheet.csv` row gets sensible defaults (multipliers 1), so no row is needed. What ToT changes (demand, deficit, units) is handled where it matters: commodity targets. | — |
+| AoTD Seats of Power | **No** | Policies, ambitions, capital and timeline belong to the player faction, and every row needs a Java class. Its capital is a market condition (`aotd_capital`), so "is the player's capital" already works with the vanilla `MarketHasCondition` once SoP is listed. | — |
+| AoTD Dreams of Past | **No** | Cryosleeper changes. It replaces vanilla's `cryorevival` industry, so on a mod's own market `cryorevival` is DoP's version while DoP is on. That's noted in FORMATS.md, with no tool. | — |
+| Building Menu Overhaul | **No** (unchanged from #31) | It groups every mod's industries in the build menu by itself. Its extension points are Java. | — |
+| RAT, UAF, HMI, Arma Armatura, Crew Replacer, Second-in-Command, Nexerelin's market overrides | **No** own tools | They only add ids (or, for Nexerelin, swap plugin scripts). Their items, industries and conditions are offered in pickers once the mod is listed (§10.1), and they're made conditional or versioned like any other mod's content (§10.2, §10.6). | — |
+| **SagaLib support modules** | **No split needed now** | The bridge pattern (`src-optional/<mod>`, loaded by class name only when the mod is enabled) already keeps each mod's code apart. The VoK bridge compiles against `Vok.jar` (plus ToT and Ashlib on the class path if javac needs them). The swapped API jar has the same signatures, so one SagaLib jar serves both. A separate jar per module would only be needed if a bridge had to be compiled against a different game API. | — |
+
+#### Commodity targets
+
+**Built and checked in game 2026-11-19 (task #75, SagaLib 1.4.0, unreleased; INGAME-CHECKS "Task #75" passed
+in vanilla, with Industrial.Evolution and with AoTD ToT).** As designed below, plus: the yes/no criteria are offered both ways ("produces it" /
+"doesn't produce it", `…AtMost(0)`); two more tokens, `_basePrice` and `_value` (base price × amount,
+for a text naming the pay); the Action ops **"The target's goods: take / give"** and **"Credits for the
+target's goods"** and the condition **"has its goods"** are one SagaLib command,
+`SF_TargetCommodity <quest> <var> has|take|give|credits [mult]`; a reward's **"+ for goods"**
+(`targetCredits`) adds mult × value to its credits (the setting scale applies only to the plain
+credits). Problems warns when a quest takes the goods without testing the cargo first. Play's mock
+has a commodity (empty: one of the allowed at random) and a market size; the ToT note is in the
+target editor and Play's log. Test mod `mods/seventyfive_a`.
+
+A new kind for the quest variable of type **target** (Phase 7c): **a commodity at a market**. It's
+vanilla's `pickCommodity()`: the market search as today (all 56 market criteria), then one
+commodity at one of the matching markets.
+
+- **Criteria offered** (each require or prefer, as for markets):
+  - **which commodities**: by default the 18 vanilla trade goods (FORMATS.md, "Vanilla's commodity
+    search"). With other mods installed, the quest's text and amounts were written for goods the
+    designer knows, so "any economy commodity" is a switch, and a list of chosen ones is a third choice.
+    A chosen commodity from another mod makes that mod used (§10.1).
+  - legal / illegal at that market; not crew or marines (`CommodityIsNotPersonnel`); tags; base price
+    range.
+  - **the market's situation**, as yes/no only: **produces it**, **is short of it**, **has a surplus**
+    (vanilla's `…AtLeast(1)`), and **has at least N in stock** (`Available`, still meaningful with
+    ToT).
+  - **Not offered**: demand thresholds, and production, deficit or surplus above 1. With ToT, max
+    demand is always 0 or 1 and the other numbers mean something else, so a threshold that works in
+    vanilla would silently never match there.
+- **Amounts**: a quantity is set in **economy units** (default) or in fixed cargo units. SagaLib turns
+  economy units into cargo units with the commodity's `econUnit` at the time of the search. So the same
+  quest asks for a sensible amount of food or rare metals with vanilla's units, ToT's (food ×0.1, rare
+  metals ×10) or another mod's commodity. A "× market size" option is available.
+- **Tokens**: the market's tokens as today, plus `<var>_commodity` (name), `<var>_commodityId` and
+  `<var>_amount` (cargo units, set when picked).
+- **Using it**: the quest's costs, rewards and conditions take the target's commodity and amount
+  ("deliver `<var>_amount` of `<var>_commodity` to `<var>_market`"; a credit reward as a multiple of
+  its base price × amount). Delivery uses the existing Arrive at the target market plus a cargo check.
+- **Play mode** can't know the economy: it picks from the allowed commodities and lets the designer
+  choose the outcome, like the other targets.
+- **With and without the economy mods**: the same quest works in all of them without a version. With
+  vanilla or IndEvo, all criteria act as in vanilla. IndEvo's `IndEvo_parts` is an economy commodity at
+  every heavy-industry market, so it can come up when "any economy commodity" is on. With ToT, the yes/no
+  criteria ask "is there a shortage / surplus / production" of ToT's own model, and amounts follow its
+  units. The quest needs no condition on ToT, and the editor shows a note when ToT is in the mod list.
+
+#### Mods that never run together
+
+- The editor knows a built-in list: AoTD's Theory of Toolbox and the AoTD modules that need it
+  (`aotd_theory_of_toolbox`, `aotd_vok`, `aotd_sop`) never run with `IndEvo` (user, 2026-11-19).
+  Dreams of Past (`Cryo_but_better`) needs only LazyLib and runs with IndEvo (user, 2026-11-19), so
+  it isn't in the list. The designer can mark more pairs in
+  Saga › Mods: a **Never with** column, stored as `neverWith: [modId…]` on the mod's entry in
+  `project.json` `mods`. Built-in pairs show greyed with "known".
+- Effects: the versions strip has no cell for a combination that holds two such mods. Combination checks
+  (§10.2) and Play mode's switches skip it. "Only with A and B" on an item is a warning ("never played
+  together"). SagaLib changes nothing: if a player does enable both, the usual rules apply (§10.6
+  inheritance, most specific wins).
+
+#### Vaults of Knowledge: research
+
+**Built 2026-11-19 (task #77, SagaLib 1.4.0, unreleased); the in-game check (INGAME-CHECKS "Task #77",
+test mod `mods/seventyseven_a`) passed on 0.98a-RC8 on 2026-11-20 without and with VoK; VoK 5.0.7 never offers its databank trade (its bug), so the stance had no visible effect; 0.98.5a waits for AoTD.** As designed below, plus:
+- The unlock flag is **`$global.<techId>_unlocked`** (VoK's `otherReq` key `$<techId>_unlocked`): the
+  tech id already has the prefix. The quest text loses its colons (VoK splits on ":").
+- Hand-written rows of both files are listed (Saga › Research "Written by hand", the faction's
+  Research tab) with **Edit in Saga Forge**: the row is read into the editor, and the next export
+  removes it from the hand-written part and writes it in the block, so an id is never in the file
+  twice. Rows nobody takes over stay as they are; Problems checks the ones VoK would read wrongly.
+- An End node's **Research** field is a list of techs (`SF_GrantResearch` after the reward lines).
+- Found in VoK's code (FORMATS.md): a tech needs a rewards line and an icon VoK can find, or VoK
+  fails (Export writes the tech's name as a modifier line when there's none; a missing icon is a
+  Problems error); AI factions answer "researched" from one fixed list of 21 VoK techs, so
+  `SF_HasResearch <tech> <AI faction>` is only meaningful for those.
+- SagaLib's build checks with `jdeps` that only the bridges name other mods' classes, and the
+  release export requires the VoK bridge in the jar.
+
+Shown only when `aotd_vok` is in the mod's list (§10.1), for either target version. Today AoTD runs
+only on exactly 0.98a-RC8, but ToT for 0.98.5a comes out once 0.98.5a's final RC is out, and it works
+the same way (user, from ToT's developer, 2026-11-19). So nothing here is tied to 0.98a. Recheck the
+formats against the 0.98.5a release when it's installed.
+- **Research tab on the mod's own factions** (not overrides): stance (MERCENARY … CLEANSE), databank
+  price and reputation multipliers, the four dialog lines, and forbidden techs. Exported as rows of
+  `data/campaign/aotd_faction_behaviour.csv` (an owned block, so hand-written rows stay).
+- **Saga › Research**: the mod's own techs. Each has an id (prefixed), name, tier, days, prerequisites (VoK's
+  techs, read by the index, and the mod's own), item cost, rewards (industries, ships, weapons, hullmods,
+  abilities; a "modifier" line as text only), tree position, icon (listed in `settings.json`
+  `graphics.ui_icons_tech_tree`), researched from the start, and **unlocked by a quest**. Exported as
+  rows of `data/campaign/aotd_tech_options.csv` (owned block). "Unlocked by a quest" writes
+  `otherReq` = a generated global flag (`$<prefix>tech_<id>`), and a quest Action **Unlock research**
+  sets it. That's plain data, with no bridge.
+- **SagaLib VoK bridge** (`src-optional/vok`): the Action **Grant research** (`SF_GrantResearch <techId>`)
+  and the condition **Has researched** (`SF_HasResearch <techId> [faction]`; default the player), also as
+  an End-node reward. Without VoK, granting does nothing and logs once, and the condition is false. Like
+  every SagaLib command it's safe in an optional mod's rules (§10.2).
+- `research_databank` and VoK's items as rewards are ordinary item rewards with a fallback (§10.2).
+
+#### Industrial.Evolution: faction lists
+
+Shown only when `IndEvo` is in the mod's list. An **Industrial.Evolution** section on the mod's own
+factions with two switches:
+- **Can have an embassy** → a row in `data/config/indEvo/embassy_whitelist.csv`.
+- **No custom orders** → a row in `data/config/indEvo/custom_order_blacklist.csv`.
+
+Both files are merged by IndEvo (key `id`) and never read without it. An owned block, so
+hand-written rows stay. Systems need nothing: IndEvo's derelict artillery goes only into systems with
+a remnant, derelict or ruins theme tag, and skips systems tagged `theme_special` or `theme_hidden`.
+A mod's own system has no theme tag unless the designer adds one to its `tags`. When IndEvo is
+listed, the system's Tags field says so in its help.
+
+### 10.9 The mod's own Java: plugins (task #79)
+
+**Built 2026-11-20 (task #79, SagaLib 1.4.0, unreleased); in-game check INGAME-CHECKS "Task #79 plugin
+node", test mod `mods/seventynine_a`. First real user: the Heliopolis ending (a plugin that shrinks
+every market by 1–2 sizes, written separately).** User decision: a mod made with Saga Forge may ship
+its own small jar with "plugin" classes, and a quest can fire them.
+- **SagaLib**: the stable API `lastai.sagalib.api.SagaPlugin` (`String run(SagaPluginContext ctx,
+  Map<String,String> args)`) and `SagaPluginContext` (quest and node ids, rule id, the dialog and the
+  rule's memory map, both may be null, and `addText`). The rule command
+  `SF_RunPlugin <class> ["quest=<q>" "node=<n>"] ["key=value" …]` makes a new instance each call with
+  vanilla's `getInstanceOfScript` and stores the result in `$global.<q>_<n>_result`. A missing class,
+  a class that isn't a plugin, or an exception logs one error line and counts as no result; the game
+  goes on. SagaLib keeps no plugin state.
+- **Quest node "Plugin"**: class (picked from the classes of the jars `mod_info.json` lists, read from
+  the jars without Java; free text allowed; Rescan jars), key = value arguments (a `$key` value is read
+  from memory when it runs), and declared result ids. Outputs: one per result, plus **otherwise** (no
+  result, another result, a failure). Exported as a rule that runs the line and fires
+  `<q>_<n>_result`, one rule per connected result (`$global.<q>_<n>_result == <r>`), and a fallback
+  without conditions (FORMATS.md "Plugins").
+- **Action op "Run a plugin"** for Action nodes, world events and progress stages (no results; a
+  quest's keeps its result in the same key for later Branches).
+- Each `"key=value"` is quoted in the export: the game refuses an unquoted `=` in a command line at
+  load (FORMATS.md, rules.csv); Problems flags hand-written `SF_RunPlugin` lines that forget it.
+- **Play mode** can't run Java: at the plugin it shows "(Play) The plugin returns …" buttons for each
+  declared result and "No result, or the plugin fails". The Script view and quest skip name the plugin.
+- **Problems**: no class (error), not a class name (error), the mod lists no jar or the jar isn't
+  built (warning), the class isn't in the jars or isn't a SagaPlugin (warning), `quest` / `node` as an
+  argument key (error), bad, duplicate or unconnected results, two rules with one id (a node
+  `x_ok` next to node `x` with the result `ok`: error, for every node type). The export raises the
+  SagaLib dependency to 1.4.0.
+- Arguments aren't translated (the plugin's own texts are its business).
+
+### 10.10 One-name characters (task #79, second part)
+
+**Built 2026-11-20 (SagaLib 1.4.0, unreleased); in-game check INGAME-CHECKS "Task #79 one-name
+characters", test mod `mods/seventynine_a`.** User: single-name characters (Heliopolis's cats
+Tyger, Butters, Mousey), ours and other mods', must read right. Vanilla's full name trims, so only
+the first name breaks (FORMATS.md, "One-name characters").
+- **People › One name**: stored as `oneName: true` with the name in the last-name slot; the First name
+  field is hidden and the help says why; the preview shows what the name tokens say. New person can
+  make one directly. Exported as `"oneName": true`, `name.first` empty.
+- **SagaLib**: a generator registered after vanilla's fills `$personFirstName` and `$PersonFirstName`
+  with the one name for any one-name active person (first blank, last not; any mod's). A blank
+  `$<id>_firstName` phrase of a one-name person falls back to the one name; Saga Forge exports the
+  one name there anyway.
+- **Problems** (warning): a line with `$personFirstName` / `$PersonFirstName` in a conversation with a
+  one-name person (its speaker, the contact or bar person, the person or encounter commander its
+  start is scoped to), or a one-name person's `$<id>_firstName`: check the wording. The export needs
+  SagaLib 1.4 when such a line exists.
+- Play mode, the Test context and the dialog preview fill the tokens as SagaLib does. Lists and
+  messages show the trimmed full name.
 
 ---
 

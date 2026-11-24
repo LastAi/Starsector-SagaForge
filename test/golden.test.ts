@@ -7,10 +7,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { compileRule, compileRules, Engine, newContext } from '../src/shared/rules/engine'
 import { parseCondition } from '../src/shared/rules/parse'
-import { newSimState, sagaHooks, reconcile, checkBountyWaits, modRecord, modGateBlocked, chooseVersions, chosenVersion, versionedId, runtimeNeeds, offerBlocked, missingNeed, checkOwners, checkPresence, awayContact, rewardCredits, fleetPoints, type PresencePerson, type SimWorld, type ModListJson, type VersionedJson, type RuntimeQuestJson, type SimPlaces } from '../src/shared/play'
+import { newSimState, sagaHooks, reconcile, recordSettings, checkBountyWaits, modRecord, modGateBlocked, chooseVersions, chosenVersion, versionedId, runtimeNeeds, offerBlocked, missingNeed, checkOwners, checkPresence, awayContact, rewardCredits, fleetPoints, type PresencePerson, type SimWorld, type ModListJson, type VersionedJson, type RuntimeQuestJson, type SimPlaces } from '../src/shared/play'
 import { resolveRuntime } from '../src/shared/itemversions'
 import type { Phrase, PoolPlan, QuestPlan, Reward, SettingDef } from '../src/shared/model'
 import { settingsMemory } from '../src/shared/settings'
+import { allowedCommodities, commodityFacts, type TargetDef } from '../src/shared/targets'
+import type { PluginCall } from '../src/shared/plugins'
+import { personNameTokens, storedName, type NameParts } from '../src/shared/personname'
 
 // In the workspace: SagaLib's own folder. In the published repo: the copy the export puts in
 // test/golden. SAGALIB_DIR points at a SagaLib checkout.
@@ -21,7 +24,7 @@ const dir = [
 ].find((d): d is string => !!d && fs.existsSync(d)) ?? ''
 const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.json')) : []
 
-interface Step { do?: string; check?: string; is?: unknown; token?: string; reload?: unknown[]; expect?: Record<string, string>; enabled?: string[]; record?: boolean; notices?: string[]; gate?: { modsWith?: string[]; modsWithout?: string[]; modsAny?: string[][] }; owner?: string; newGame?: boolean; choose?: boolean; resolve?: string; on?: string[]; conflicts?: string[]; chosen?: string; world?: { places?: string[]; people?: string[]; owners?: Record<string, string>; factions?: string[]; relations?: Record<string, string> }; presence?: boolean; moves?: string[]; away?: string; needs?: string; offer?: string; missing?: string; day?: boolean; changes?: string[]; settings?: Record<string, string>; credits?: [string, string]; fleetPoints?: string; unset?: string[]; watch?: boolean; fired?: string[] }
+interface Step { do?: string; check?: string; is?: unknown; token?: string; reload?: unknown[]; expect?: Record<string, string>; enabled?: string[]; record?: boolean; notices?: string[]; gate?: { modsWith?: string[]; modsWithout?: string[]; modsAny?: string[][] }; owner?: string; newGame?: boolean; choose?: boolean; resolve?: string; on?: string[]; conflicts?: string[]; chosen?: string; world?: { places?: string[]; people?: string[]; owners?: Record<string, string>; factions?: string[]; relations?: Record<string, string> }; presence?: boolean; moves?: string[]; away?: string; needs?: string; offer?: string; missing?: string; day?: boolean; changes?: string[]; settings?: Record<string, string>; recordSettings?: Record<string, string>; credits?: [string, string]; fleetPoints?: string; unset?: string[]; watch?: boolean; fired?: string[]; cargo?: Record<string, number>; commodity?: { quest: string; var: string; id: string; name: string; econUnit: number; basePrice: number; size?: number }; allowed?: string[] | null; plugin?: string | null | { throws: string }; call?: unknown; activePerson?: string }
 interface Golden { name: string; quests: unknown[]; phrases: Phrase[]; steps: Step[] }
 
 describe.skipIf(!files.length)('golden cases (shared with SagaLib)', () => {
@@ -52,7 +55,16 @@ describe.skipIf(!files.length)('golden cases (shared with SagaLib)', () => {
       const gs = (g as { settings?: { mod: string; rows: Record<string, string>[] } }).settings
       const settingDefs: SettingDef[] = (gs?.rows ?? []).filter((r) => (r.fieldID ?? '') !== '').map((r) => ({ id: r.fieldID, label: r.fieldName ?? '', type: r.fieldType as SettingDef['type'], default: r.fieldDefaultValue ?? r.defaultValue ?? '', choices: (r.secondaryValue ?? '').split(',').map((x) => x.trim()).filter(Boolean) }))
       const encounters = (g as { encounters?: SimWorld['encounters'] }).encounters ?? []
-      const world: SimWorld = { quests, phrases: new Map(g.phrases.map((p) => [p.token, p])), pools, mods, bounties, places, settings: settingDefs, encounters }
+      // #79 (SagaLib 1.4): what the step's plugin returns (a text; null or {"throws"}: no result), and the line it read
+      let stepPlugin: Step["plugin"] = null
+      let lastCall: PluginCall | null = null
+      // #79 (SagaLib 1.4): people's names as SagaLib stores them ("oneName": the one name in the last slot), and their phrases
+      const rtPeople = (people as unknown as { id: string; name?: NameParts; oneName?: boolean; phrases?: Phrase[] }[])
+      const personName = (id: string) => { const p = rtPeople.find((x) => x.id === id); return p ? storedName({ name: p.name ?? { first: '', last: '' }, oneName: p.oneName }) : undefined }
+      let personTokenKeys: string[] = []
+      const allPhrases = [...rtPeople.flatMap((p) => p.phrases ?? []), ...g.phrases] // the file's own phrases win, as in SagaLib's runner
+      const world: SimWorld = { quests, phrases: new Map(allPhrases.map((p) => [p.token, p])), pools, mods, bounties, places, settings: settingDefs, encounters,
+        plugin: (c) => { lastCall = c; return typeof stepPlugin === "string" ? stepPlugin : null }, person: personName }
       const rq = (id: string) => (quests as unknown as RuntimeQuestJson[]).find((q) => q.id === id)!
       const ctx = newContext()
       ctx.player.credits = 0
@@ -69,9 +81,25 @@ describe.skipIf(!files.length)('golden cases (shared with SagaLib)', () => {
           expect(r.conflicts, `${at}: conflicts`).toEqual(s.conflicts ?? [])
           expect(r.errors, `${at}: errors`).toEqual([])
         }
+        // SagaLib 1.4 (task #75): the player's cargo, and a commodity pick as TargetSearch stores it
+        if (s.cargo) for (const [k, n] of Object.entries(s.cargo)) ctx.player.cargo[k] = n
+        if (s.commodity) {
+          const c = s.commodity
+          const t = (rq(c.quest) as unknown as { targets?: { var: string; commodity?: TargetDef['commodity'] }[] }).targets?.find((x) => x.var === c.var)
+          expect(t, `${at}: commodity target ${c.var}`).toBeTruthy()
+          // no "commodity" object: SagaLib's defaults (vanilla goods, 0.1 economy units)
+          const def = { pick: 'commodity', require: [], prefer: [], commodity: t!.commodity } as TargetDef
+          for (const [k, v] of commodityFacts(c.quest, c.var, def, { id: c.id, name: c.name, econUnit: c.econUnit, basePrice: c.basePrice }, c.size ?? 1)) e.set(k, v)
+          if ('allowed' in s) expect(allowedCommodities(def), `${at}: allowed commodities`).toEqual(s.allowed)
+        }
+        stepPlugin = 'plugin' in s ? s.plugin : null
+        lastCall = null
         if (s.do) e.runScript(compileRule({ id: `golden_${i}`, trigger: 't', conditions: '', script: s.do, text: '', options: '', notes: '', sourceId: 'g', file: f, line: i }))
+        if (s.call) expect(lastCall, `${at}: the plugin's call`).toEqual(s.call)
         if (s.enabled) mods.enabled = new Set(s.enabled)
         if (s.record) { const fresh = modRecord(e, mods).filter((n) => n.fresh).map((n) => n.notice); if (s.notices) expect(fresh, `${at}: notices`).toEqual(s.notices) }
+        // SagaLib 1.4 (#67 U18): the settings recorded as the game starts (versions by a setting use them)
+        if (s.recordSettings) recordSettings(e, settingDefs, s.recordSettings)
         if (s.gate) expect(modGateBlocked(e, mods, s.owner ?? null, s.gate) === null, `${at}: gate`).toBe(s.is)
         if (s.choose) chooseVersions(e, mods, versioned)
         if (s.chosen) expect(chosenVersion(e, item(s.chosen)), `${at}: chosen`).toEqual(s.is)
@@ -97,6 +125,15 @@ describe.skipIf(!files.length)('golden cases (shared with SagaLib)', () => {
           if (s.moves) expect(got, `${at}: presence moves`).toEqual(s.moves)
         }
         if (s.check) expect(e.evalCondition(parseCondition(s.check)), at).toBe(s.is)
+        // #79 (SagaLib 1.4): the dialog's active person: vanilla's name tokens, SagaLib's one-name ones over them
+        if (s.activePerson) {
+          const n = personName(s.activePerson)
+          expect(n, `${at}: person ${s.activePerson}`).toBeTruthy()
+          for (const k of personTokenKeys) delete ctx.tokens[k]
+          const t = personNameTokens(n!)
+          personTokenKeys = Object.keys(t)
+          Object.assign(ctx.tokens, t)
+        }
         if (s.token) expect(e.subst(s.token), at).toBe(s.is)
         if (s.reload) {
           quests = s.reload as QuestPlan[]
@@ -105,11 +142,11 @@ describe.skipIf(!files.length)('golden cases (shared with SagaLib)', () => {
         }
         // #62: a game load (or a LunaLib menu change): every value field, the player's value or the default
         if (s.settings) for (const [k, v] of settingsMemory(settingDefs, s.settings)) e.set(k, v)
-        if (s.credits) { const r = (quests as unknown as RuntimeQuestJson[] as unknown as { id: string; rewards: Reward[] }[]).find((q) => q.id === s.credits![0])?.rewards.find((x) => x.id === s.credits![1]); expect(r, `${at}: reward`).toBeTruthy(); expect(rewardCredits(e, r!, world), `${at}: credits`).toBe(s.is) }
+        if (s.credits) { const r = (quests as unknown as RuntimeQuestJson[] as unknown as { id: string; rewards: Reward[] }[]).find((q) => q.id === s.credits![0])?.rewards.find((x) => x.id === s.credits![1]); expect(r, `${at}: reward`).toBeTruthy(); expect(rewardCredits(e, r!, world, s.credits[0]),`${at}: credits`).toBe(s.is) }
         if (s.fleetPoints) expect(fleetPoints(e, world, s.fleetPoints), `${at}: fleet points`).toBe(s.is)
         if (s.unset) for (const k of s.unset) expect(e.get(k), `${at}: ${k} unset`).toBeUndefined()
         if (s.expect) for (const [k, v] of Object.entries(s.expect)) {
-          const got = k === '@credits' ? ctx.player.credits : e.get(k)
+          const got = k === '@credits' ? ctx.player.credits : k.startsWith('@cargo:') ? (ctx.player.cargo[k.slice(7)] ?? 0) : e.get(k)
           expect(String(got), `${at}: ${k}`).toBe(v)
         }
       })

@@ -10,7 +10,15 @@ condition that reads a flag nothing sets, an id without the mod's prefix, a pers
 market that doesn't exist. The **Problems** tab in the header shows how many errors there are, a
 ✎ count of to-dos, and, when there are no errors, how many warnings.
 
-![The Problems tab of the finished example: nothing to fix; its 39 notes are under Info, hidden by default](../img/problems.png)
+Some of the checks, to give an idea of what they cover: content of an installed mod your mod doesn't
+list in [Saga › Mods](saga.md#mods) (factions, items, conditions, industries, submarkets, hullmods,
+drop groups); a condition outside a dialog that can never be true (`$person` in a world event); a
+token that isn't filled where it is used (market tokens in a comm link); an Arrive straight after an
+Encounter's outcome; an option label that ends in a quote mark (the game drops it); a Plugin node
+whose class isn't in the mod's jars; an inactive encounter or named fleet something still uses; a
+version for a setting that isn't marked for versions; a hail without a comm-link dialog.
+
+![The Problems tab of Heliopolis: nothing to fix; its notes are under Info, hidden by default](../img/problems.png)
 
 ### The levels
 
@@ -64,7 +72,7 @@ The Problems tab then shows the Check mod results, with a note at the top; they 
 until you run it again. **Show live only** goes back to the live checks. Run Check mod before
 each release, and after installing or updating other mods you play with.
 
-![After Check mod: the note at the top and Show live only; the finished example has nothing left to fix](../img/problems-checked.png)
+![After Check mod: the note at the top and Show live only; Heliopolis has nothing left to fix](../img/problems-checked.png)
 
 Problems the game index found in the mod's own files (a JSON file that doesn't parse, a CSV with a
 broken row) are listed here too.

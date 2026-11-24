@@ -5,11 +5,13 @@
  * proofreader or co-writer.
  */
 import type { QNode, QuestPlan } from './model'
+import { chartNodeOf, expandGroups, GROUP_SEP } from './nodegroups'
 import type { ModModel } from './serialize'
 import { handlesOf } from './quest'
 import { paragraphs } from './rules/parse'
 import { branchPool, chances } from './pools'
 import { arriveTakesOver } from './targets'
+import { argsText, shortClass } from './plugins'
 
 export type ScriptBlock =
   | { kind: 'scene'; node: string; text: string }
@@ -18,7 +20,9 @@ export type ScriptBlock =
   | { kind: 'choice'; node: string; text: string; to: string }
   | { kind: 'note'; node: string; text: string }
 
-export function questScript(q: QuestPlan, m: ModModel): ScriptBlock[] {
+export function questScript(plan: QuestPlan, m: ModModel): ScriptBlock[] {
+  // #67 U43: a placed node group reads as its nodes; its lines point at the placed node
+  const q = expandGroups(plan, m.nodeGroups, m.project.prefix)
   const out: ScriptBlock[] = []
   const byId = new Map(q.nodes.map((n) => [n.id, n]))
   const seen = new Set<string>()
@@ -36,6 +40,11 @@ export function questScript(q: QuestPlan, m: ModModel): ScriptBlock[] {
         out.push({ kind: 'scene', node: n.id, text: n.title || n.id })
         if (n.speaker) out.push({ kind: 'speaker', node: n.id, text: person(n.speaker).toUpperCase() })
         for (const p of paragraphs(n.text)) out.push({ kind: 'line', node: n.id, text: p })
+        // #67 U6: the text shown when the player comes back
+        if (n.repeat?.text.trim()) {
+          out.push({ kind: 'note', node: n.id, text: `When you come back (${n.repeat.scope === 'ever' ? 'after the first time ever' : 'later in the same visit'}):` })
+          for (const p of paragraphs(n.repeat.text)) out.push({ kind: 'line', node: n.id, text: p })
+        }
         for (const o of n.options) {
           const e = outs(n.id).find((x) => x.handle === o.id)
           out.push({ kind: 'choice', node: n.id, text: o.text, to: e ? label(e.to) : '(goes nowhere yet)' })
@@ -55,7 +64,7 @@ export function questScript(q: QuestPlan, m: ModModel): ScriptBlock[] {
         break
       case 'encounter': out.push({ kind: 'note', node: n.id, text: `The fleet "${m.encounters.find((e) => e.id === n.encounter)?.name ?? n.encounter}" appears.` }); break
       case 'end': out.push({ kind: 'note', node: n.id, text: `The quest ends: ${n.outcome}${n.reward ? ` (reward ${n.reward})` : ''}.` }); break
-      case 'link': out.push({ kind: 'note', node: n.id, text: n.mode === 'menu' ? 'Back to the menu.' : n.mode === 'bar' ? 'Back to the bar.' : `Continues at ${n.target}.` }); break
+      case 'link': out.push({ kind: 'note', node: n.id, text: n.mode === 'menu' ? 'Back to the menu.' : n.mode === 'close' ? (n.toFleet ? 'The comm link is cut: back to the fleet screen.' : 'The dialog closes.') : n.mode === 'bar' ? 'Back to the bar.' : `Continues at ${n.target}.` }); break
       case 'raid': {
         // Phase 7b (RC-F4)
         out.push({ kind: 'scene', node: n.id, text: n.title || 'Raid' })
@@ -64,7 +73,16 @@ export function questScript(q: QuestPlan, m: ModModel): ScriptBlock[] {
         for (const p of paragraphs(n.raidText ?? '')) out.push({ kind: 'line', node: n.id, text: p })
         break
       }
+      // #67 U3: a fight on the spot
+      case 'fight': out.push({ kind: 'note', node: n.id, text: `A fight here${n.fleet.name ? ` with ${n.fleet.name}` : ''}: ${n.engageText || 'Engage the automated defenses'}, or leave.` }); break
       case 'action': if (n.title) out.push({ kind: 'note', node: n.id, text: n.title }); break
+      case 'plugin': {
+        // #79: the mod's own Java runs here; its declared results are the ways on
+        const args = argsText(n.args)
+        const rs = [...new Set(n.results.filter((r) => r && r !== 'next'))]
+        out.push({ kind: 'note', node: n.id, text: `${n.title ? `${n.title}: ` : ''}the plugin ${n.className.trim() ? shortClass(n.className) : '(no class yet)'} runs${args ? ` (${args})` : ''}${rs.length ? `. It returns ${rs.join(' / ')}, or nothing.` : '.'}` })
+        break
+      }
       case 'branch': {
         if (n.random) {
           // Phase 7a: a Random branch with each case's chance (a named pool: its name)
@@ -78,13 +96,13 @@ export function questScript(q: QuestPlan, m: ModModel): ScriptBlock[] {
       default: break
     }
     // the next nodes, in handle order
-    for (const h of handlesOf(n)) for (const e of outs(n.id).filter((x) => x.handle === h.id)) visit(e.to)
+    for (const h of handlesOf(n, m.nodeGroups)) for (const e of outs(n.id).filter((x) => x.handle === h.id)) visit(e.to)
   }
   const start = q.nodes.find((n) => n.type === 'start')
   if (start) visit(start.id)
   // nodes no path reaches, at the end
   for (const n of q.nodes) if (!seen.has(n.id) && n.type !== 'note' && n.type !== 'start') { out.push({ kind: 'note', node: n.id, text: '(not reached from the start)' }); visit(n.id) }
-  return out
+  return out.map((b) => (b.node.includes(GROUP_SEP) ? { ...b, node: chartNodeOf(b.node) } : b))
 }
 
 export function scriptMarkdown(q: QuestPlan, blocks: ScriptBlock[]): string {

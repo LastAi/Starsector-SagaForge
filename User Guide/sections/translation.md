@@ -9,16 +9,17 @@ A **translation mod** holds one CSV file with every text of the original mod and
 The original mod is only read, never copied or changed, so the translation can be shared on its
 own (with the original author's blessing, as for any mod that builds on another).
 
-![A translation mod open in Saga Forge: Vanguard Compact into German, partly done](../img/translation-page.png)
+![A translation mod open in Saga Forge: Heliopolis into German, partly done](../img/translation-page.png)
 
 ### What a translation mod contains
 
-**+ Translation** (in the header) creates the mod `<mod id>_<language>`, for example `vgc_de` for
-Vanguard Compact in German, named *Vanguard Compact (Deutsch)*:
+**+ New translation of an installed mod…** (the last entry of the header's active mod list) creates
+the mod `<mod id>_<language>`, for example `lastai_heliopolis_de` for Heliopolis in German, named
+*Heliopolis (Deutsch)*:
 
 - `mod_info.json` (version 0.1.0 to start with), which needs the translated mod and SagaLib;
 - `data/config/sagaforge/content.csv`, one row that tells SagaLib "this is a translation of
-  `vgc` into `de`";
+  `lastai_heliopolis` into `de`";
 - `data/sagaforge/translations/<mod id>.<language>.csv`, with the columns `key`, `context`,
   `original`, `translation` and `source`. You can also fill in the *translation* column in a
   spreadsheet.
@@ -55,7 +56,7 @@ When the active mod is a translation mod, Saga Forge shows only one tab, **Trans
   state with their counts; **Search**; **Reload texts** (read the original mod again after it was
   updated); **Save translation**;
 - a summary line: how many texts are translated, how many need checking, and the file's path;
-- one row per text: its state, where it shows (*Quest vgc_lost_convoy › stages search › journal*),
+- one row per text: its state, where it shows (*Quest hel_voice_probe › stages find › journal*),
   the original on the left and your translation on the right.
 
 The states:
@@ -76,15 +77,15 @@ Under a translation, warnings point out what would break in game, for example a 
 
 1. Install the mod you want to translate in your mods folder or the game's mods folder, so Saga
    Forge can read it.
-2. Header › **+ Translation**.
+2. Header › the active mod list › **+ New translation of an installed mod…** (its last entry).
 3. **Mod**: pick the mod (each shows its version and how many texts it has). Only mods made with
    Saga Forge are listed.
 4. **Language code**: short and lowercase, as in file names: `de`, `fr`, `es`, `pt_br`, `ru`, `zh`.
 5. **Language**: its name, for the launcher (`Deutsch`, `Français`).
-6. The dialog shows the mod it will create (for French: `vgc_fr`, "Vanguard Compact
+6. The dialog shows the mod it will create (for French: `lastai_heliopolis_fr`, "Heliopolis
    (Français)"). **Create translation**. It becomes the active mod and the Translation page opens.
 
-![New translation: Vanguard Compact into French](../img/translation-new.png)
+![New translation: Heliopolis into French](../img/translation-new.png)
 
 If the dialog warns that the mod was exported before translatable dialog, only its names, journal
 texts and phrases can be translated for now.
@@ -94,7 +95,7 @@ texts and phrases can be translated for now.
 1. With the translation mod active, work down the list, or untick **Done** to see only what is
    left. **Search** finds a word in the context, the original or the translation.
 2. Type the translation into the box on the right. Keep tokens such as `$playerName` or
-   `$vgc_reyes_title` exactly as they are: the game fills them in. A warning under the box says
+   `$hel_pops_title` exactly as they are: the game fills them in. A warning under the box says
    when one is missing.
 3. For a name that stays the same, **Copy original**.
 4. **Save translation** (the button shows ● while there are unsaved changes). Lines you leave empty
@@ -115,7 +116,8 @@ When the original mod gets an update:
    Saga Forge knows the old original, it shows under **Was**). Untick **Done** to see only these.
 4. For each changed one: adjust the translation if needed, then press **Checked**.
 
-![An Original changed line: "Report to Reyes" with its old German translation and the Checked button](../img/translation-page.png)
+In the picture's mod, the progress event's name "Hegemony suspicion" was translated when it still
+read "Hegemony attention": its line is **Original changed** until the translation is checked.
 
 5. Texts the original no longer has show as **Gone from the mod**; you can leave them.
 6. **Save translation** and share the translation mod again.

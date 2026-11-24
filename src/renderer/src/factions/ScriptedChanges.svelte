@@ -5,6 +5,7 @@
    * known ships, illegal goods, doctrine and the intel tab, set at runtime through the game's
    * FactionAPI setters. With versions, each combination of optional mods can have its own.
    */
+  import { FACTION_TABS } from '../../../shared/factionform'
   import type { ScriptedFactionChange } from '../../../shared/faction'
   import { app } from '../state/app.svelte'
   import IdInput from '../ui/IdInput.svelte'
@@ -40,6 +41,8 @@
     { id: 'shipSize', label: 'Ship size', min: 1, max: 5, step: 1 }, { id: 'aggression', label: 'Aggression', min: 1, max: 5, step: 1 },
     { id: 'combatFreighterProbability', label: 'Combat freighters (0–1)', min: 0, max: 1, step: 0.05 }
   ]
+  /** #67 U34: the Doctrine tab's help for the key. */
+  const doctrineHelp = (id: string) => FACTION_TABS.flatMap((t) => t.fields).find((f) => f.path === `factionDoctrine.${id}`)?.help ?? ''
   const what = (c: ScriptedFactionChange): string => {
     if (c.op === 'hideFromIntelTab') return 'Hidden from the intel tab'
     if (c.op === 'showInIntelTab') return 'Shown in the intel tab'
@@ -53,8 +56,8 @@
   const hex = (v: string) => '#' + v.split(',').slice(0, 3).map((x) => Math.max(0, Math.min(255, Number(x) || 0)).toString(16).padStart(2, '0')).join('')
   const fromHex = (h: string, old: string) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16), old.split(',')[3] ?? '255'].join(',')
   const set = (i: number, patch: Partial<ScriptedFactionChange>) => onEdit((l) => { Object.assign(l[i], patch) })
-  const hulls = $derived((app.index?.hulls ?? []).map((h) => ({ id: h.id, name: h.name })))
-  const commodities = $derived((app.index?.items ?? []).filter((i) => i.kind === 'commodity').map((i) => ({ id: i.id, name: i.name })))
+  const hulls = $derived((app.index?.hulls ?? []).map((h) => ({ id: h.id, name: h.name, definedBy: h.definedBy })))
+  const commodities = $derived((app.index?.items ?? []).filter((i) => i.kind === 'commodity').map((i) => ({ id: i.id, name: i.name, definedBy: i.definedBy })))
 </script>
 
 <div class="sc">
@@ -65,13 +68,14 @@
         <input type="text" value={c.value} placeholder={c.path === 'displayName' ? 'e.g. Reyes Free Port' : 'e.g. the Reyes Free Port'} onchange={(e) => set(i, { value: e.currentTarget.value })} />
       {:else if c.op === 'set' && (c.path === 'logo' || c.path === 'crest')}
         <ImageView path={c.value} w={c.path === 'logo' ? 48 : 24} h={c.path === 'logo' ? 30 : 24} />
-        <IdInput value={c.value} options={(app.index?.factions ?? []).map((f) => ({ id: c.path === 'logo' ? f.logo : f.crest, name: f.name })).filter((x) => x.id)} placeholder="graphics/factions/…png" onCommit={(v) => set(i, { value: v })} />
+        <IdInput value={c.value} options={(app.index?.factions ?? []).map((f) => ({ id: c.path === 'logo' ? f.logo : f.crest, name: f.name, definedBy: f.definedBy })).filter((x) => x.id)} placeholder="graphics/factions/…png" onCommit={(v) => set(i, { value: v })} />
       {:else if c.op === 'set' && c.path === 'secondaryColor'}
         <input type="color" value={hex(c.value)} onchange={(e) => set(i, { value: fromHex(e.currentTarget.value, c.value) })} /><span class="mono small">{c.value}</span>
       {:else if c.op === 'set' && c.path.startsWith('doctrine.')}
-        {@const d = DOCTRINE.find((x) => `doctrine.${x.id}` === c.path) ?? DOCTRINE[7]}
-        <select value={c.path} onchange={(e) => set(i, { path: e.currentTarget.value })}>{#each DOCTRINE as x (x.id)}<option value={`doctrine.${x.id}`}>{x.label}</option>{/each}</select>
+        {@const d = DOCTRINE.find((x) => `doctrine.${x.id}` === c.path) ?? { id: "", label: "", min: -1000, max: 1000, step: 0.01 }}
+        <select value={c.path} onchange={(e) => set(i, { path: e.currentTarget.value })}>{#each DOCTRINE as x (x.id)}<option value={`doctrine.${x.id}`}>{x.label}</option>{/each}{#if !DOCTRINE.some((x) => `doctrine.${x.id}` === c.path)}<option value={c.path}>{c.path} (not a doctrine key the form knows)</option>{/if}</select>
         <input type="number" min={d.min} max={d.max} step={d.step} value={c.value} style="width:70px" onchange={(e) => set(i, { value: e.currentTarget.value })} />
+        {#if doctrineHelp(d.id)}<span class="muted small dh">{doctrineHelp(d.id)}</span>{/if}
       {:else if c.path === 'knownShips.hulls'}
         <IdInput value={c.value} options={hulls} placeholder="hull id" onCommit={(v) => set(i, { value: v })} />
       {:else if c.path === 'illegalCommodities'}
@@ -90,6 +94,7 @@
 </div>
 
 <style>
+  .dh { flex-basis: 100%; }
   .sc { display: flex; flex-direction: column; gap: 4px; }
   .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   .what { min-width: 150px; font-size: 12px; color: var(--muted); }

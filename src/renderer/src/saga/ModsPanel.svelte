@@ -9,7 +9,7 @@
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
   import { mods } from '../state/mods.svelte'
-  import { offeredMods, useOf, USE_LABEL, condText, isNone, type UseKind } from '../../../shared/modlist'
+  import { offeredMods, useOf, USE_LABEL, condText, isNone, neverWithOf, type UseKind } from '../../../shared/modlist'
   import { usedBy } from '../../../shared/checks/mods'
   import type { ModUse } from '../../../shared/model'
   import type { SourceInfo } from '../../../shared/api'
@@ -61,6 +61,25 @@
       if (use !== 'incompatible') delete l[l.findIndex((x) => x.id === r.id)].reason
     })
   }
+  // #76 (PLAN.md §10.8): mods no player runs together with this one (built-in pairs greyed, "known")
+  function addNever(id: string, other: string) {
+    if (!other) return
+    project.change((mm) => { const x = mm.project.mods?.find((y) => y.id === id); if (!x) return; const l = (x.neverWith ??= []); if (!l.includes(other)) l.push(other) })
+  }
+  function removeNever(id: string, other: string) {
+    project.change((mm) => {
+      for (const [a, b] of [[id, other], [other, id]]) {
+        const x = mm.project.mods?.find((y) => y.id === a)
+        if (!x?.neverWith) continue
+        x.neverWith = x.neverWith.filter((y) => y !== b)
+        if (!x.neverWith.length) delete x.neverWith
+      }
+    })
+  }
+  const neverChoices = (id: string) => {
+    const have = new Set(m ? neverWithOf(m.project, id).map((x) => x.id) : [])
+    return [...offered.mods, ...missing.map((x) => ({ id: x.id, name: x.name }))].filter((s) => s.id !== id && !have.has(s.id)).sort((a, b) => (useOf(m!.project, b.id) === 'optional' ? 1 : 0) - (useOf(m!.project, a.id) === 'optional' ? 1 : 0) || a.name.localeCompare(b.name))
+  }
   function setField(id: string, key: 'minVersion' | 'reason', v: string) {
     project.change((mm) => { const x = mm.project.mods?.find((y) => y.id === id); if (!x) return; if (v.trim()) x[key] = v.trim(); else delete x[key] })
   }
@@ -105,7 +124,7 @@
     <span class="muted small">{counts.required} required · {counts.optional} optional · {counts.incompatible} incompatible</span>
   </div>
   <table class="t">
-    <thead><tr><th>Mod</th><th>Use</th><th>Min version</th><th>Used by</th><th>Unlocks</th><th>Reason</th></tr></thead>
+    <thead><tr><th>Mod</th><th>Use</th><th>Min version</th><th title="Mods no player runs together with this one. Their combinations get no version cell, no combination check and no Play mode combination; &quot;Only with&quot; both is a warning. Nothing changes in game.">Never with</th><th>Used by</th><th>Unlocks</th><th>Reason</th></tr></thead>
     <tbody>
       {#each rows as r (r.id)}
         {@const use = m ? useOf(m.project, r.id) : 'none'}
@@ -118,11 +137,20 @@
             {#each ['none', 'required', 'optional', 'incompatible'] as k (k)}<option value={k}>{USE_LABEL[k as UseKind]}</option>{/each}
           </select></td>
           <td>{#if use === 'required' || use === 'optional'}<input type="text" class="mono ver" value={e?.minVersion ?? ''} placeholder={r.version || '—'} title="The lowest version of {r.name} this mod needs (required: written into the dependency)" onchange={(ev) => setField(r.id, 'minVersion', ev.currentTarget.value)} />{/if}</td>
+          <td class="nw">
+            {#each m ? neverWithOf(m.project, r.id) : [] as x (x.id)}
+              {#if x.known}<span class="tag known" title="Built in: never played together (user, 2026-11-19; PLAN.md §10.8)">{mods.name(x.id)} · known</span>
+              {:else}<span class="tag nwt">{mods.name(x.id)}{#if use !== 'none' || entry(x.id)}<button class="x" title="Remove: they can run together" onclick={() => removeNever(r.id, x.id)}>×</button>{/if}</span>{/if}
+            {/each}
+            {#if use !== 'none'}<select class="nwadd" value="" title="Mark another mod that no player runs together with {r.name}" onchange={(ev) => { const v = ev.currentTarget.value; ev.currentTarget.value = ''; addNever(r.id, v) }}>
+              <option value="">+ never with…</option>{#each neverChoices(r.id) as s (s.id)}<option value={s.id}>{s.name}</option>{/each}
+            </select>{/if}
+          </td>
           <td title={u.join('\n')}>{#if u.length}{u.slice(0, 2).join(', ')}{#if u.length > 2}<span class="muted"> +{u.length - 2}</span>{/if}{#if use === 'none'}<div class="bad small">uses it but it isn't listed</div>{/if}{:else}<span class="muted">—</span>{/if}</td>
           <td class="small">{unlocks(r.id, use).join(', ') || '—'}</td>
           <td>{#if use === 'incompatible'}<input type="text" value={e?.reason ?? ''} placeholder="why, shown to players" onchange={(ev) => setField(r.id, 'reason', ev.currentTarget.value)} />{/if}</td>
         </tr>
-      {:else}<tr><td colspan="6" class="muted">No mods match.</td></tr>{/each}
+      {:else}<tr><td colspan="7" class="muted">No mods match.</td></tr>{/each}
     </tbody>
   </table>
   <div class="sect2">Seen in game (sector snapshot)</div>
@@ -161,6 +189,11 @@
   .ver-t { margin-left: 6px; }
   .tag { font-size: 10px; border: 1px solid var(--border); border-radius: 8px; padding: 0 5px; margin-left: 4px; color: var(--muted); white-space: nowrap; }
   .tag.bad { border-color: var(--bad); color: var(--bad); }
+  .nw .tag { margin: 0 4px 2px 0; display: inline-flex; gap: 3px; align-items: center; }
+  .tag.known { opacity: .6; font-style: italic; }
+  .tag.nwt { color: var(--text); }
+  .x { border: none; background: none; padding: 0 1px; color: var(--muted); font-size: 11px; line-height: 1; }
+  select.nwadd { font-size: 11px; max-width: 130px; color: var(--muted); }
   select { padding: 1px 4px; font-size: 12px; }
   select.req { border-color: var(--accent-2); color: var(--accent); }
   select.opt { border-color: var(--good); color: var(--good); }

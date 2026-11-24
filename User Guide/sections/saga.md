@@ -9,36 +9,55 @@ your mod works with, and the settings page players see in LunaLib's menu.
 
 The Saga tab has eleven sub-tabs in the bar under the header: **Board**, **Timeline**, **Flags
 registry**, **Test profiles**, **Mod-wide phrases**, **Pools**, **Scatter**, **Events**,
-**Progress**, **Mods** and **Settings**, and two more for other mods once your mod lists them in
-[Mods](#mods): **Achievements** (MagicLib) and **Quest skip** (Nexerelin). The number after a name
+**Progress**, **Mods** and **Settings**, and more for other mods once your mod lists them in
+[Mods](#mods): **Achievements** (MagicLib), **Quest skip** (Nexerelin) and **Research** (AoTD Vaults
+of Knowledge). The number after a name
 is how many the mod has (Flags registry also shows an orange count when some flags look wrong).
 
 Board, Timeline and Flags registry only show what the mod already has: they write nothing into the
-mod except where you placed the cards on the board (kept in `sagaforge/project.json`). The other
-sub-tabs are plans of their own, saved in the mod's `sagaforge` folder (`test-profiles.json`,
-`phrases.json`, `pools.json`, `scatter.json`, `events.json`, `progress.json`) and turned into game
-files when you export (see [Export and Release › Export the mod](export.md#export-the-mod)).
-In game, everything here except loot tables is run by the SagaLib mod; pools, scatter, events and
-progress need SagaLib 1.2 or newer.
+mod. The other sub-tabs are plans of their own, saved in the mod's `sagaforge` folder
+(`test-profiles.json`, `phrases.json`, `pools.json`, `scatter.json`, `events.json`,
+`progress.json`) and turned into game files when you export (see [Export and Release › Export the
+mod](export.md#export-the-mod)). In game, everything here except loot tables is run by the SagaLib
+mod; pools, scatter, events and progress need SagaLib 1.2 or newer.
+
+Wherever a sub-tab asks for conditions (a pool entry, a world event, a progress event's **Starts
+when** and its monthly factors), it uses the same condition editor as the Quests tab: each line
+read back in plain words, **+ add…** for the common ones, and suggestions of your mod's own keys as
+you type (see [Quests › Conditions](quests.md#conditions)). Outside a dialog only `$global` and
+`$player` keys exist, so a line about `$person`, `$market` or `$faction` there is marked and listed
+in Problems: it could never be true.
 
 ### Board
 
-Every quest and conversation of the mod as a card: its title, how it starts ("contact: Ilse
-Reyes", "option: Send a survey team down", "on OpenInteractionDialog"), its stages and how it ends,
-the people who speak in it, and its id. A red number in the title is the count of errors in it; a
-conversation (no journal) has a dashed border, and an inactive quest is faded.
+The quests and conversations of the mod as **storylines**: one lane per questline, its quests left
+to right in the order they become available, and a last lane for the quests that link to no other.
+Each card shows its title, how it starts ("contact: Pop Chicken", "option: Visit Mousey in the
+Collar-Keepers' workshop", "on OpenInteractionDialog"), its stages and how it ends, the people who
+speak in it, and its id. A red number in the title is the count of errors in it; a conversation
+(no journal) has a dashed border, and an inactive quest is faded. A lane is named after its main
+quest (Heliopolis has two: *The Voice in the Probe* and *A Favour for Mousey*).
 
-- **Solid blue arrows** are prerequisites: Salvage Rights can only start after The Lost Convoy
-  succeeded.
-- **Dashed purple arrows** are flags: one quest sets a memory key that another one reads (here
-  Salvage Rights sets `vgc_salvage_rights_state`, and the wreck's conversation checks it).
-- Drag the cards to arrange them; **double-click** a card to open the quest on the Quests tab. The
-  buttons at the bottom left zoom and fit everything into view.
+Only story links are drawn:
 
-You can't draw arrows on the board: prerequisites are set in the quest itself (see [Make one quest
-wait for another](#make-one-quest-wait-for-another)), flags by the nodes that set and read them.
+- **blue**: a prerequisite (one quest can only start after another);
+- **green**: one quest **starts** another, or **goes on in** it (an Action that starts it, a Link
+  into its nodes);
+- **gold**: a flag one quest sets that another one's start needs (tests such as "not busy" don't
+  count).
 
-![The Board: Vanguard Compact's quests and conversations](../img/saga-board.png)
+**Click a card** to select it: the flags it shares with other quests show as dashed lines, and a
+panel on the right lists what it **comes after**, what it **leads to** and every **flag shared with
+other quests** (set here or read here, and by which quest; click one to open it). **Double-click**
+opens the quest on the Quests tab. The board opens at its top left at 70%; the buttons at the bottom
+left zoom and fit everything into view.
+
+![The Board: Heliopolis's two storylines and the quests on their own](../img/saga-board.png)
+![Persea selected: the quests before and after it, and the flags it shares](../img/saga-board-sel.png)
+
+The lanes come from the quests themselves, so the cards can't be dragged. Prerequisites are set in
+the quest (see [Make one quest wait for another](#make-one-quest-wait-for-another)), flags by the
+nodes that set and read them.
 
 ### Timeline
 
@@ -47,7 +66,7 @@ those that open **after 1 step** (one prerequisite done), after 2 steps, and so 
 to open it. If prerequisites go round in a circle (A needs B, B needs A), the quests in it are
 listed in red: they can never start.
 
-![The Timeline: Salvage Rights opens after The Lost Convoy](../img/saga-timeline.png)
+![The Timeline: Heliopolis's quests, from the probe to the endings](../img/saga-timeline.png)
 
 ### Flags
 
@@ -58,7 +77,7 @@ option that is shown once, for example) carry a **generated** badge.
 
 | Column | What it shows |
 |---|---|
-| Key | The memory key, e.g. `$global.vgc_lost_convoy_pay` |
+| Key | The memory key, e.g. `$global.hel_persea_state` |
 | Set by / Read by | Where it is set and where it is checked: quest and node. Click one to open that node |
 | Type | What kind of value it holds: bool, number or string |
 | Status | **ok**; **set, never read** (grey, often fine: a stage a later quest might use); **read, never set** (orange: usually a typo); **mixed types** (orange: set to a number in one place and text in another) |
@@ -84,23 +103,26 @@ Profiles are used in two places:
 The export writes them to `data/sagaforge/dev/test_profiles.json`. SagaLib only reads that file in
 dev mode, and release zips leave it out, so players never see your profiles.
 
-![A test profile: Lost Convoy done, Salvage Rights running](../img/saga-profiles.png)
+![A test profile: Heliopolis's Rat chain, on the way to Persea](../img/saga-profiles.png)
 
 ### Phrases
 
-A phrase is a token like `$vgc_farewell` that you type into any text of the mod. In game, SagaLib
+A phrase is a token like `$toc_he` that you type into any text of the mod. In game, SagaLib
 fills in a text for it each time:
 
 - **first case that matches**: each case has "if" lines (conditions as in `rules.csv`); the first
   case whose lines are all true gives the text, else the **otherwise** text.
 - **random**: one of the texts at random (the cases and the **or** line).
 
-**Mod-wide phrases** are the ones any text of the mod can use. A character's own phrases (how
-Reyes addresses you, say) are on the People tab (see [People › Give a character
+**Mod-wide phrases** are the ones any text of the mod can use. The Other Captain has a set of them
+for John Starsector, who is Jane for a female player (a version by the player's gender, see
+[Versions by the player's gender](#versions-by-the-players-gender)): `$toc_he` says "he" or "she",
+`$toc_his` "his" or "her", and so on, so one text fits both. A character's own phrases (how Tyger
+addresses you, say) are on the People tab (see [People › Give a character
 phrases](people.md#give-a-character-phrases)), and one-off variations go inside a Dialog node. The
 export writes the mod-wide phrases into `data/sagaforge/people/<mod id>_people.json`.
 
-![Mod-wide phrases: a random farewell](../img/saga-phrases.png)
+![Mod-wide phrases: The Other Captain's $toc_he, "she" when John is Jane](../img/saga-phrases.png)
 
 ### Pools
 
@@ -120,18 +142,18 @@ in days, or at most a number of times, and optional conditions ("may be picked o
 bottom, **Used by** lists the branches, places and scatters that roll the pool; a pool that is in
 use can't change its kind or be deleted.
 
-The example has one of each: **Rock finds** (story picks for the survey on Kestrel I), **Compact
-stores** (the loot of the old cache and the scattered caches) and **Scavenger raids** (random
-encounters).
+Heliopolis has one of each: **Who is in the pod** (story picks: which cat sleeps in each cryo-probe
+of the quest Lost Kin), **Cryo-probe salvage loot** (what the scattered probes give) and **Cats in
+the dark** (random encounters: the Midnight Zoomies, a friendly smuggler convoy).
 
-![Pools: Rock finds, with its three entries and their chances](../img/saga-pools.png)
+![Pools: Who is in the pod, with its entries and their chances](../img/saga-pools.png)
 
 ### Scatter
 
 Copies of one object (a supply cache, a probe, a research station…) that SagaLib places at the
 start of a new game, each in a different star system, the way vanilla scatters its derelicts and
-caches. Saga Forge doesn't pick the places: you describe them (**Where**: a planet that is
-uncolonised and within 12 light-years of Haven Station, say), and in game vanilla's own mission
+caches. Saga Forge doesn't pick the places: you describe them (**Where**: an uninhabited planet, not in a
+dangerous system, preferably one nobody has explored, say), and in game vanilla's own mission
 search picks them. Each copy can have salvage loot and a fleet guarding it.
 
 It happens once per game (with **Existing saves** ticked, also once in a game started before the
@@ -139,7 +161,7 @@ mod was added, on its next load). The export writes `data/sagaforge/scatter/<id>
 objects are named `<id>_1`, `<id>_2` …, and `$global.sagaforge_scatter_<id>_done` holds how many
 were placed.
 
-![Scatter: three lost Compact caches near Haven Station](../img/saga-scatter.png)
+![Scatter: five Domain cryo-probes, with salvage loot and sometimes derelict defenders](../img/saga-scatter.png)
 
 ### Events
 
@@ -155,11 +177,15 @@ events running, and every few days picks a new one by weight (with conditions, o
   encounter's fleet, start a quest, add progress…).
 
 The schedulers themselves are never shown in game. The export writes
-`data/sagaforge/events/<id>.json` and the actions as rules in `data/campaign/rules.csv` (on the
-triggers `SF_event_<event id>_start` and `_end`). In the example, **Kestrel news** runs a trade
-fair or a pirate raid about once a month.
+`data/sagaforge/events/<id>.json`, with the start and end actions in it: SagaLib (1.4) runs them
+itself, without opening a dialog, and what they give shows as campaign messages ("Gained …"). Only
+an action that needs a dialog (a raw rules line, "the person you're talking to") stays a rule in
+`data/campaign/rules.csv` (on the triggers `SF_event_<event id>_start` and `_end`), which SagaLib
+fires in a dialog of its own. In Heliopolis, **The Persea Fever** runs at most one of three events
+(an outbreak, a quarantine, a strange sighting) every 40 days or so, once the player has helped the
+Rat.
 
-![Events: the Kestrel news scheduler and its Trade fair](../img/saga-events.png)
+![Events: The Persea Fever scheduler and its Outbreak](../img/saga-events.png)
 
 ### Progress
 
@@ -175,12 +201,19 @@ the stage's title and its actions run, or, with **Outcomes**, one outcome is pic
 only its actions run. After the last stage the event ends, or starts over from a lower value. A
 event can have up to 20 stages.
 
-The export writes `data/sagaforge/progress/<id>.json` and the stage actions as rules in
-`data/campaign/rules.csv`; `$global.<event id>_stage` holds the last stage reached. In the
-example, **Pirate pressure on Kestrel** grows every month (faster during the trade fair) and ends
-in a blockade.
+The export writes `data/sagaforge/progress/<id>.json` with the stage actions in it (SagaLib 1.4
+runs them without a dialog, as for world events; a raw rules line stays a rule in
+`data/campaign/rules.csv`); `$global.<event id>_stage` holds the last stage reached.
 
-![Progress: Pirate pressure on Kestrel, with its factors and first stage](../img/saga-progress.png)
+The two example mods have one each. Heliopolis's **Hegemony suspicion** grows while the player deals
+with the cats and ends in a writ of purge. The Other Captain's **Hegemony Warrant** is the story's
+crisis bar: it fills over time, faster when the player fights the Hegemony, drains with evidence
+brought to the tax office, and its stages send a patrol, then bounty hunters, then a Hegemony
+manhunt. The fleets it sends set the "fought the Hegemony" flag when beaten, through the
+encounters' own outcomes (see [Encounters](encounters.md)).
+
+![Progress: The Other Captain's Hegemony Warrant, with its factors and stages](../img/saga-progress.png)
+![Progress: Heliopolis's Hegemony suspicion](../img/saga-progress-hel.png)
 
 ### Mods
 
@@ -195,6 +228,7 @@ the listed mods need (**Show libraries** lists those). Its columns:
 | **Mod** | name, id and version; "off in your game" when it isn't enabled in your launcher (you can still write for it) |
 | **Use** | **Required**, **Optional**, **Incompatible** or **Not used** |
 | **Min version** | the lowest version of that mod yours needs (a required mod's dependency gets it) |
+| **Never with** | mods no player runs together with this one (**+ never with…**). Some pairs are built in and shown greyed as *known*: AoTD's Theory of Toolbox and the modules that need it (Vaults of Knowledge, Seats of Power) never run with Industrial.Evolution |
 | **Used by** | what in your mod refers to it: a character of its faction, a relation, a market of it, a patch of its faction, its framework files |
 | **Unlocks** | what appears in your mod when it is listed: its content in lists and pickers, "Only with / Only without" conditions and a Play mode switch for optional mods, and tools made for that mod |
 | **Reason** | for an incompatible mod: why (players see it) |
@@ -211,6 +245,28 @@ What each choice does:
   content is an error. The release notes list it under "Known conflicts".
 - **Not used**: nothing. If your content refers to it anyway, Problems says so, with **Add as
   required** and **Add as optional**.
+
+**Never with** only changes the editor: the versions strip gets no cell for such a pair, the
+combination checks skip it, and Play mode's and the Test context's switches turn the other mod off
+when you turn one on. "Only with A and B" for such a pair, or a version for it, is a warning. The
+export and the game are not affected.
+
+**The editor follows the list.** For a game with your mod, what exists is vanilla, your mod and the
+mods it lists here, so that is what Saga Forge shows, offers and checks:
+
+- **Pickers** (factions, people, items, ships, conditions, industries, submarkets, hullmods, drop
+  groups, research, quests …) list only those mods' entries. **Show all installed mods** (on the
+  lists) or the **+N** button (in a picker) shows the rest, and picking one of them offers **Add as
+  optional** or **Add as required** right there.
+- **Values** that several installed mods change (a market's owner, a replaced CSV row, a planet
+  type, a faction's name, colour, logo or crest) show as those mods leave them, not as the last
+  installed mod does. Your own planet and star types start from that value too.
+- **Locations** lists the existing star systems as read-only, like People's existing characters;
+  the map, the markets and the type chooser follow the list.
+- **Play mode and the dialog preview** run only those mods' rules, and images, fonts and dialog
+  colours come from them.
+- **Problems** warns when your mod uses a condition, industry, submarket, hullmod or drop group of
+  an installed mod that isn't listed, as it does for factions and items.
 
 **Only with / Only without.** Every quest, conversation, character, star system and object,
 encounter, world event, event scheduler, progress event, pool, scatter, starting relation and
@@ -247,7 +303,7 @@ ships, weapons or portraits from an optional mod, an item using its icon. Proble
 errors: make the mod required, or leave them out. Dialog can't use an optional mod's own rule
 commands either (the game stops loading without them); Check mod finds those too.
 
-![Mods: Hazard Mining Incorporated optional, Crew Replacer incompatible](../img/saga-mods.png)
+![Mods: Heliopolis works with four optional mods; Vaults of Knowledge is known never to run with Industrial.Evolution](../img/saga-mods.png)
 
 **Versions by installed mods.** "Only with / Only without" makes an item exist or not. A
 **version** keeps one item (one id) and changes some of its fields when optional mods are
@@ -256,15 +312,22 @@ last name and portrait with a second mod, and swapped dialog when both are there
 mods in the list, these editors get a **Versions** strip at the top: characters, quests and
 conversations (their settings, places, texts, rewards, time limits and every node), encounters,
 your own star systems and their markets, event schedulers, pools, starting relations and scripted
-faction changes, items (name, description, icon and base price) and descriptions. The strip has
-one cell per combination of the optional mods (two mods: **Base**, **Mod1**, **Mod2**, **Mod1 +
-Mod2**).
+faction changes, items (name, description, icon and base price) and descriptions.
 
-- Pick a cell to see the item as it will be in that combination. A field you change there is
+The strip is one row: **Base** (the item without any optional mod), a button for each version that
+sets something (its short name and how many fields it sets), and a menu, **Mod versions ▾**
+(**Versions ▾** when settings or the player's gender can have versions too), that lists every
+version: **With one mod**, **With a setting or the player** and **Combinations** (two mods: Mod1,
+Mod2 and Mod1 + Mod2), each with "n fields set" or "inherits", and **!** where two versions
+disagree. Mods marked **Never with** each other get no combination.
+
+![The versions strip of John Starsector: Base, his female version, and the Versions menu](../img/saga-versions-menu.png)
+
+- Pick a version to see the item as it will be in that combination. A field you change there is
   stored for that version only; every other field is inherited, field by field: the most specific
-  version wins (Mod1 + Mod2, then Mod1 or Mod2, then Base). The cell lists its own fields, each
-  with **Revert** (it inherits again).
-- If Mod1 and Mod2 change the same field differently, the combined cell asks which value to use
+  version wins (Mod1 + Mod2, then Mod1 or Mod2, then Base). Under the strip, the open version
+  lists its own fields, each with **Revert** (it inherits again).
+- If Mod1 and Mod2 change the same field differently, the combination asks which value to use
   (or change the field there). Problems shows it as an error until you decide.
 - In game, SagaLib picks each item's version **once per save**, from the mods the game started
   with, and keeps it: adding or removing a mod later never switches a character mid-story. Items
@@ -279,6 +342,26 @@ Mod2**).
 - On export, SagaLib's files get a `versions` list, and each dialog node a version changes gets one
   more rule that tests the version picked for the save. The mod then needs SagaLib 1.3.
 - Play mode and the Test context show the version of the optional mods' switches.
+
+**Versions by a setting.** An on/off or choice setting of your [Settings](#settings) page marked
+**Versions may depend on it** adds its values to the menu (**With a setting or the player**: one
+entry per value, and each value with each optional mod under **Combinations**). SagaLib records the
+setting's value when a game starts and keeps that version for the save: changing the setting later
+in LunaLib's menu doesn't change it. Play mode plays the version of the Test context's values.
+Problems warns about a version for a setting that is missing, isn't marked, or takes no such value.
+Items and descriptions can't have versions by a setting (the game loads them before any save).
+
+#### Versions by the player's gender
+
+The menu also offers **Player = male** and **Player = female**, alone and with each optional mod.
+Base is for any player; a version for one gender changes what you set for that player only. In The
+Other Captain, John Starsector is Jane for a female player: her version sets the first name, the
+gender and the portrait. SagaLib records the player's gender when the game starts, and the version
+never changes after. Play mode and the dialog preview use the Test context's **Player is**. Items
+and descriptions can't have such versions (the game loads them before any save), and a picture in a
+dialog can show another picture for a female player without a version (see [Images](images.md)).
+
+![John Starsector's female version: Jane, with her own portrait](../img/saga-versions-female.png)
 
 Some things can't have versions, because the game loads them at startup with no way to change them
 later: a faction or item that exists only with a mod, a faction's main color, ranks and music,
@@ -316,11 +399,14 @@ row has:
 | **Default** | the value until the player changes it, and always without LunaLib |
 | **Range** | for numbers: the slider's minimum and maximum |
 | **Tab** | a tab of your page (empty: the main tab) |
+| **Versions** | for on/off and choice settings: **Versions may depend on it**, so quests, people, systems, encounters, pools and events can have a version per value (see [Versions by a setting](#mods)). Its value is then fixed when a game starts |
 
 The panel also shows whether LunaLib is **optional** (the default: it is never added to
 `mod_info.json`) or **required** (list it as Required in [Mods](#mods)), the mod's **icon** in
 LunaLib's menu (**Choose…**; square, 40×40 shows unscaled), what reads each setting (**Read by**),
 and a rough preview of the page.
+
+![Settings: Heliopolis's on/off setting, marked Versions may depend on it](../img/saga-settings.png)
 
 How it works in game: the export writes `data/config/LunaSettings.csv` (and
 `data/config/LunaSettingsConfig.json` for the icon). LunaLib reads it and shows the page. SagaLib
@@ -361,11 +447,13 @@ has:
 |---|---|
 | **Name** | shown in the list and in MagicLib's notice when unlocked |
 | **Id** | starts with your prefix and follows the name until a quest unlocks it. MagicLib keeps every mod's achievements in one list by id; never change it after a release (players lose what they unlocked) |
-| **Description** | under the name; MagicLib asks for the past tense, "Found the lost convoy." |
+| **Description** | under the name; MagicLib asks for the past tense, "Named a cat Jake instead of telling him what his collar said." |
 | **Tooltip** | optional, a longer text on hover |
 | **Shown** | **visible**, **listed, details hidden** (a spoiler: for endings players reach anyway) or **hidden until unlocked** (for rare endings) |
 | **Rarity** | common to legendary: the frame and the default image |
 | **Image** | shown once unlocked (48×48); empty uses MagicLib's image for the rarity |
+
+![Achievements: Heliopolis's six, unlocked by its quest endings](../img/saga-achievements.png)
 
 **Unlocked by** lists the quests that unlock it. A quest unlocks one at an **End node** (its
 **Achievement** field) or anywhere with the action **Unlock a MagicLib achievement** (see
@@ -392,7 +480,7 @@ also adds the quests it needs first. Click a button to set that quest:
 | Field | What it is |
 |---|---|
 | **On the button** | a short name (Nexerelin's buttons fit about 18 characters); empty uses the quest's title |
-| **Tooltip** | what the player is taken to have done ("The player found the convoy and kept the cargo.") |
+| **Tooltip** | what the player is taken to have done ("The player met the cats and brought them their cores.") |
 | **A skip means** | the ending the player is taken to have reached: one of the quest's End nodes, or a Stage node of a success or fail stage |
 | **Rewards** | give the rewards on the way to that ending when the game starts (on by default) |
 
@@ -405,39 +493,79 @@ started, an encounter, an achievement, keys only the dialog has). Checking a but
 screen also checks the quests of the chain it needs, and unchecking it unchecks the ones that need
 it; Saga Forge works that out from the prerequisites.
 
+![Quest skip: Heliopolis's chain on Nexerelin's Skip story screen](../img/saga-questskip.png)
+
 How it works in game: the export writes `data/config/exerelin/questSkip.json`, which only Nexerelin
 reads. Each chain names SagaLib's plugin: Nexerelin sets a skip's keys only through one, and the
 plugin also gives the rewards at the start. Later quests then see the skipped quest as finished,
 the same as if it was played (their prerequisites hold, its offer is gone). Without Nexerelin the
 file does nothing. Needs SagaLib 1.3.
 
+### Research
+
+**Research** is your mod's own techs for **AoTD Vaults of Knowledge** (VoK). VoK's research screen
+shows them as a tree of their own, named after your mod. The tab is there once the mod lists Vaults
+of Knowledge in [Mods](#mods) (optional is enough). The list on the left has your techs by tier
+(**+ Add**); each one has:
+
+| Field | What it is |
+|---|---|
+| **Name** and **Id** | the id starts with your prefix and follows the name until a quest names it. VoK keeps a save's research by id; never change it after a release |
+| **Tier** and **Days** | VoK's tier (0 to 5, 5 is experimental) and the days to research it |
+| **Place** and **Tree** | the column and row in that tier of your tree; click a free cell of the grid to move it there |
+| **Icon** | an image of your mod (**Choose image…**), or the id of an icon there already, such as VoK's `basic` or `farming1`. VoK needs one |
+| **Needs first** | techs researched before it: VoK's own, another mod's or your own |
+| **Costs** | paid when research starts: research databanks (VoK's `research_databank`) or other items |
+| **Unlocks** | industries, ships, weapons, hullmods, abilities, or a **modifier** (only a line of text; its effect would need Java) |
+| **From the start** | already researched in a new game |
+| **By a quest** | it can only be researched after a quest's **Unlock research**; the text is what VoK shows until then |
+
+![Research: Heliopolis's Uplift Neural Mapping, unlocked by the quest The Great Cat of Heliopolis](../img/saga-research.png)
+
+**Written by hand** lists rows of your `aotd_tech_options.csv` that Saga Forge didn't write. They
+stay as they are; **Edit in Saga Forge** takes one over (the next export moves it into Saga Forge's
+part of the file).
+
+Quests use research with three steps (see [Quests](quests.md)): the action **Unlock research**
+(for a tech "unlocked by a quest"), the action **Grant research** or an End node's **Research** (the
+player's faction gets a tech as researched at once, VoK's own techs too), and the condition **Has
+researched** (`SF_HasResearch <tech> [faction]`).
+
+How it works in game: the export writes `data/campaign/aotd_tech_options.csv` and lists your icons
+in the mod's `data/config/settings.json`; only VoK reads them. Unlocking is a flag VoK checks, so it
+works without SagaLib. Granting and "has researched" go through SagaLib 1.4; without VoK, granting
+does nothing and "has researched" is false, so your mod still plays. Your factions' attitude to
+research is on their [Research tab](factions.md).
+
 ## How to set up the basics
 
 ### Arrange quests on the board
 
-1. Open **Saga › Board**.
-2. Drag each card where you want it, for example a quest line from left to right, with side
-   conversations below.
-3. Press **Save** (or Ctrl+S). The places are kept in the mod's `sagaforge/project.json` and are
-   for you only.
+The board arranges itself: you don't place the cards. A quest joins a lane when something links it
+to another quest of that lane, and moves right with each step it has to wait for.
 
-New quests that you haven't placed yet line up in rows of four. Use the fit button at the bottom
-left to see them all again.
+1. Open **Saga › Board**. Find the quest; if it sits in the last lane, nothing links it yet.
+2. Link it the way the story does: a prerequisite (see the next recipe), an Action that starts it
+   (**Start another quest**, see [Quests › Start a quest from a dialog
+   option](quests.md#start-a-quest-from-a-dialog-option)), or a flag its start needs that another
+   quest sets.
+3. Back on the board it is in that quest's lane, after it. Click it to check what it comes after,
+   what it leads to, and the flags it shares.
 
 ### Make one quest wait for another
 
-1. Open the later quest on the **Quests** tab (for example Salvage Rights) and click an empty spot
-   of the chart, so its settings show on the right.
-2. Under **Prerequisites**, pick **+ add… › "The Lost Convoy" ended**.
-3. Choose whether it must have **succeeded**, **failed** or just **ended**. Or pick **a flag is
-   set** instead and type the memory key (and, if you like, the value it must have).
-4. Back on **Saga › Board** a solid arrow now joins the two cards, and on **Timeline** the later
-   quest moves one step down.
+1. Open the later quest on the **Quests** tab (in Heliopolis: Cores for the Collar-Keepers) and
+   click an empty spot of the chart, so its settings show on the right.
+2. Under **Prerequisites**, pick **+ add…** and **"The Voice in the Probe" ended** (with
+   **succeeded**, **failed** or just **ended**), or **a flag is set** and the memory key (here
+   `$global.hel_met_cats`, which the probe quest sets when the player meets the cats).
+3. Back on **Saga › Board** the two cards are joined (blue for a quest, gold for a flag) in one lane,
+   and on **Timeline** the later quest moves one step down.
 
-![Salvage Rights' settings: its prerequisite is The Lost Convoy, succeeded](../img/saga-prereq.png)
+![Cores for the Collar-Keepers' settings: its prerequisite is the flag hel_met_cats](../img/saga-prereq.png)
 
-All prerequisites must be true before the quest is offered or starts. In game, Reyes doesn't offer
-Salvage Rights until The Lost Convoy is done.
+All prerequisites must be true before the quest is offered or starts. In game, Pop Chicken doesn't
+offer the cores job until the player has met the cats.
 
 ### Find where a flag is used
 
@@ -451,18 +579,18 @@ Salvage Rights until The Lost Convoy is done.
 ### Add a test profile
 
 1. Open **Saga › Test profiles** and press **+ New**.
-2. Give it a **Name** that says what situation it is ("Convoy found, report to Reyes"). The id
+2. Give it a **Name** that says what situation it is ("The Rat chain, off to Persea"). The id
    follows the name.
 3. Under **Quests**, set each quest that matters: **active** with the stage it should be at,
    **succeeded** or **failed**. Quests you leave at **not started** are left alone.
 4. Under **Flags**, add any memory keys the situation needs (pick or type the key, press
    **+ flag**, then type the value).
 5. Under **Player**, fill in only what should change: credits, story points, a commission,
-   reputation (from -1 to 1), cargo, and **Start at**, the id of a place (e.g. `vgc_haven`).
+   reputation (from -1 to 1), cargo, and **Start at**, the id of a place (e.g. `hel_felicette`).
    Empty fields leave the game as it is.
 6. Save.
 
-![A profile that only sets a flag and a start place: it starts the pirate raid at Haven](../img/saga-profiles-raid.png)
+![A profile that only sets a start place: Go to Persea](../img/saga-profiles-raid.png)
 
 To try the profile in the editor, pick it in Play mode (see [Quests › Test a quest in Play
 mode](quests.md#test-a-quest-in-play-mode)). For the game, see the next recipe.
@@ -487,12 +615,12 @@ moves your fleet to **Start at** (from the dev menu this needs SagaLib 1.2).
 
 1. Open **Saga › Mod-wide phrases** and press **+ Phrase**.
 2. Name the token in the first field. It always starts with `$` and the mod's prefix
-   (`$vgc_farewell`); Saga Forge adds them if you leave them out.
+   (`$toc_he`); Saga Forge adds them if you leave them out.
 3. Pick **random** for a different text each time, or **first case that matches** for texts that
    depend on the situation.
 4. Type the texts. For **first case that matches**, give each case its **if** lines (one condition
    per line; the **+ add…** list under the box offers common ones), and fill in **otherwise**.
-5. Type the token into any dialog text of the mod: `"Thanks for the help. $vgc_farewell"`.
+5. Type the token into any dialog text of the mod: `"Nobody knows where $toc_he went."`
 
 In game, SagaLib swaps the token for one of its texts each time the line is shown. A phrase text
 can itself contain tokens such as `$playerName`.
@@ -502,7 +630,7 @@ can itself contain tokens such as `$playerName`.
 A pool for story picks, shared by several conversations: what a survey team finds on a planet,
 which rumour a barkeeper tells.
 
-1. Open **Saga › Pools** and press **+ New**. Give it a **Name** ("Rock finds"); until a branch
+1. Open **Saga › Pools** and press **+ New**. Give it a **Name** ("Who is in the pod"); until a branch
    uses the pool, its id follows the name.
 2. Leave **Used for** at **Random branches (story picks)**.
 3. Set **Nothing**: the weight of "nothing happens" (0 means an entry is always picked).
@@ -512,7 +640,7 @@ which rumour a barkeeper tells.
    (see [Quests › Add a random branch](quests.md#add-a-random-branch)). Its cases become the pool's
    entries plus **otherwise** for nothing.
 
-![The Random branch of Survey the rocks rolls the Rock finds pool](../img/saga-pool-branch.png)
+![The Random branch of Lost Kin rolls the Who is in the pod pool](../img/saga-pool-branch.png)
 
 **Rolled for** on the branch decides whose luck it is: the place or person in the dialog (the same
 rock gives the same results after a reload, and "once per place" counts per rock) or the world.
@@ -523,7 +651,7 @@ an entry's id as the value (dev mode): the next roll of that pool picks it.
 
 A drop group of the mod's own, for what salvagers find in a cache or wreck.
 
-1. Open **Saga › Pools**, press **+ New** and name it ("Compact stores").
+1. Open **Saga › Pools**, press **+ New** and name it ("Cryo-probe salvage loot").
 2. Set **Used for** to **a loot table (drop group)**. Leave **Adds to** empty.
 3. Press **+ Entry** for each thing it can drop, and pick or type its id: a commodity (`supplies`,
    `fuel`), a special item (`item_<id>`), a weapon (`wpn_<id>`) or a fighter wing (`ftr_<id>`).
@@ -535,7 +663,7 @@ A drop group of the mod's own, for what salvagers find in a cache or wreck.
    - the copies of a scatter (see [Scatter objects across the sector](#scatter-objects-across-the-sector)),
    - a quest reward (see [Quests › Give a reward](quests.md#give-a-reward)).
 
-![Compact stores: a loot table with four entries, rolled by a cache and a scatter](../img/saga-pools-loot.png)
+![Cryo-probe salvage loot: a loot table with three entries, rolled by the scattered probes](../img/saga-pools-loot.png)
 
 The export writes the table into the mod's `data/campaign/procgen/drop_groups.csv` (between
 `# sagaforge:begin loot` and `# sagaforge:end loot` lines; rows you add outside them are kept). Its
@@ -567,16 +695,16 @@ outside star systems.
 
 1. Make the fleets first, as encounters on the Encounters tab (see [Encounters](encounters.md)).
    Their own spawn settings don't matter here.
-2. Open **Saga › Pools**, press **+ New**, name it ("Scavenger raids") and set **Used for** to
+2. Open **Saga › Pools**, press **+ New**, name it ("Cats in the dark") and set **Used for** to
    **random encounters**.
 3. Tick **Where**: **in slipstreams**, **outside star systems**, or both.
 4. Set **Frequency**: how often your pool is chosen against vanilla's own encounter makers
-   (pirates, scavengers…), which use about 10. 5 makes yours about half as common as one of
+   (pirates, scavengers…), which use about 10. 3 makes yours about a third as common as one of
    theirs.
 5. Press **+ Entry** and pick an encounter for each entry, with a weight, and limits or
    conditions if needed.
 
-![Scavenger raids: one encounter, outside star systems, frequency 5](../img/saga-pools-encounters.png)
+![Cats in the dark: the Midnight Zoomies, in slipstreams and outside star systems, frequency 3](../img/saga-pools-encounters.png)
 
 In game (SagaLib 1.2), when vanilla picks your pool at an encounter point, one entry's fleet waits
 near it and leaves after the player is gone. Its comm dialog works as usual.
@@ -592,7 +720,7 @@ near it and leaves after the player is gone. Its comm dialog works as usual.
    criteria it **Must** meet (**+ add a criterion…**), and under **Prefer** those it should rather
    meet, tried in order. **+ Avoid dangerous systems** keeps it out of systems with dangerous fleets or active Remnants.
 4. If a criterion measures distance ("within N light-years"), set **Measured from** to a place
-   (e.g. `vgc_haven`); empty means from the player's fleet at the start.
+   (e.g. `hel_felicette`); empty means from the player's fleet at the start.
 5. Add **Loot** (**+ Loot**, a drop group and how many rolls; see [Make a loot
    table](#make-a-loot-table)) and **Defenders** (faction and strength) if you want them.
 6. Tick **Existing saves** if games started before your mod should get them too.
@@ -614,13 +742,13 @@ fit, fewer copies are placed.
 5. Under **When it ends**, undo what needs undoing, e.g. **Despawn an encounter**.
 6. To see it in game without waiting, give a test profile the flag shown in the scheduler's
    **Test** line (`$global.sagaforge_ev_<scheduler id>_force`) with the event's id as the value.
-   The example's profile "At Haven, pirate raid starts now" does that (see the picture in [Add a
-   test profile](#add-a-test-profile)).
+   Play mode can't run world events: they are tested in game.
 
-![The Trade fair's news item and its start and end actions](../img/saga-events-news.png)
+![The Outbreak's news item and its start and end actions](../img/saga-events-news.png)
 
 In game (SagaLib 1.2), the news item shows in the intel screen under its tab and points at its
-place on the map; its actions run quietly in the background.
+place on the map; its actions run in the background (with SagaLib 1.4 without a dialog, and what
+they give shows as campaign messages).
 
 ### Add a progress event
 
@@ -641,23 +769,24 @@ place on the map; its actions run quietly in the background.
    (see [Quests › Change progress from a dialog](quests.md#change-progress-from-a-dialog)) or to a
    world event.
 
-![The Blockade stage picks one of two outcomes: the Compact holds, or raiders spawn](../img/saga-progress-outcomes.png)
-![An Action node adds 150 points to Pirate pressure on Kestrel](../img/saga-progress-action.png)
+![The Hegemony Warrant's Police patrols stage spawns the Warrant Patrol](../img/saga-progress-outcomes.png)
+![An Action node of The Other Captain adds to the Hegemony Warrant when the player chases John](../img/saga-progress-action.png)
 
 In game (SagaLib 1.2), the bar appears in the intel screen under Major events (and the extra
 **Intel tab**, if you set one), with a marker per stage and the factors listed under it.
 
 ### Work with another mod
 
-1. Click the **Works with** pill in the header (or open **Saga › Mods**).
+1. Click the **Cross Mod Support** pill in the header (or open **Saga › Mods**).
 2. Find the mod (type in **Filter mods…**) and set its **Use**:
    - **Optional** when your mod should also run without it (most mods, and frameworks used only
      through their own files, such as a LunaLib settings page);
    - **Required** when your story can't do without it; set a **Min version** if you need one;
    - **Incompatible** when the two shouldn't run together; write the **Reason** players will see.
-3. **Save**. Lists and pickers now also show that mod's factions, characters, places, ships and
-   images, and the pill names it.
-4. When you export, tick **Add the required mods to mod_info.json dependencies** if it is listed.
+3. If no player runs it together with another mod, pick that one under **Never with**.
+4. **Save**. Lists and pickers now also show that mod's factions, characters, places, ships and
+   images, and the pill counts it.
+5. When you export, tick **Add the required mods to mod_info.json dependencies** if it is listed.
 
 If you pick something from a mod that isn't in the list (with a list's **Show all installed mods**
 switch, or the **+N** button in a picker), Saga Forge asks right there: **Add as optional** or
@@ -679,7 +808,7 @@ first and lists what uses it.
 
 For a whole questline, set it once on the first quest: the quests that need it and what only they
 use follow, greyed. A new faction that only matters with the mod can't be left out (the game
-always loads it), so on its **Relations & changes** tab set **Hidden from the intel tab** to
+always loads it), so on its **Relations** tab set **Hidden from the intel tab** to
 **Only without** that mod.
 
 ### Give a character a version for another mod
@@ -687,15 +816,28 @@ always loads it), so on its **Relations & changes** tab set **Hidden from the in
 1. Make the other mod **Optional** (see [Work with another mod](#work-with-another-mod)). If it
    builds its sector in Java code, import a sector snapshot first (see "Other mods' content" above),
    so its markets can be picked.
-2. Open the character on the **People** tab. In the **Versions** strip, click the cell of that mod.
+2. Open the character on the **People** tab. In the **Versions** strip, open **Mod versions ▾** and
+   pick that mod.
 3. Change what differs with it, for example **Market** (pick the other mod's market). Only that
    field is stored for the version; the cell lists it, with **Revert**.
-4. With two optional mods, click the combined cell to check what it inherits, and change what only
+4. With two optional mods, pick the combination in the menu to check what it inherits, and change what only
    that combination needs (for example a node's text in the conversation's own strip on the
    **Quests** tab). If it says two versions disagree, pick one value there.
 5. In Play mode, switch the optional mods in the toolbar to see each version.
 
 In game, the character's version is picked once, when a game starts, from the mods installed then.
+
+### Give a character a version for a female player
+
+1. Open the character on the **People** tab (in The Other Captain: John Starsector).
+2. In the **Versions** strip, open **Versions ▾** and pick **Player = female**.
+3. Change what differs: **First name** (Jane), **Gender** and **Portrait**. Each field is stored for
+   that version only; the button **Player = female** now shows how many fields it sets.
+4. Write the person's name in dialog with their name tokens (`$toc_starsector_name`) and use
+   phrases for "he" and "she" (see [Add a phrase](#add-a-phrase)), so one text fits both.
+5. In Play mode, set the Test context's **Player is** to female and play the quest.
+
+In game, SagaLib records the player's gender when the game starts; the version never changes after.
 
 ### Add a settings page
 

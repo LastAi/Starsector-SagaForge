@@ -1,10 +1,11 @@
 <script lang="ts">
   /** People (PLAN.md §4.2, mock-up people.html): the mod's characters, their phrases; existing characters read-only. */
+  import { effectiveFleet } from '../../../shared/encounters'
   import type { PersonDef, Phrase, Placement } from '../../../shared/model'
   import { slug, uniqueId } from '../../../shared/quest'
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
-  import { personLook, makePlayContext, factionLook } from '../state/testctx.svelte'
+  import { makePlayContext, factionLook } from '../state/testctx.svelte'
   import { Engine, compileRules } from '../../../shared/rules/engine'
   import { phraseText } from '../../../shared/play'
   import ImageView from '../ui/ImageView.svelte'
@@ -27,6 +28,7 @@
   import { REP_LEVELS } from '../../../shared/model'
   import { editorRelation } from '../state/testctx.svelte'
   import { levelAtLeast } from '../../../shared/replevels'
+  import { fullName, oneNameOf, personNameTokens, storedName } from '../../../shared/personname'
 
   const m = $derived(project.m)
   const index = $derived(app.index!)
@@ -50,25 +52,37 @@
   let showInactive = $state(true)
   let first = $state('')
   let last = $state('')
+  /** #79: a one-name person (the name goes in the last-name slot). */
+  let newOne = $state(false)
   const newId = $derived(project.prefix + slug(last || first))
   function create() {
     let id = newId
     if (!id || id === project.prefix) return
     id = uniqueId(id, [...(m?.people.map((p) => p.id) ?? []), ...index.people.map((p) => p.id)])
     const faction = m?.factions.find((f) => f.kind === 'addition')?.id ?? 'independent'
+    const name = newOne ? { first: '', last: (last.trim() || first.trim()) } : { first: first.trim(), last: last.trim() }
     project.change((mm) => {
-      mm.people.push({ id, name: { first: first.trim(), last: last.trim() }, gender: 'FEMALE', faction, rank: 'spaceCommander', post: 'stationCommander', portrait: '', placement: { at: 'none' }, tags: [], phrases: [] })
+      mm.people.push({ id, name, ...(newOne ? { oneName: true } : {}), gender: 'FEMALE', faction, rank: 'spaceCommander', post: 'stationCommander', portrait: '', placement: { at: 'none' }, tags: [], phrases: [] })
     })
     app.selected.people = id
-    showNew = false; first = ''; last = ''
+    showNew = false; first = ''; last = ''; newOne = false
   }
+  /** #79: one name: kept in the last-name slot (the last name, or the first when only that was set), the first emptied. */
+  function setOneName(on: boolean) {
+    ed((p) => {
+      if (on) { p.oneName = true; p.name = { first: '', last: oneNameOf(p.name) } }
+      else delete p.oneName
+    })
+  }
+  /** #79: the name tokens as the game fills them for this person when the dialog is with them (vanilla's, then SagaLib's). */
+  const nameTokens = $derived(person ? Object.entries(personNameTokens(storedName(person))).filter(([k]) => k !== '$PersonName') : [])
   /** Choose by picture, or import one (cropped and resized to 128×128) (R28). */
   async function pickPortrait() {
     const [p] = await chooseImages('portrait', { current: person?.portrait })
     if (p) ed((x) => { x.portrait = p })
   }
   function remove() {
-    if (!person || !confirm(`Delete ${person.name.first} ${person.name.last}? Quests that use them will show errors.`)) return
+    if (!person || !confirm(`Delete ${fullName(person.name) || person.id}? Quests that use them will show errors.`)) return
     const id = person.id
     project.change((mm) => { mm.people = mm.people.filter((p) => p.id !== id) })
     app.selected.people = null
@@ -102,7 +116,7 @@
       if (q.start.kind === 'contact' && q.start.person === id) out.push({ where: `${q.title}: offers it`, quest: q.id })
       for (const n of q.nodes) if (n.type === 'dialog' && (n.speaker === id || (n.visual.kind === 'person' && (n.visual.person === id || n.visual.second === id || n.visual.third === id)))) out.push({ where: `${q.title}: ${n.title || n.id}`, quest: q.id, node: n.id })
     }
-    for (const e of m.encounters) if (e.fleet.flagshipCommander === id) out.push({ where: `encounter ${e.name}: commands the flagship` })
+    for (const e of m.encounters) if (effectiveFleet(e, m).flagshipCommander === id) out.push({ where: `encounter ${e.name}: commands the flagship` })
     for (const s of m.systems) for (const en of s.entities) if (en.market?.people.includes(id)) out.push({ where: `market ${en.market.name}` })
     return out
   })
@@ -175,7 +189,7 @@
       <div class="sect">This mod's people <span class="sectr"><label class="chk" title="Show people marked Inactive (planned, not exported)"><input type="checkbox" bind:checked={showInactive} /> inactive</label><button disabled={!m} onclick={() => (showNew = true)}>+ New person</button></span></div>
       <ul class="list">
         {#each (m?.people ?? []).filter((p) => match(`${p.id} ${p.name.first} ${p.name.last}`) && (showInactive || !p.inactive)) as p (p.id)}
-          <li class:on={sel === p.id} class:inactive={p.inactive}><button class="li" onclick={() => (app.selected.people = p.id)}><ImageView path={p.portrait} w={22} h={22} /> {p.name.first} {p.name.last}{#if p.inactive} <span class="muted">[Inactive]</span>{/if} <span class="badge b-new">new</span><ModsChip itemKey={`person:${p.id}`} /><span class="sub">{rankName(p.rank)}</span></button></li>
+          <li class:on={sel === p.id} class:inactive={p.inactive}><button class="li" onclick={() => (app.selected.people = p.id)}><ImageView path={p.portrait} w={22} h={22} /> {fullName(storedName(p)) || p.id}{#if p.inactive} <span class="muted">[Inactive]</span>{/if} <span class="badge b-new">new</span><ModsChip itemKey={`person:${p.id}`} /><span class="sub">{rankName(p.rank)}</span></button></li>
         {:else}<li class="muted small pad">{m ? 'None yet.' : 'Pick an active mod first.'}</li>{/each}
       </ul>
       <div class="sect">Existing characters (read-only)</div>
@@ -189,7 +203,7 @@
   </aside>
   <section class="main">
     {#if person}
-      <div class="head"><ImageView path={person.portrait} w={40} h={40} /><h2>{person.name.first} {person.name.last}</h2><span class="badge b-new">new</span><span class="mono muted">{person.id}</span>
+      <div class="head"><ImageView path={person.portrait} w={40} h={40} /><h2>{fullName(storedName(person)) || person.id}</h2>{#if person.oneName}<span class="badge" title="One name only: kept as the last name">one name</span>{/if}<span class="badge b-new">new</span><span class="mono muted">{person.id}</span>
         <span class="spacer"></span><span class="muted small">exported to <span class="mono">data/sagaforge/people/</span> (SagaLib creates and places them)</span><label class="chk" title="Planned but not ready: not exported, so not in the game. Its problems become warnings."><input type="checkbox" checked={!!person.inactive} onchange={(e) => { const v = e.currentTarget.checked; edBase((p) => { if (v) p.inactive = true; else delete p.inactive }) }} /> Inactive</label><button class="mini danger" onclick={remove}>Delete</button></div>
       <VersionStrip kind="person" id={person.id} what="this person" />
       {#if invasionWarn}
@@ -200,12 +214,23 @@
       <div class="cols">
         <div class="body">
           <div class="grid2">
-            <Field label="First name" for="pp-f" help="Shown in the dialog's person panel, the comm directory and the intel screen.">
-              <input id="pp-f" type="text" value={person.name.first} onchange={(e) => { const v = e.currentTarget.value; ed((p) => { p.name.first = v }) }} />
+            <Field label="One name" for="pp-one" help="For a character with only one name (a cat called Tyger). The game keeps it as the last name with an empty first name, and shows just the one name everywhere. Vanilla would leave $personFirstName empty (&quot;Hi, .&quot;); SagaLib 1.4 fills it with the one name.">
+              <label class="chk"><input id="pp-one" type="checkbox" checked={!!person.oneName} onchange={(e) => setOneName(e.currentTarget.checked)} /> one name only</label>
             </Field>
-            <Field label="Last name" for="pp-l" help="Tokens such as $personLastName use it in dialog.">
-              <input id="pp-l" type="text" value={person.name.last} onchange={(e) => { const v = e.currentTarget.value; ed((p) => { p.name.last = v }) }} />
-            </Field>
+            {#if !person.oneName}
+              <Field label="First name" for="pp-f" help="Shown in the dialog's person panel, the comm directory and the intel screen.">
+                <input id="pp-f" type="text" value={person.name.first} onchange={(e) => { const v = e.currentTarget.value; ed((p) => { p.name.first = v }) }} />
+              </Field>
+            {/if}
+            {#if person.oneName}
+              <Field label="Name" for="pp-l" help="Their one name. The game stores it as the last name (the first name stays empty), so $personName, $personLastName and, with SagaLib 1.4, $personFirstName all say it.">
+                <input id="pp-l" type="text" value={oneNameOf(person.name)} onchange={(e) => { const v = e.currentTarget.value; ed((p) => { p.name = { first: '', last: v } }) }} />
+              </Field>
+            {:else}
+              <Field label="Last name" for="pp-l" help="Tokens such as $personLastName use it in dialog.">
+                <input id="pp-l" type="text" value={person.name.last} onchange={(e) => { const v = e.currentTarget.value; ed((p) => { p.name.last = v }) }} />
+              </Field>
+            {/if}
             <Field label="Gender" for="pp-g" help="Picks he/she in vanilla's tokens ($personHeOrShe, …).">
               <select id="pp-g" value={person.gender} onchange={(e) => { const v = e.currentTarget.value as PersonDef['gender']; ed((p) => { p.gender = v }) }}><option value="FEMALE">female</option><option value="MALE">male</option><option value="ANY">any</option></select>
             </Field>
@@ -220,7 +245,7 @@
             </Field>
             <Field label="Portrait" later={later(person, 'portrait', ed)} help="The picture in dialog and the comm directory: a game portrait (referenced, not copied) or your own 128×128 PNG (copied into the mod).">
               <div class="row"><ImageView path={person.portrait} w={64} h={64} /><div class="col">
-                <IdInput value={person.portrait} options={index.portraits.map((x) => ({ id: x.path }))} placeholder="e.g. graphics/portraits/portrait_mercenary02.png" onCommit={(v) => ed((p) => { p.portrait = v })} />
+                <IdInput value={person.portrait} options={index.portraits.map((x) => ({ id: x.path, definedBy: x.sourceId }))} placeholder="e.g. graphics/portraits/portrait_mercenary02.png" onCommit={(v) => ed((p) => { p.portrait = v })} />
                 <button onclick={pickPortrait} title="Choose by picture, or import your own (cropped and resized to 128×128)">Choose…</button></div></div>
             </Field>
             <Field label="Voice" for="pp-v" ref="people-voice" help="Vanilla's voice tag (soldier, spacer, …): some vanilla dialog picks its wording by it. Not a sound.">
@@ -262,7 +287,7 @@
                 <select id="pp-pr" value={pr ? 'rule' : ''} onchange={(e) => { const v = e.currentTarget.value; ed((p) => { if (v) p.presence = { atLeast: 'NEUTRAL' }; else delete p.presence }) }}><option value="">always present</option><option value="rule">only while the market's owner gets on with a faction</option></select>
               </Field>
               {#if pr}
-                <Field label="At least" for="pp-pl2" help="How the market's owner must stand with the faction. Vanilla's levels from Vengeful to Cooperative; &quot;not hostile&quot; is Inhospitable or better (not at war).">
+                <Field label="At least" ref="general-rep-levels" for="pp-pl2" help="How the market's owner must stand with the faction. Vanilla's levels from Vengeful to Cooperative; &quot;not hostile&quot; is Inhospitable or better (not at war).">
                   <select id="pp-pl2" value={pr.atLeast} onchange={(e) => { const v = e.currentTarget.value as NonNullable<PersonDef['presence']>['atLeast']; ed((p) => { if (p.presence) p.presence.atLeast = v }) }}>{#each REP_LEVELS as l (l)}<option value={l}>{app.defs.repLevels.find((x) => x.id === l)?.name ?? l}</option>{/each}<option value="notHostile">not hostile</option></select>
                 </Field>
                 <Field label="With" help="The faction they're loyal to. Empty = their own faction.">
@@ -300,7 +325,10 @@
         </div>
         <div class="side">
           <div class="sect2">Preview</div>
-          <div class="pcard"><ImageView path={person.portrait} w={128} h={128} /><div><b>{personLook(person.id)?.name}</b><div class="muted">{personLook(person.id)?.rank}</div><div style="color:{(() => { const c = factionLook(person.faction)?.color; return c ? `rgb(${c[0]},${c[1]},${c[2]})` : 'inherit' })()}">{personLook(person.id)?.faction}</div></div></div>
+          <!-- #67 U37 (user, 2026-11-22): the card is the version being edited (it showed the Test context's, e.g. the female player's, while Base was open) -->
+          <div class="pcard"><ImageView path={person.portrait} w={128} h={128} /><div><b>{fullName(storedName(person))}</b>{#if person.oneName}<div class="muted small">one name</div>{/if}<div class="muted">{[app.defs.ranks.find((r) => r.id === person.rank)?.name ?? person.rank, app.defs.posts.find((r) => r.id === person.post)?.name ?? person.post].filter(Boolean).join(' · ')}</div><div style="color:{(() => { const c = factionLook(person.faction)?.color; return c ? `rgb(${c[0]},${c[1]},${c[2]})` : 'inherit' })()}">{factionLook(person.faction)?.name ?? person.faction}</div></div></div>
+          <!-- #79: what the name tokens say when the dialog is with them (vanilla's, then SagaLib's one-name ones) -->
+          <div class="sit" title="When the dialog is with this person (the comm directory, their contact missions, their fleet)"><div class="muted small">In dialog with them</div>{#each nameTokens as [k, v] (k)}<div class="mono small">{k} → "{v}"</div>{/each}</div>
           {#if person.phrases.length}
             {#each phrasePreview as s (s.label)}<div class="sit"><div class="muted small">{s.label}</div>{#each s.texts as t (t)}<div class="mono small">{t}</div>{/each}</div>{/each}
           {/if}
@@ -322,8 +350,13 @@
 {#if showNew}
   <Modal title="New person" onClose={() => (showNew = false)}>
     <div class="grid2 modal">
-      <Field label="First name" for="np-f" help="As the game shows it."><input id="np-f" type="text" bind:value={first} placeholder="e.g. Ilse" /></Field>
-      <Field label="Last name" for="np-l" help="Also makes the id."><input id="np-l" type="text" bind:value={last} placeholder="e.g. Reyes" /></Field>
+      <Field label="One name" for="np-one" help="Only one name (a cat called Tyger): kept as the last name, the first stays empty."><label class="chk"><input id="np-one" type="checkbox" bind:checked={newOne} /> one name only</label></Field>
+      {#if newOne}
+        <Field label="Name" for="np-l" help="Their one name (kept as the last name); also makes the id."><input id="np-l" type="text" bind:value={last} placeholder="e.g. Tyger" /></Field>
+      {:else}
+        <Field label="First name" for="np-f" help="As the game shows it."><input id="np-f" type="text" bind:value={first} placeholder="e.g. Ilse" /></Field>
+        <Field label="Last name" for="np-l" help="Also makes the id."><input id="np-l" type="text" bind:value={last} placeholder="e.g. Reyes" /></Field>
+      {/if}
       <Field label="Id" help="How quests and saves refer to them. Don't change it after a release."><span class="mono">{newId}</span></Field>
     </div>
     {#snippet actions()}<button onclick={() => (showNew = false)}>Cancel</button><button class="primary" disabled={!first.trim() && !last.trim()} onclick={create}>Create</button>{/snippet}

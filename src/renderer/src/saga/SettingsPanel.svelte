@@ -12,7 +12,7 @@
   import { useOf } from '../../../shared/modlist'
   import { slug, uniqueId } from '../../../shared/quest'
   import { SETTING_TYPES, type SettingDef, type SettingType } from '../../../shared/model'
-  import { DEFAULT_MAX, DEFAULT_MIN, isValueSetting, LUNALIB_ID, settingKey, settingsRead, TYPE_LABEL } from '../../../shared/settings'
+  import { DEFAULT_MAX, DEFAULT_MIN, isValueSetting, LUNALIB_ID, renameSetting, settingKey, settingsRead, TYPE_LABEL } from '../../../shared/settings'
   import Field from '../ui/Field.svelte'
 
   const m = $derived(project.m!)
@@ -47,7 +47,9 @@
     const p = m.project.prefix
     const used = reads.has(s.id)
     const nid = used ? s.id : uniqueId(`${p}${slug(v).replace(new RegExp(`^${p}`), '') || 'setting'}`.slice(0, 48), list.filter((x) => x.id !== s.id).map((x) => x.id))
-    ed((x) => { x.label = v; x.id = nid })
+    // #67: whatever already names the old id (a profile's key, a test version) follows it
+    const old = s.id
+    project.change((mm) => { const x = mm.project.settings?.find((y) => y.id === old); if (!x) return; x.label = v; x.id = nid; renameSetting(mm, old, nid) })
     app.selected.setting = nid
   }
   function setId(v: string) {
@@ -57,8 +59,10 @@
     const nid = v.trim().startsWith(p) ? slug(v.trim()) : `${p}${slug(v.trim())}`
     if (!nid || nid === s.id) return
     if (list.some((x) => x.id === nid)) { app.error = `Another setting already has the id ${nid}.`; return }
-    if (reads.has(s.id) && !confirm(`${settingKey(s.id)} is read by ${reads.get(s.id)!.join(', ')}. Those stay as they are (Problems lists them). Change the id anyway?`)) return
-    ed((x) => { x.id = nid })
+    // #67 (found by the user, 2026-11-21): what reads it (conditions, texts, versions…) is renamed with it
+    if (reads.has(s.id) && !confirm(`${settingKey(s.id)} is used by ${reads.get(s.id)!.join(', ')}. They are changed to the new id too. After a release, players' saved values (LunaLib) are kept under the old id. Change the id?`)) return
+    const old = s.id
+    project.change((mm) => { const x = mm.project.settings?.find((y) => y.id === old); if (!x) return; x.id = nid; renameSetting(mm, old, nid) })
     app.selected.setting = nid
   }
   function setType(t: SettingType) {
@@ -115,7 +119,7 @@
     <div class="row status">
       <span>LunaLib: <b class:good={luna === 'required' || luna === 'optional'}>{luna === 'required' ? 'required' : luna === 'incompatible' ? 'marked incompatible' : 'optional'}</b></span>
       <span class="muted small">{luna === 'required' ? 'In mod_info.json dependencies (Saga › Mods): the launcher won\'t enable this mod without it.' : 'Not in mod_info.json: without LunaLib the page isn\'t shown and the defaults apply. To make LunaLib required, set it to Required in Saga › Mods.'}{luna === 'none' ? ' It isn\'t in the mod\'s list yet (Problems asks for it).' : ''}{lunaInstalled ? '' : ' LunaLib is not installed in your game.'}</span>
-      {#if luna === 'none' && list.length}<button class="mini" title="List LunaLib in Saga › Mods as optional (nothing goes into mod_info.json)" onclick={() => project.change((mm) => { (mm.project.mods ??= []).push({ id: LUNALIB_ID, name: 'LunaLib', use: 'optional' }) })}>Add as optional</button>{/if}
+      {#if luna === 'none' && list.length}<button class="mini" title="List LunaLib in Saga › Mods as optional (nothing goes into mod_info.json)" onclick={() => project.change((mm) => { ((mm.project.mods ??= []), mm.project.mods).push({ id: LUNALIB_ID, name: 'LunaLib', use: 'optional' }) })}>Add as optional</button>{/if}
       <button class="mini" onclick={() => (app.selected.sagaOpen = 'mods')}>Saga › Mods</button>
     </div>
     <div class="row status">
@@ -154,6 +158,13 @@
             {:else if cur.type === 'Int' || cur.type === 'Double'}<input id="st-d" type="number" step={cur.type === 'Int' ? 1 : 0.05} value={cur.default} onchange={(e) => { const v = e.currentTarget.value; ed((x) => { x.default = v }) }} />
             {:else}<input id="st-d" type="text" value={cur.default} onchange={(e) => { const v = e.currentTarget.value; ed((x) => { x.default = v }) }} />{/if}
           </Field>
+          {#if cur.type === 'Boolean' || cur.type === 'Radio'}
+            <!-- #67 U18: versions by a setting fixed at new game -->
+            <Field label="Versions" for="st-v" help="Versions may depend on it: a version of a quest, person, system, encounter, pool or event can ask for one of its values (the versions strip lists them). Its value is fixed when a game starts: SagaLib records it then, and changing it later in LunaLib's menu doesn't change that save's versions. Conditions and Branch cases still read the value now. Needs SagaLib 1.4.">
+              <label class="chk"><input id="st-v" type="checkbox" checked={!!cur.versions} onchange={(e) => { const v = e.currentTarget.checked; ed((x) => { if (v) x.versions = true; else delete x.versions }) }} /> Versions may depend on it</label>
+              {#if cur.versions && cur.type === 'Radio' && (cur.choices ?? []).some((c) => c.includes('+'))}<div class="small bad">A choice with a "+" can't pick a version (Problems lists it).</div>{/if}
+            </Field>
+          {/if}
           {#if cur.type === 'Int' || cur.type === 'Double'}
             <Field label="Range" help="The slider's minimum and maximum (LunaLib's default 0–100). As a multiplier, a whole number is a percent (100 = as made) and a number is times (1 = as made).">
               <span class="row"><input type="number" class="short" value={cur.min ?? DEFAULT_MIN} aria-label="Minimum" onchange={(e) => { const v = num(e.currentTarget.value); ed((x) => { x.min = v }) }} /> to <input type="number" class="short" value={cur.max ?? DEFAULT_MAX} aria-label="Maximum" onchange={(e) => { const v = num(e.currentTarget.value); ed((x) => { x.max = v }) }} /></span>
@@ -215,6 +226,8 @@
   .danger:hover { border-color: var(--bad); color: var(--bad); }
   .small { font-size: 11px; }
   .good { color: var(--good); }
+  .bad { color: var(--bad); }
+  .chk { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; }
   .preview { max-width: 640px; background: #0f1216; border: 1px solid var(--border); border-radius: 4px; padding: 8px 12px; font-size: 12px; }
   .ptab { font-size: 11px; color: var(--accent); border-bottom: 1px solid var(--border); margin: 6px 0 4px; }
   .ph { font-weight: bold; margin: 8px 0 2px; }

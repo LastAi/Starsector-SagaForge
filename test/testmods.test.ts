@@ -19,6 +19,11 @@ import { SIXTY_A } from './fixtures/sixty'
 import { TWENTYSEVEN_A } from './fixtures/twentyseven'
 import { SIXTYONE_A } from './fixtures/sixtyone'
 import { SIXTYTWO_A } from './fixtures/sixtytwo'
+import { SEVENTYFIVE_A } from './fixtures/seventyfive'
+import { SEVENTYSEVEN_A } from './fixtures/seventyseven'
+import { SEVENTYNINE_A } from './fixtures/seventynine'
+import { EIGHTY_A } from './fixtures/eighty'
+import { SCRATCH67 } from './fixtures/scratch67'
 import { SIXTYTHREE_A } from './fixtures/sixtythree'
 import { SIXTYFIVE_A } from './fixtures/sixtyfive'
 import { checkModel } from '../src/shared/checks'
@@ -28,7 +33,8 @@ import { defsFor } from '../src/shared/defs'
 import type { ValidInstall } from '../src/shared/api'
 import { realDir } from './realdir'
 
-const MODS: [TestModDef, string][] = [[SEVEN_A, '1.2.0'], [SEVEN_B, '1.2.0'], [SEVEN_C, '1.2.0'], [SEVEN_D, '1.2.0'], [SEVEN_E, '1.2.0'], [DROP_MERGE_TEST, '1.2.0'], [EIGHT_A, '1.2.0'], [EIGHT_C, '1.2.0'], [EIGHT_D, '1.2.0'], [SIXTY_A, '1.3.0'], [TWENTYSEVEN_A, '1.3.0'], [SIXTYONE_A, '1.3.0'], [SIXTYTWO_A, '1.3.0'], [SIXTYTHREE_A, '1.3.0'], [SIXTYFIVE_A, '1.3.0']]
+// #67 U12: eight_d and eighty_a run event actions without a dialog (SagaLib 1.4)
+const MODS: [TestModDef, string][] = [[SEVEN_A, '1.2.0'], [SEVEN_B, '1.2.0'], [SEVEN_C, '1.2.0'], [SEVEN_D, '1.2.0'], [SEVEN_E, '1.2.0'], [DROP_MERGE_TEST, '1.2.0'], [EIGHT_A, '1.2.0'], [EIGHT_C, '1.2.0'], [EIGHT_D, '1.4.0'], [SIXTY_A, '1.3.0'], [TWENTYSEVEN_A, '1.3.0'], [SIXTYONE_A, '1.3.0'], [SIXTYTWO_A, '1.3.0'], [SIXTYTHREE_A, '1.3.0'], [SIXTYFIVE_A, '1.3.0'], [SEVENTYFIVE_A, '1.4.0'], [SEVENTYSEVEN_A, '1.4.0'], [SEVENTYNINE_A, '1.4.0'], [EIGHTY_A, '1.4.0'], [SCRATCH67, '1.4.0']]
 
 describe.each(MODS)('test mod %s', (def, lib) => {
   it('builds, depends on the SagaLib it tests and teleports to its test range', () => {

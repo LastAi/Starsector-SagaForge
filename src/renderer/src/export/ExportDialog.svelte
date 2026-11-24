@@ -60,7 +60,7 @@
   // #27, #59: bounties of the mod, or quests that start or test bounties, use MagicLib
   const magicUnlisted = $derived(!!project.m && (!!project.m.bounties?.length || project.m.quests.some((q) => bountyIdsOf(q).length > 0)) && !(project.m.project.mods ?? []).some((x) => x.id === 'MagicLib'))
   function addMagic(use: 'optional' | 'required') {
-    project.change((mm) => { (mm.project.mods ??= []).push({ id: 'MagicLib', name: 'MagicLib', use }) })
+    project.change((mm) => { ((mm.project.mods ??= []), mm.project.mods).push({ id: 'MagicLib', name: 'MagicLib', use }) })
     void compute()
   }
   const blocking = $derived([...problems.live.filter((p) => p.level === 'error'), ...(plan?.problems.filter((p) => p.level === 'error') ?? [])])
@@ -140,7 +140,7 @@
     // forum post drafts are off until post templates exist (user, 2026-11-17): shared/releasepack.ts forumPost() stays for then
     // #60: release notes with Requires / Works with / Known conflicts (Saga › Mods)
     const notes = modListNotes(project.m?.project ?? {}, project.loaded.modInfo.dependencies)
-    const r = await window.api.packRelease({ version: v, forumPost: '', overwrite, notes: notes ? `${project.loaded.modInfo.name} ${v}\n\n${notes}` : '' })
+    const r = await window.api.packRelease({ version: v, forumPost: '', overwrite, notes: notes ? `${project.loaded.modInfo.name} ${v}\n\n${notes}` : '', originals: !!project.m?.project.packOriginals })
     if ('exists' in r) {
       if (confirm(`${r.exists} already exists. Replace it?`)) return packZip(v, true)
       error = 'The release is marked; the existing zip was kept.'
@@ -165,7 +165,8 @@
         </Field>
       </div>
       <label class="dep"><input type="checkbox" bind:checked={pack} /> Also pack <b class="mono">{releaseName(project.loaded!.modInfo, releaseVersion.trim() || '?')}.zip</b> into the releases folder</label>
-      <div class="muted small">The zip holds one folder, ready to unzip into <span class="mono">Starsector/mods</span>, without <span class="mono">sagaforge/</span> (your plans) and the test profiles. Releases folder: <span class="mono">{app.settings.releasesDir}</span> (Settings).</div>
+      {#if pack}<label class="dep sub"><input type="checkbox" checked={!!project.m?.project.packOriginals} onchange={(e) => { const v = e.currentTarget.checked; project.change((mm) => { mm.project.packOriginals = v || undefined }) }} /> with the original images (<span class="mono">sagaforge/originals/</span>: your source images, which the game doesn't use; for players who want to edit the art)</label>{/if}
+      <div class="muted small">The zip holds one folder, ready to unzip into <span class="mono">Starsector/mods</span>, without <span class="mono">sagaforge/</span> (your plans{project.m?.project.packOriginals ? '' : ' and original images'}) and the test profiles. Releases folder: <span class="mono">{app.settings.releasesDir}</span> (Settings).</div>
       {#if packed && !('exists' in packed)}
         <div class="good small packed">Packed {packed.files} file{packed.files === 1 ? '' : 's'} into <span class="mono">{packed.zip}</span>{packed.leftOut.length ? ` (left out: ${packed.leftOut.length}, ${[...new Set(packed.leftOut.map((x) => x.why))].join(', ')})` : ''}.
           <button class="mini" onclick={() => window.api.showInFolder(packed && !('exists' in packed) ? packed.zip : '')}>Show in folder</button></div>
@@ -292,6 +293,7 @@
   .diff pre { margin: 0; font-size: 10px; max-height: 180px; overflow: auto; padding: 4px; border-radius: 4px; white-space: pre-wrap; }
   .diff .old { background: #2a1414; } .diff .new { background: #142a18; }
   .dep { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 12px; }
+  .dep.sub { margin: 4px 0 0 22px; }
   .probs { margin: 4px 0; padding-left: 18px; font-size: 12px; color: var(--bad); }
   .probs.warn { color: var(--warn); }
   .good { color: var(--good); } .bad { color: var(--bad); margin-top: 8px; }

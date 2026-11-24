@@ -26,11 +26,20 @@ export async function readImageFile(abs: string, sourceId: string, gamePath = ab
   return { path: gamePath, bytes: new Uint8Array(bytes), sourceId, mime }
 }
 
-/** Find a game path in the sources (a preferred source first, then last-loaded first). */
-export async function findImage(cache: IndexCache, gamePath: string, preferSource?: string): Promise<ImageData | null> {
+/**
+ * #67 U33: sources in the order a file is looked for: the ones that count for the active mod (vanilla,
+ * it, its listed mods; last-loaded first), then the others (so a file only an unlisted mod has still shows).
+ */
+const lookupOrder = <T extends { id: string }>(sources: T[], visible?: Set<string>): T[] => {
+  const rev = [...sources].reverse()
+  return visible ? [...rev.filter((s) => visible.has(s.id)), ...rev.filter((s) => !visible.has(s.id))] : rev
+}
+
+/** Find a game path in the sources (a preferred source first, then the visible ones last-loaded first, then the rest). */
+export async function findImage(cache: IndexCache, gamePath: string, preferSource?: string, visible?: Set<string>): Promise<ImageData | null> {
   const rel = safeRel(gamePath)
   if (!rel) return null
-  const order = [...cache.sources].reverse()
+  const order = lookupOrder(cache.sources, visible)
   if (preferSource) order.sort((a, b) => (a.id === preferSource ? -1 : b.id === preferSource ? 1 : 0))
   for (const s of order) {
     const abs = path.join(s.dir, ...rel.split('/'))
@@ -59,14 +68,15 @@ async function walkImages(root: string, folder: string, out: string[], limit: nu
  * Every image under a game folder (e.g. "graphics/portraits"), in the game and every source,
  * the last-loaded source winning for a path, as in the game (the Images page and its pickers).
  */
-export async function listImages(cache: IndexCache, folder: string): Promise<{ path: string; sourceId: string }[]> {
+export async function listImages(cache: IndexCache, folder: string, visible?: Set<string>): Promise<{ path: string; sourceId: string }[]> {
   const rel = safeRel(folder)
   if (!rel) return []
   const byPath = new Map<string, string>()
   for (const s of cache.sources) {
     const found: string[] = []
     await walkImages(s.dir, rel, found, 5000)
-    for (const p of found) byPath.set(p, s.id)
+    // #67 U33: a path belongs to the last source that counts for the active mod (an unlisted mod replacing a vanilla image doesn't hide it)
+    for (const p of found) { const cur = byPath.get(p); if (!visible || !cur || visible.has(s.id) || !visible.has(cur)) byPath.set(p, s.id) }
   }
   return [...byPath].map(([p, sourceId]) => ({ path: p, sourceId })).sort((a, b) => a.path.localeCompare(b.path))
 }
@@ -79,11 +89,13 @@ export async function imagesInFolder(dir: string): Promise<string[]> {
 }
 
 /** A BMFont by settings.json key ("defaultFont") or by path. Reads the .fnt text and its page images. */
-export async function findFont(cache: IndexCache, keyOrPath: string): Promise<FontData | null> {
-  const fromSettings = cache.index.ui.fonts[keyOrPath]
+export async function findFont(cache: IndexCache, keyOrPath: string, visible?: Set<string>): Promise<FontData | null> {
+  // #67 U33: the key as the visible sources' settings.json set it
+  const layers = cache.index.ui.layers?.filter((l) => !visible || visible.has(l.sourceId))
+  const fromSettings = layers?.length ? [...layers].reverse().find((l) => l.fonts[keyOrPath])?.fonts[keyOrPath] ?? cache.index.ui.fonts[keyOrPath] : cache.index.ui.fonts[keyOrPath]
   const rel = safeRel(fromSettings ?? keyOrPath)
   if (!rel || !/\.fnt$/i.test(rel)) return null
-  for (const s of [...cache.sources].reverse()) {
+  for (const s of lookupOrder(cache.sources, visible)) {
     const abs = path.join(s.dir, ...rel.split('/'))
     if (!isFile(abs)) continue
     const fnt = await fsp.readFile(abs, 'utf8')

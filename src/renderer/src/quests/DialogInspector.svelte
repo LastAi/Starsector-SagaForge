@@ -1,5 +1,10 @@
 <script lang="ts">
+  import ConditionsEditor from './ConditionsEditor.svelte'
+  import { tokenField } from '../state/tokens.svelte'
+  import TokenButton from '../tokens/TokenButton.svelte'
   /** Inspector for a Dialog node: speaker, visual, text, displays and its options (PLAN.md §4.3, §4.9). */
+  import RefButton from '../ui/RefButton.svelte'
+  import { fullName } from '../../../shared/personname'
   import type { DialogNode, Display, OptionDef, QuestPlan, Visual } from '../../../shared/model'
   import { nextVariationToken, newPhrase, uniqueId } from '../../../shared/quest'
   import { app } from '../state/app.svelte'
@@ -20,16 +25,13 @@
   const nid = $derived(node.id)
   const ed = (fn: (n: DialogNode) => void) => editNode<DialogNode>(qid, nid, fn)
   const m = $derived(project.m!)
-  const people = $derived([...m.people.map((p) => ({ id: p.id, name: `${p.name.first} ${p.name.last}` })), ...(app.index?.people ?? [])])
+  const people = $derived([...m.people.map((p) => ({ id: p.id, name: fullName(p.name) })), ...(app.index?.people ?? [])])
   const factions = $derived([...m.factions.filter((f) => f.kind === 'addition').map((f) => f.id), ...(app.index?.factions.map((f) => f.id) ?? [])])
+  /** #60: the pickers' faction options keep their source (the mod's own have none: always shown). */
+  const factionOpts = $derived([...m.factions.filter((f) => f.kind === 'addition').map((f) => ({ id: f.id })), ...(app.index?.factions.map((f) => ({ id: f.id, definedBy: f.definedBy })) ?? [])])
   const templates = $derived(conditionTemplates(quest, factions, m.quests, bountyChoices(quest)))
   const items = $derived([...m.items.map((i) => ({ id: i.id, name: i.name })), ...(app.index?.items ?? [])])
-  const illus = $derived([...Object.keys(m.project.illustrations ?? {}).map((k) => ({ id: k, name: 'this mod' })), ...(app.index?.illustrations.filter((i) => i.category === 'illustrations').map((i) => ({ id: i.key, name: i.path })) ?? [])])
-  const tokens = $derived([
-    ...[...m.phrases, ...m.people.flatMap((p) => p.phrases), ...node.phrases].map((p) => ({ token: p.token, label: `${p.token} (phrase)` })),
-    ...quest.variables.map((v) => ({ token: `$global.${qid}_${v.name}`, label: `${v.name} (variable)` })),
-    ...app.defs.tokens.map((t) => ({ token: t.token, label: `${t.token} — ${t.sample}` }))
-  ])
+  const illus = $derived([...Object.keys(m.project.illustrations ?? {}).map((k) => ({ id: k, name: 'this mod' })), ...(app.index?.illustrations.filter((i) => i.category === 'illustrations').map((i) => ({ id: i.key, name: i.path, definedBy: i.definedBy })) ?? [])])
 
   let textArea = $state<HTMLTextAreaElement | null>(null)
   let text = $state('')
@@ -70,6 +72,11 @@
   async function addIllustration() {
     const [key] = await chooseImages('illustration', { current: node.visual.kind === 'illustration' ? node.visual.key : undefined })
     if (key) ed((n) => { if (n.visual.kind === 'illustration') n.visual.key = key })
+  }
+  /** #67 U4: the picture for a female player character. */
+  async function addFemaleIllustration() {
+    const [key] = await chooseImages('illustration', { current: node.visual.kind === 'illustration' ? node.visual.female?.key : undefined })
+    if (key) ed((n) => { if (n.visual.kind === 'illustration') n.visual.female = { category: 'illustrations', key } })
   }
 
   const DISPLAYS: { kind: Display['kind']; label: string; lib?: boolean }[] = [
@@ -165,7 +172,7 @@
   <Field label="Speaker" help="Who is talking, for the Person visual and the People page's Used by list. Empty: the narrator, or whoever the dialog already shows.">
     <IdInput value={node.speaker ?? ''} options={people} strict placeholder="(none)" onCommit={(v) => ed((n) => { n.speaker = v || undefined; if (n.visual.kind === 'person' && v) n.visual.person = v })} />
   </Field>
-  <Field label="Visual" for="dn-vis" help="What the right half of the dialog shows while this text is on screen. Keep leaves the previous picture.">
+  <Field label="Visual" ref="quests-visuals" for="dn-vis" help="What the right half of the dialog shows while this text is on screen. Keep leaves the previous picture.">
     <select id="dn-vis" value={node.visual.kind === 'none' ? 'keep' : node.visual.kind} onchange={(e) => setVisual(e.currentTarget.value as Visual['kind'])}>
       {#each VISUALS as v (v.kind)}<option value={v.kind}>{v.label}</option>{/each}
     </select>
@@ -182,6 +189,11 @@
     <Field label="Illustration" help="A picture registered in settings.json (vanilla's, another mod's, or your own: about 480×300). Choose… picks one by its picture, or imports your own (cropped and resized; registered on Export).">
       <IdInput value={node.visual.key} options={illus} strict onCommit={(x) => ed((n) => { if (n.visual.kind === 'illustration') n.visual.key = x })} />
       <button class="mini self" onclick={addIllustration} title="Choose by picture, or import your own (cropped and resized to 480×300)">Choose…</button>
+    </Field>
+    <!-- #67 U4 (task #81): another picture for a female player character -->
+    <Field label="Female player" help="Optional: the picture shown instead when the player character is female (e.g. a scene with the player's figure in it). Empty: everyone sees the one above. Plain rules (no SagaLib); try it in the preview with Test context › Player is.">
+      <IdInput value={node.visual.female?.key ?? ''} options={illus} strict onCommit={(x) => ed((n) => { if (n.visual.kind === 'illustration') n.visual.female = x ? { category: 'illustrations', key: x } : undefined })} />
+      <button class="mini self" onclick={addFemaleIllustration} title="Choose by picture, or import your own (cropped and resized to 480×300)">Choose…</button>
     </Field>
   {:else if node.visual.kind === 'planet' || node.visual.kind === 'mapMarker'}
     <Field label="Entity" help={node.visual.kind === 'planet' ? 'The planet to show large (the place the dialog is at, if empty).' : 'The entity the small map centres on, with a marker.'}>
@@ -200,11 +212,11 @@
 </div>
 
 <div class="sect">Text <span class="row">
-  <select value="" onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; if (v) insertToken(v) }}><option value="">+ token…</option>{#each tokens as t (t.token)}<option value={t.token}>{t.label}</option>{/each}</select>
+  <TokenButton /><RefButton ref="rules-tokens" title="What each token becomes: opens the reference" />
   <button class="mini" onclick={addVariation} title="Wording that changes with the situation (an inline phrase)">+ variation</button>
 </span></div>
 <p class="f-help">The text the player reads on the left of the dialog. "Speech in quotes," narration in second person. A blank line starts a new paragraph; a line with only OR starts a random variant. Tokens such as $playerName are filled in by the game.</p>
-<textarea bind:this={textArea} rows="7" bind:value={text} onblur={commitText} spellcheck="true" placeholder={'e.g. "Find them, and the Compact pays 60,000 credits."'}></textarea>
+<textarea bind:this={textArea} use:tokenField={{ label: 'the dialog text' }} rows="7" bind:value={text} onblur={commitText} spellcheck="true" placeholder={'e.g. "Find them, and the Compact pays 60,000 credits."'}></textarea>
 {#if node.phrases.length}
   {#each node.phrases as p, i (p.token)}
     <PhraseEditor phrase={p} {templates} onChange={(np) => ed((n) => { n.phrases[i] = np })} onRemove={() => ed((n) => { n.phrases.splice(i, 1); n.text = n.text.split(p.token).join('') })} />
@@ -215,6 +227,25 @@
     <input id="dn-hl" type="text" value={node.highlights.join(' | ')} placeholder="e.g. Kestrel belt | 60,000" onchange={(e) => { const v = e.currentTarget.value.split('|').map((s) => s.trim()).filter(Boolean); ed((n) => { n.highlights = v }) }} />
   </Field>
 </div>
+
+<!-- #67 U6: first-time and repeat text (a scene the player comes back to, e.g. with Back from a question) -->
+<div class="sect">When you come back {#if !node.repeat}<button class="mini" onclick={() => ed((n) => { n.repeat = { text: '', scope: 'visit' } })} title="Show a shorter text when the player returns to this node; the text above becomes the first-time text">+ repeat text</button>{:else}<button class="mini" onclick={() => ed((n) => { delete n.repeat })}>Remove</button>{/if}</div>
+{#if node.repeat}
+  <p class="f-help">The text above is shown the first time; this one when the player comes back to this node (a question's Back, a loop), with the same options and displays. Keep the scene's long description for the first time and a short line here.</p>
+  <Field label="Repeat text" for="dn-rt" help="What the player reads on a later visit to this node, instead of the text above.">
+    <textarea id="dn-rt" use:tokenField={{ label: 'the repeat text' }} rows="3" value={node.repeat.text} spellcheck="true" placeholder={'e.g. Tyger watches you from her cushion, waiting.'} onchange={(e) => { const v = e.currentTarget.value; ed((n) => { if (n.repeat) n.repeat.text = v }) }}></textarea>
+  </Field>
+  <div class="grid2">
+    <Field label="First time is" for="dn-rs" help="Per visit: the full text again the next time the player opens this dialog (nothing kept in the save). Once ever: the full text only once per playthrough (a saved flag).">
+      <select id="dn-rs" value={node.repeat.scope} onchange={(e) => { const v = e.currentTarget.value as 'visit' | 'ever'; ed((n) => { if (n.repeat) n.repeat.scope = v }) }}>
+        <option value="visit">once per visit</option><option value="ever">once ever</option>
+      </select>
+    </Field>
+    <Field label="Repeat highlights" for="dn-rh" help="Words in the repeat text drawn in the highlight color. Separate them with |.">
+      <input id="dn-rh" type="text" value={(node.repeat.highlights ?? []).join(' | ')} onchange={(e) => { const v = e.currentTarget.value.split('|').map((s) => s.trim()).filter(Boolean); ed((n) => { if (n.repeat) n.repeat.highlights = v.length ? v : undefined }) }} />
+    </Field>
+  </div>
+{/if}
 
 <div class="sect">Displays <select value="" onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ''; if (v) addDisplay(v as Display['kind']) }}><option value="">+ display…</option>{#each DISPLAYS as d (d.kind)}<option value={d.kind}>{d.label}{d.lib ? ' (SagaLib)' : ''}</option>{/each}</select></div>
 <p class="f-help">Panels drawn in the text column after the text, or after a paragraph: "Gained" lines, costs, a faction callout… Gains and losses also change the player's cargo, credits or reputation.</p>
@@ -233,21 +264,25 @@
       <input type="text" class="mono" value={d.variant} placeholder="variant id" onchange={(e) => { const v = e.currentTarget.value; ed((n) => { (n.displays[i] as { variant: string }).variant = v }) }} />
       <label class="chk"><input type="checkbox" checked={!!d.remove} onchange={(e) => { const v = e.currentTarget.checked; ed((n) => { (n.displays[i] as { remove?: boolean }).remove = v }) }} /> lost</label>
     {:else if d.kind === 'rep'}
-      <IdInput value={d.faction ?? ''} options={factions.map((f) => ({ id: f }))} width="130px" placeholder="faction" onCommit={(v) => ed((n) => { (n.displays[i] as { faction?: string }).faction = v })} />
+      <!-- H6: a faction, a named person (AdjustRepPerson), or the person you are talking to -->
+      <select title="Whose reputation" value={d.person === '$person' ? 'active' : d.person !== undefined ? 'person' : 'faction'} onchange={(e) => { const v = e.currentTarget.value; ed((n) => { const o = n.displays[i] as { faction?: string; person?: string }; if (v === 'faction') { delete o.person; o.faction = o.faction || factions[0] || '' } else { delete o.faction; o.person = v === 'active' ? '$person' : (m.people[0]?.id ?? '') } }) }}><option value="faction">faction</option><option value="person">person</option><option value="active">the person you're talking to</option></select>
+      {#if d.person === undefined}<IdInput value={d.faction ?? ''} options={factionOpts} width="130px" placeholder="faction" onCommit={(v) => ed((n) => { (n.displays[i] as { faction?: string }).faction = v })} />
+      {:else if d.person !== '$person'}<IdInput value={d.person} options={people} width="130px" placeholder="person id" onCommit={(v) => ed((n) => { (n.displays[i] as { person?: string }).person = v })} />{/if}
       <input type="number" value={d.amount} title="points (5 = +5)" onchange={(e) => { const v = Number(e.currentTarget.value); ed((n) => { (n.displays[i] as { amount: number }).amount = v }) }} />
     {:else if d.kind === 'text' || d.kind === 'heading'}
-      <input type="text" value={d.text} onchange={(e) => { const v = e.currentTarget.value; ed((n) => { (n.displays[i] as { text: string }).text = v }) }} />
+      <input type="text" use:tokenField={{ label: 'a display line' }} value={d.text} onchange={(e) => { const v = e.currentTarget.value; ed((n) => { (n.displays[i] as { text: string }).text = v }) }} />
       {#if d.kind === 'text'}<label class="chk"><input type="checkbox" checked={!!d.small} onchange={(e) => { const v = e.currentTarget.checked; ed((n) => { (n.displays[i] as { small?: boolean }).small = v }) }} /> small</label>{/if}
     {:else if d.kind === 'faction'}
-      <IdInput value={d.faction} options={factions.map((f) => ({ id: f }))} width="140px" onCommit={(v) => ed((n) => { (n.displays[i] as { faction: string }).faction = v })} />
+      <IdInput value={d.faction} options={factionOpts} width="140px" onCommit={(v) => ed((n) => { (n.displays[i] as { faction: string }).faction = v })} />
     {:else if d.kind === 'image'}
       <IdInput value={d.key} options={illus} width="140px" onCommit={(v) => ed((n) => { (n.displays[i] as { key: string }).key = v })} />
     {:else if d.kind === 'sound' || d.kind === 'music'}
-      <IdInput value={d.id} options={(d.kind === 'sound' ? app.index?.sounds : app.index?.music)?.map((s) => ({ id: s })) ?? []} width="160px" onCommit={(v) => ed((n) => { (n.displays[i] as { id: string }).id = v })} />
+      <IdInput value={d.id} options={(d.kind === 'sound' ? app.index?.sounds : app.index?.music)?.map((s) => ({ id: s })) ?? []} width="160px" onCommit={(v) => ed((n) => { (n.displays[i] as { id: string }).id = v })} /><RefButton ref="general-music" title="Music and sound ids: opens the reference" />
     {/if}
     <select class="at" title="Where in the text" value={String(d.at ?? 'end')} onchange={(e) => { const v = e.currentTarget.value; ed((n) => { n.displays[i].at = v === 'end' ? undefined : Number(v) }) }}>
       <option value="end">after the text</option>
       {#each Array(paraCount - 1) as _, k (k)}<option value={String(k)}>after paragraph {k + 1}</option>{/each}
+      {#if d.at != null && d.at >= paraCount - 1}<option value={String(d.at)}>after paragraph {d.at + 1} (there is none: shown after the text)</option>{/if}
     </select>
     <button class="mini" onclick={() => ed((n) => { n.displays.splice(i, 1) })}>✕</button>
     <div class="f-help dh">{DISPLAY_HELP[d.kind]}</div>
@@ -262,7 +297,7 @@
       {@const t = target(o.id)}
       <tr class:story={!!o.story}>
         <td class="num">{i + 1}</td>
-        <td><input type="text" value={o.text} onchange={(e) => { const v = e.currentTarget.value; const oid = o.id; edOpt(oid, (x) => { x.text = v }); autoOptionId(oid, v) }} /></td>
+        <td><input type="text" use:tokenField={{ label: `option ${o.id}` }} value={o.text} onchange={(e) => { const v = e.currentTarget.value; const oid = o.id; edOpt(oid, (x) => { x.text = v }); autoOptionId(oid, v) }} /></td>
         <td class="to muted">{t ? `→ ${t.type}` : '→ ?'}</td>
         <td class="btns"><button class="mini" onclick={() => (openOpt = openOpt === o.id ? null : o.id)} title="More settings">⋯</button><button class="mini" onclick={() => moveOption(o.id, -1)} disabled={i === 0}>↑</button><button class="mini" onclick={() => removeOption(o.id)}>✕</button></td>
       </tr>
@@ -287,14 +322,14 @@
             <Field label="Show once" help="Hides the option after it is picked: until the dialog closes, or for the rest of the playthrough.">
               <select value={o.showOnce ?? ''} onchange={(e) => { const v = e.currentTarget.value as '' | 'conversation' | 'ever'; edOpt(o.id, (x) => { x.showOnce = v || undefined }) }}><option value="">no</option><option value="conversation">once per conversation</option><option value="ever">once ever</option></select>
             </Field>
-            <Field label="Only show if" help="Condition lines that must all be true for the option to be listed.">
-              <LinesInput lines={o.showIf ?? []} {templates} onChange={(l) => edOpt(o.id, (x) => { x.showIf = l.length ? l : undefined })} />
+            <Field label="Only show if" ref="rules-commands" help="Condition lines that must all be true for the option to be listed.">
+              <ConditionsEditor lines={o.showIf ?? []} {templates} onChange={(l) => edOpt(o.id, (x) => { x.showIf = l.length ? l : undefined })} />
             </Field>
             <Field label="Mods" help="Only offered with / without optional mods (Saga › Mods): exported as SF_HasMod on the option's own small rule. Every combination of the optional mods must leave the node at least one option (Check).">
               <ModsCond compact value={o.mods} onChange={(v) => edOpt(o.id, (x) => { x.mods = v })} />
             </Field>
-            <Field label="Disabled if" help="Listed but greyed out (not pickable) while these conditions are true; empty = always.">
-              <div><label class="chk"><input type="checkbox" checked={!!o.disabledIf} onchange={(e) => { const v = e.currentTarget.checked; edOpt(o.id, (x) => { x.disabledIf = v ? [] : undefined }) }} /> shown greyed out</label>{#if o.disabledIf}<LinesInput lines={o.disabledIf} {templates} placeholder="(always)" onChange={(l) => edOpt(o.id, (x) => { x.disabledIf = l })} />{/if}</div>
+            <Field label="Disabled if" ref="rules-commands" help="Listed but greyed out (not pickable) while these conditions are true; empty = always.">
+              <div><label class="chk"><input type="checkbox" checked={!!o.disabledIf} onchange={(e) => { const v = e.currentTarget.checked; edOpt(o.id, (x) => { x.disabledIf = v ? [] : undefined }) }} /> shown greyed out</label>{#if o.disabledIf}<ConditionsEditor lines={o.disabledIf} {templates} placeholder="(always)" onChange={(l) => edOpt(o.id, (x) => { x.disabledIf = l })} />{/if}</div>
             </Field>
           </div>
         </td></tr>
@@ -304,10 +339,10 @@
 </table>
 {#if !node.options.length}<div class="muted small">No options: the dialog continues to the next node by itself.</div>{/if}
 
-<div class="sect">Extra conditions <span class="muted">added to this rule</span></div>
+<div class="sect">Extra conditions <span class="muted">added to this rule</span><RefButton ref="rules-commands" title="Rule commands and conditions: opens the reference" /></div>
 <p class="f-help">Condition lines (rules.csv syntax) that must also be true for this text to show. Most dialogs need none.</p>
-<LinesInput lines={node.conditions} {templates} onChange={(l) => ed((n) => { n.conditions = l })} />
-<div class="sect">Extra script lines</div>
+<ConditionsEditor lines={node.conditions} {templates} onChange={(l) => ed((n) => { n.conditions = l })} />
+<div class="sect">Extra script lines<RefButton ref="rules-commands" title="Rule commands: opens the reference" /></div>
 <p class="f-help">rules.csv script commands run when this text shows, before the options. Prefer an Action node; this is for commands the editor has no form for.</p>
 <LinesInput lines={node.script} onChange={(l) => ed((n) => { n.script = l })} placeholder="e.g. AdjustRep hegemony 5" />
 

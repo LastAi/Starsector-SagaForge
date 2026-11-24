@@ -1,0 +1,47 @@
+{
+  "format": 1,
+  "id": "sagaforge.fleet_response",
+  "label": "Fleet response",
+  "description": "Ends a fleet's comm-link dialog the vanilla way (as the Knights of Ludd's stop): the fleet lets the player go, attacks, or the player flees. The comm link is cut and the fleet screen (Engage, Leave) shows. Use it in an encounter's comm-link dialog (Encounters > Hail).",
+  "version": 2,
+  "changes": "The flee choice reads \"player flees\" (\"they\" was ambiguous).",
+  "requires": { "sagalib": "1.4.0" },
+  "summary": "{{response}}",
+  "fields": [
+    {
+      "key": "response",
+      "label": "Response",
+      "type": "choice",
+      "default": "fight",
+      "options": [
+        { "value": "release", "label": "let them go (the fleet leaves)" },
+        { "value": "fight", "label": "fight (power up weapons)" },
+        { "value": "flee", "label": "player flees (the fleet chases)" }
+      ],
+      "help": "Let them go: the fleet stops being hostile and flies off; its encounter's outcome is \"avoided\" (paid, talked out of it). Fight: the fleet turns hostile and the player can't leave; the fight's result is the encounter's outcome (a player much stronger than the fleet can still leave, as in vanilla). Player flees: the block on leaving is lifted and the fleet keeps chasing; a hail when it catches them can test \"The player fled from this fleet\"."
+    }
+  ],
+  "entry": "do",
+  "exits": [],
+  "nodes": [
+    {
+      "id": "do",
+      "type": "action",
+      "x": 0,
+      "y": 0,
+      "title": "Fleet response",
+      "ops": [
+        { "if": "response == release", "op": "line", "line": "SF_Despawn" },
+        { "if": "response == fight", "op": "line", "line": "MakeOtherFleetAllowDisengage sagaforge false" },
+        { "if": "response == fight", "op": "line", "line": "MakeOtherFleetHostile sagaforge true" },
+        { "if": "response == fight", "op": "line", "line": "MakeOtherFleetAggressive sagaforge true" },
+        { "if": "response == fight", "op": "line", "line": "MakeOtherFleetPreventDisengage sagaforge true" },
+        { "if": "response == flee", "op": "line", "line": "MakeOtherFleetPreventDisengage sagaforge false" },
+        { "if": "response == flee", "op": "line", "line": "MakeOtherFleetPreventDisengage hail false" },
+        { "if": "response == flee", "op": "line", "line": "$entity.sagaforge_fled = true" }
+      ]
+    },
+    { "id": "cut", "type": "link", "x": 260, "y": 0, "mode": "close", "toFleet": true, "target": "" }
+  ],
+  "edges": [{ "from": "do", "handle": "next", "to": "cut" }]
+}

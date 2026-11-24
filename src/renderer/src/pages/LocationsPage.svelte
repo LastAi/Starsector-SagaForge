@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
+  import RefButton from '../ui/RefButton.svelte'
+  import { fullName } from '../../../shared/personname'
   import VersionStrip from '../ui/VersionStrip.svelte'
   import { itemVer, setDescription, descriptionText } from '../state/itemver.svelte'
   import { dropGroupChoices } from '../../../shared/pools'
@@ -19,6 +22,9 @@
   import ModsChip from '../ui/ModsChip.svelte'
   import ShowAllMods from '../ui/ShowAllMods.svelte'
   import { mods } from '../state/mods.svelte'
+  import { factionColor } from '../../../shared/modlist'
+  import { openReference } from '../ui/reference'
+  import { codePlacedSystems, RANDOMLY_PLACED } from '../../../shared/codeplaced'
   import { defaultLockUntil, guardsOf, protectWreck, questsSendingTo } from '../../../shared/patterns'
   import { lastRelease } from '../../../shared/release'
 
@@ -45,6 +51,87 @@
   const vanillaSys = $derived(mods.filter('systems', index.systems.filter((s) => s.x != null), (s) => s.definedBy))
   let mapEl = $state<SVGSVGElement | null>(null)
   let vb = $state({ x: -24000, y: -18000, w: 48000, h: 30000 })
+  /**
+   * #67 U26 (user, 2026-11-21): the map shows who owns what. Each system's star as in game (colour and
+   * size by its type; black with a light rim for a black hole; an empty circle for no star or a
+   * nebula), a ring in the colour of the faction with the most market size there, and on hover its
+   * markets coloured by faction (as the game's map tooltip).
+   */
+  /** `entity`: the market's planet or station (its first entity), to focus it in the System view. */
+  interface SysLook { star: string | null; radius: number; markets: { name: string; size: number; faction: string; entity: string }[] }
+  // #67 U33: the read-only list of existing systems (the map's: vanilla and the listed mods, or all with Show all)
+  let sysFilter = $state('')
+  const existingList = $derived(mods.filter('systems', index.systems, (s) => s.definedBy).filter((s) => !sysFilter.trim() || s.name.toLowerCase().includes(sysFilter.trim().toLowerCase())).sort((a, b) => a.name.localeCompare(b.name)))
+  const srcLabel = (id: string) => (id === 'starsector-core' ? 'vanilla' : index.sources.find((s) => s.id === id.replace(/^code:/, ''))?.name ?? id)
+  // #67 U33: the systems' code and markets of the sources that count (vanilla, this mod, its listed mods), or every one with Show all
+  const codeSystemsShown = $derived(mods.filter('systems', index.codeSystems ?? [], (c) => c.sourceId))
+  const findCode = (id: string, name: string) => codeSystemsShown.find((c) => c.id === id || c.name.toLowerCase() === name.toLowerCase()) ?? null
+  const marketsIn = (id: string, name: string) => mods.filter('systems', index.markets, (mk) => mk.definedBy).filter((mk) => mk.system === id || mk.system?.toLowerCase() === name.toLowerCase())
+  const vanLook = (s: { id: string; name: string }): SysLook => {
+    const c = findCode(s.id, s.name)
+    return { star: c?.star?.type ?? (c ? null : 'unknown'), radius: c?.star?.radius ?? 500, markets: marketsIn(s.id, s.name).map((mk) => ({ name: mk.name, size: mk.size, faction: mk.faction, entity: mk.entities[0] ?? mk.id })).sort((a, b) => b.size - a.size) }
+  }
+  const ownLook = (s: StarSystemDef): SysLook => ({
+    star: s.starless || !s.star ? null : s.star.type, radius: s.star?.radius ?? 500,
+    markets: s.entities.flatMap((e) => (e.market ? [{ name: e.market.name, size: e.market.size, faction: e.market.faction, entity: e.id }] : [])).sort((a, b) => b.size - a.size)
+  })
+  /** The faction with the most market size in the system (the ring's colour), or null. */
+  const owner = (l: SysLook): string | null => {
+    const by = new Map<string, number>()
+    for (const mk of l.markets) by.set(mk.faction, (by.get(mk.faction) ?? 0) + mk.size)
+    return [...by.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+  }
+  const isHole = (t: string | null) => !!t && /black_hole/.test(t)
+  const isNebula = (t: string | null) => !t || /nebula/.test(t)
+  /** The star's dot size: by its radius (a giant is bigger), within limits. */
+  const starR = (l: SysLook) => (vb.w / 300) * Math.min(1.8, Math.max(0.7, l.radius / 600))
+  const fname = (id: string) => index.factions.find((f) => f.id === id)?.name ?? id
+  /**
+   * #67 (user, 2026-11-21): an info box in the map's corner instead of a tooltip: the last system
+   * hovered stays a few seconds (and while the mouse is on the box), so its markets can be clicked.
+   */
+  let hov = $state<{ id: string; own: boolean; name: string; look: SysLook } | null>(null)
+  let hovTimer: ReturnType<typeof setTimeout> | undefined
+  const KEEP_MS = 5000
+  const hover = (id: string, own: boolean, name: string, look: SysLook) => { clearTimeout(hovTimer); hov = { id, own, name, look } }
+  const unhover = () => { clearTimeout(hovTimer); hovTimer = setTimeout(() => (hov = null), KEEP_MS) }
+  /** The System view's focus: a body or entity drawn highlighted and centred (a market clicked in the info box). */
+  let focusBody = $state<string | null>(null)
+  /** The focused vanilla body, what it orbits and the market on it (the side panel's details). */
+  const focusInfo = $derived.by(() => {
+    const b = focusBody && code ? code.bodies.find((x) => x.id === focusBody) : null
+    if (!b || !code) return null
+    const orbits = b.focus === code.star?.id ? 'the star' : code.bodies.find((x) => x.id === b.focus)?.name ?? ''
+    return { body: b, orbits, market: index.markets.find((mk) => mk.entities.includes(b.id) || mk.id === b.id) ?? null }
+  })
+  function openMarket(sysId: string, own: boolean, entity: string) {
+    if (own) { app.selected.locations = sysId; peek = null; entSel = entity; view = 'system' } else openVanilla(sysId)
+    focusBody = entity
+    hov = null
+    // after the System view has fitted itself to the system
+    setTimeout(() => {
+      const s = m?.systems.find((x) => x.id === app.selected.locations)
+      const b = code?.bodies.find((x) => x.id === entity)
+      const p = s && s.entities.some((e) => e.id === entity) ? entityPos(s, entity, code) : b && code ? bodyPos(code, b) : null
+      if (!p) return
+      const w = Math.min(svb.w, 9000), h = (w * svb.h) / svb.w
+      svb = { x: p.x - w / 2, y: p.y - h / 2, w, h }
+    }, 120)
+  }
+  /**
+   * #67 (user, 2026-11-21): labels grow as you zoom in (readable), within limits; sizes in screen px.
+   * `pxU` = map units per screen pixel; the text starts right of the faction ring.
+   */
+  let mapPx = $state(900)
+  $effect(() => { if (!mapEl) return; const ro = new ResizeObserver(() => (mapPx = mapEl!.clientWidth || 900)); ro.observe(mapEl); return () => ro.disconnect() })
+  const pxU = $derived(vb.w / mapPx)
+  let fitW = 48000
+  const labelPx = $derived(Math.min(20, Math.max(10, 11 * Math.pow(fitW / vb.w, 0.4))))
+  const labelX = (cx: number, look: SysLook, scale: number) => cx + starR(look) * scale * (owner(look) ? 1.9 : 1) + 5 * pxU
+  /** #67: the normal hyperspace area (settings.json sectorWidth/Height, centred on 0); outside it lie hidden places. */
+  const sector = $derived(index.sectorSize ?? null)
+  /** #67: systems vanilla makes in its compiled code at a fixed place (not in starmap.json or data/scripts), per game version's API source. */
+  const placedInCode = $derived(sector ? codePlacedSystems(sector[0], sector[1]) : [])
   // start with every known system in view (y is flipped: the game's y grows upwards)
   let fitted = false
   $effect(() => {
@@ -54,6 +141,7 @@
     const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys)
     const w = (x1 - x0) * 1.25, h = Math.max((y1 - y0) * 1.25, w * 0.6)
     vb = { x: (x0 + x1) / 2 - w / 2, y: (y0 + y1) / 2 - h / 2, w, h }
+    fitW = w
   })
   let dragSys: string | null = null
   let panFrom: { x: number; y: number; vx: number; vy: number } | null = null
@@ -87,7 +175,7 @@
   // ---- vanilla systems read from their Java source (R14): additions draw on top of them; any
   // other vanilla system can be looked at ("peek") from the hyperspace map
   let peek = $state<string | null>(null)
-  const code = $derived(index.codeSystems?.find((c) => c.id === (sys ? (sys.kind === 'existing' ? sys.id : '') : peek ?? '')) ?? null)
+  const code = $derived(codeSystemsShown.find((c) => c.id === (sys ? (sys.kind === 'existing' ? sys.id : '') : peek ?? '')) ?? null)
   const peekInfo = $derived(peek && !sys ? index.systems.find((s) => s.id === peek) ?? null : null)
   const codeTypes = $derived(new Map(index.planetTypes.map((t) => [t.id, t])))
   const tcolor = (type: string, fallback: string) => { const c = codeTypes.get(type)?.iconColor; return c ? `rgb(${c[0]},${c[1]},${c[2]})` : fallback }
@@ -100,6 +188,7 @@
     const own = m?.systems.find((s) => s.kind === 'existing' && s.id === id)
     if (own) { app.selected.locations = own.id; peek = null } else { app.selected.locations = null; peek = id }
     entSel = null
+    focusBody = null
     view = 'system'
   }
 
@@ -170,7 +259,15 @@
     const r = sysEl!.getBoundingClientRect()
     return { x: svb.x + ((ev.clientX - r.left) / r.width) * svb.w, y: svb.y + ((ev.clientY - r.top) / r.height) * svb.h }
   }
+  /** #67 (user, 2026-11-21): dragging empty space pans the System view, as on the hyperspace map. */
+  let sysPan: { x: number; y: number; vx: number; vy: number } | null = null
+  function sysDown(ev: MouseEvent) { if (ev.button === 0) sysPan = { x: ev.clientX, y: ev.clientY, vx: svb.x, vy: svb.y } }
   function sysMove(ev: MouseEvent) {
+    if (sysPan && sysEl) {
+      const k = svb.w / (sysEl.clientWidth || 1)
+      svb = { ...svb, x: sysPan.vx - (ev.clientX - sysPan.x) * k, y: sysPan.vy - (ev.clientY - sysPan.y) * k }
+      return
+    }
     if (!sys || !sysEl) return
     const pt = toSys(ev)
     if (dragHandle) {
@@ -196,7 +293,7 @@
     const id = dragEnt
     edSys((s) => { const en = s.entities.find((q) => q.id === id); if (en) { en.orbit.angle = (ang + 360) % 360; if (rad != null) en.orbit.radius = rad } })
   }
-  const endDrag = () => { dragEnt = null; dragHandle = null }
+  const endDrag = () => { dragEnt = null; dragHandle = null; sysPan = null }
 
   // ---- create
   let showNew = $state(app.smokeModal === 'new') // screenshot mode can open it
@@ -280,7 +377,7 @@
     app.selected.locations = null
   }
   const factions = $derived([...(m?.factions.filter((f) => f.kind === 'addition').map((f) => ({ id: f.id })) ?? []), ...index.factions])
-  const fcolor = (id: string) => { const f = index.factions.find((x) => x.id === id); return f?.color ? `rgb(${f.color[0]},${f.color[1]},${f.color[2]})` : '#8a94a6' }
+  const fcolor = (id: string) => { const f = index.factions.find((x) => x.id === id); const c = f ? factionColor(f, mods.visible) : null; return c ? `rgb(${c[0]},${c[1]},${c[2]})` : '#8a94a6' }
   const listEdit = (key: 'conditions' | 'industries' | 'submarkets' | 'people', fn: (l: string[]) => string[]): void => edEnt((e) => { if (e.market) e.market[key] = fn(e.market[key]) })
   const MARKET_LISTS: { key: 'conditions' | 'industries' | 'submarkets'; label: string; help: string; options: () => { id: string; name?: string }[] }[] = [
     { key: 'conditions', label: 'Conditions', help: 'Planet and colony conditions (resources, hazards, population_N) shown in the colony\'s info; they set what it produces.', options: () => index.conditions },
@@ -289,7 +386,8 @@
   ]
   // ---- wreck protection (patterns.ts)
   let lockUntil = $state('')
-  $effect(() => { if (ent?.kind === 'derelict') lockUntil = defaultLockUntil(m?.quests ?? [], ent.id) ?? '' })
+  const lockFor = $derived(ent?.kind === 'derelict' ? ent.id : null)
+  $effect(() => { const id = lockFor; if (id) lockUntil = untrack(() => defaultLockUntil(m?.quests ?? [], id) ?? '') })
   function protect() {
     if (!ent) return
     const eid = ent.id
@@ -347,6 +445,15 @@
         {#each sys.entities as e (e.id)}<li class:on={entSel === e.id}><button class="li" onclick={() => { entSel = e.id; view = 'system' }}>{e.orbit.focus === 'star' ? '' : '· '}{e.name}<ModsChip itemKey={`entity:${e.id}`} /><span class="sub">{e.kind}{e.market ? ' · market' : ''}</span></button></li>{/each}
       </ul>
     {/if}
+    <!-- #67 U33 (user, 2026-11-22): the systems of vanilla and the listed mods, read-only, like People's existing characters -->
+    <div class="sect">Existing systems (read-only)</div>
+    <div class="pad2"><input type="search" placeholder="Filter systems…" bind:value={sysFilter} /></div>
+    <ul class="list">
+      {#each existingList as s (s.id)}
+        {@const own = owner(vanLook(s))}
+        <li class:on={peek === s.id || sel === s.id}><button class="li" onclick={() => openVanilla(s.id)}><span class="swatch" style="background:{own ? fcolor(own) : 'transparent'}"></span>{s.name}<span class="sub">{srcLabel(s.definedBy)}</span></button></li>
+      {:else}<li class="muted small pad">{sysFilter ? 'None match.' : 'None.'}</li>{/each}
+    </ul>
   </aside>
   <section class="main">
     {#if sys && m?.systems.some((s) => s.id === sys.id)}<VersionStrip kind="system" id={sys.id} what="this system and its markets" />{/if}
@@ -354,30 +461,77 @@
       <ShowAllMods list="systems" />
       <div class="seg"><button class:on={view === 'map'} onclick={() => (view = 'map')}>Hyperspace map</button><button class:on={view === 'system'} onclick={() => (view = 'system')} disabled={!sys && !peekInfo}>System view</button></div>
       {#if near && view === 'map'}<span class="muted">nearest: <b>{near.sys.name}</b> {near.ly.toFixed(1)} ly</span>{/if}
+      {#if view === 'map'}<span class="muted small rnd" title={`Placed somewhere new every game, so not on this map:\n• ${RANDOMLY_PLACED.join('\n• ')}`}>ⓘ {RANDOMLY_PLACED.length} not shown</span>{/if}
       <span class="spacer"></span><span class="muted small">{view === 'map' ? 'Drag your systems; click a vanilla system to look at it. Wheel zooms, drag pans.' : sys ? 'Drag bodies along their orbits (Shift: also their distance); drag the round handles to resize. Wheel zooms.' : 'Read-only. Wheel zooms.'}</span>
     </div>
     {#if view === 'map'}
       <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <svg bind:this={mapEl} class="map" viewBox="{vb.x} {vb.y} {vb.w} {vb.h}" onmousedown={(e) => mapDown(e)} onmousemove={mapMove} onmouseup={mapUp} onmouseleave={mapUp} onwheel={(e) => wheel(e, 'map')}>
+      {#snippet glyph(cx: number, cy: number, look: SysLook, scale: number, picked: boolean)}
+        {@const r = starR(look) * scale}
+        {@const own = owner(look)}
+        <!-- #67: one solid area as big as the ring (at least 10 px) takes hover and clicks; then the faction ring (most market size), then the star as in game -->
+        <circle class="hit" {cx} {cy} r={Math.max(r * 2.1, pxU * 10)} fill="transparent" />
+        {#if own}<circle {cx} {cy} r={r * 1.9} fill="none" stroke={fcolor(own)} stroke-width={vb.w / 900} />{/if}
+        {#if look.star === 'unknown'}
+          <circle {cx} {cy} r={r} fill="#4a6a8a" />
+        {:else if isHole(look.star)}
+          <circle {cx} {cy} r={r} fill="#000" stroke="#d9c7ff" stroke-width={vb.w / 1600} />
+        {:else if isNebula(look.star)}
+          <circle {cx} {cy} r={r} fill="none" stroke="#9aa8b8" stroke-width={vb.w / 1500} />
+        {:else}
+          <circle {cx} {cy} r={r} fill={tcolor(look.star!, '#f5d27a')} />
+        {/if}
+        {#if picked}<circle {cx} {cy} r={r * 2.5} fill="none" stroke="#fff" stroke-width={vb.w / 1400} />{/if}
+      {/snippet}
+      <div class="mapwrap">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <svg bind:this={mapEl} class="map" viewBox="{vb.x} {vb.y} {vb.w} {vb.h}" onmousedown={(e) => mapDown(e)} onmousemove={mapMove} onmouseup={mapUp} onmouseleave={() => mapUp()} onwheel={(e) => wheel(e, 'map')}>
+        {#if sector}
+          <!-- #67: the edge of normal hyperspace (sectorWidth × sectorHeight); hidden places lie outside it -->
+          <rect x={-sector[0] / 2} y={-sector[1] / 2} width={sector[0]} height={sector[1]} fill="none" stroke="#4a5a6c" stroke-width={pxU * 1.2} stroke-dasharray="{pxU * 6} {pxU * 5}" />
+          <text x={-sector[0] / 2 + pxU * 6} y={-sector[1] / 2 - pxU * 6} font-size={pxU * 11} fill="#5f7184">Edge of normal hyperspace</text>
+        {/if}
+        {#each placedInCode as c (c.name)}
+          <!-- #67: vanilla systems made in its code at a fixed place (Limbo, the Tri-Tachyon black site) -->
+          <g class="codesys"><title>{c.name}: {c.note} Read-only; not part of the game's files, so it can't be looked at here.</title>
+            <circle cx={c.x} cy={-c.y} r={pxU * 4} fill="none" stroke="#8a7aa8" stroke-width={pxU * 1.2} stroke-dasharray="{pxU * 2} {pxU * 2}" />
+            <text x={c.x + pxU * 8} y={-c.y + labelPx * pxU * 0.35} font-size={labelPx * pxU} fill="#8a7aa8" font-style="italic">{c.name}</text>
+          </g>
+        {/each}
         {#each vanillaSys as s (s.id)}
+          {@const look = vanLook(s)}
           <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-          <g class="van" onmousedown={(e) => e.stopPropagation()} onclick={() => openVanilla(s.id)}>
-            <title>{s.name}: click to look at it (read-only), or add to it</title>
-            <circle cx={s.x} cy={-(s.y ?? 0)} r={vb.w / 300} fill={peek === s.id ? '#9fc4e8' : '#4a6a8a'} />
-            <text x={(s.x ?? 0) + vb.w / 220} y={-(s.y ?? 0) + vb.w / 400} font-size={vb.w / 110} fill="#7f93a8">{s.name}</text>
+          <g class="van" onmousedown={(e) => e.stopPropagation()} onclick={() => openVanilla(s.id)} onmouseenter={() => hover(s.id, false, s.name, look)} onmouseleave={unhover}>
+            {@render glyph(s.x ?? 0, -(s.y ?? 0), look, 1, peek === s.id)}
+            <text x={labelX(s.x ?? 0, look, 1)} y={-(s.y ?? 0) + labelPx * pxU * 0.35} font-size={labelPx * pxU} fill={owner(look) ? fcolor(owner(look)!) : '#7f93a8'} opacity="0.9">{s.name}</text>
           </g>
         {/each}
         {#each m?.systems.filter((s) => s.kind === 'new' && s.hyperspace) ?? [] as s (s.id)}
+          {@const look = ownLook(s)}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <g onmousedown={(e) => mapDown(e, s.id)} class="mine" class:on={s.id === sel}>
-            <circle cx={s.hyperspace![0]} cy={-s.hyperspace![1]} r={vb.w / 160} fill="#3fa7a0" stroke={s.id === sel ? '#fff' : 'none'} stroke-width={vb.w / 1200} />
-            <text x={s.hyperspace![0] + vb.w / 120} y={-s.hyperspace![1] + vb.w / 350} font-size={vb.w / 85} fill="#bff">{s.name}</text>
+          <g onmousedown={(e) => mapDown(e, s.id)} class="mine" class:on={s.id === sel} onmouseenter={() => hover(s.id, true, s.name, look)} onmouseleave={unhover}>
+            {@render glyph(s.hyperspace![0], -s.hyperspace![1], look, 1.4, s.id === sel)}
+            <text x={labelX(s.hyperspace![0], look, 1.4)} y={-s.hyperspace![1] + labelPx * 1.15 * pxU * 0.35} font-size={labelPx * 1.15 * pxU} fill="#bff">{s.name}</text>
           </g>
         {/each}
       </svg>
+      {#if hov}
+        {@const h = hov}
+        <!-- #67: the last system hovered, in the map's corner (stays a few seconds, and while the mouse is on it); its markets open the System view on them -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="mapinfo" onmouseenter={() => clearTimeout(hovTimer)} onmouseleave={unhover}>
+          <div class="mt-h"><button class="lnk" onclick={() => (h.own ? ((app.selected.locations = h.id), (peek = null), (view = 'system')) : openVanilla(h.id))}>{h.name}</button></div>
+          <div class="muted small">{h.look.star === 'unknown' ? 'star unknown (placed by a mod in code)' : isHole(h.look.star) ? 'black hole' : isNebula(h.look.star) ? 'no star (nebula or empty)' : (planetInfo(h.look.star!)?.name ?? h.look.star)}</div>
+          {#each h.look.markets as mk (mk.name)}
+            <div><button class="lnk" style="color:{fcolor(mk.faction)}" title="Open the System view on {mk.name}" onclick={() => openMarket(h.id, h.own, mk.entity)}>{mk.name}</button> <span class="muted small">size {mk.size} · {fname(mk.faction)}</span></div>
+          {:else}<div class="muted small">No markets</div>{/each}
+          <div class="muted small">Click the system or a market to look at it.</div>
+        </div>
+      {/if}
+      </div>
     {:else if sys || peekInfo}
       <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <svg bind:this={sysEl} class="map sys" viewBox="{svb.x} {svb.y} {svb.w} {svb.h}" onmousemove={sysMove} onmouseup={endDrag} onmouseleave={endDrag} onwheel={(e) => wheel(e, 'sys')}>
+      <svg bind:this={sysEl} class="map sys" viewBox="{svb.x} {svb.y} {svb.w} {svb.h}" onmousedown={sysDown} onmousemove={sysMove} onmouseup={endDrag} onmouseleave={endDrag} onwheel={(e) => wheel(e, 'sys')}>
         {#if sys?.kind === 'new' && sys.star}
           {@const sc = tcolor(sys.star.type, '#f5d27a')}
           <circle cx="0" cy="0" r={sys.star.radius + sys.star.corona} fill={sc} opacity="0.15" />
@@ -399,8 +553,11 @@
               <circle cx={f.x} cy={f.y} r={b.orbitRadius} fill="none" stroke={b.kind === 'ring' ? '#6a5f48' : '#555'} stroke-width={b.width || 150} opacity="0.25" />
             {:else}
               <circle cx={f.x} cy={f.y} r={b.orbitRadius} fill="none" stroke="#252c36" stroke-width={svb.w / 1100} />
-              <circle cx={p.x} cy={p.y} r={b.kind === 'planet' ? Math.max(b.radius, svb.w / 300) : svb.w / 300} fill={b.kind === 'planet' ? tcolor(b.type, '#56677a') : '#7a8590'} opacity="0.55"><title>{b.name || b.type} ({b.id || 'no id'}) · {b.type} · vanilla, read-only</title></circle>
-              {#if b.kind === 'planet' || b.kind === 'jumpPoint' || (b.kind === 'custom' && b.name)}<text x={p.x + svb.w / 150} y={p.y} font-size={b.focus === code.star?.id ? svb.w / 90 : svb.w / 105} fill="#93a0ae" dominant-baseline="middle">{b.name}</text>{/if}
+              <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+              <circle cx={p.x} cy={p.y} r={b.kind === 'planet' ? Math.max(b.radius, svb.w / 300) : svb.w / 300} fill={b.kind === 'planet' ? tcolor(b.type, '#56677a') : '#7a8590'} opacity="0.55" class:pick={!!b.id} onmousedown={(ev) => { if (b.id) ev.stopPropagation() }} onclick={() => { if (b.id) { focusBody = focusBody === b.id ? null : b.id; entSel = null } }}><title>{b.name || b.type} ({b.id || 'no id'}) · {b.type} · vanilla, read-only. Click for details.</title></circle>
+              {#if b.kind === 'planet' || b.kind === 'jumpPoint' || (b.kind === 'custom' && b.name)}<text x={p.x + svb.w / 150} y={p.y} font-size={b.focus === code.star?.id ? svb.w / 90 : svb.w / 105} fill={b.id && b.id === focusBody ? '#fff' : '#93a0ae'} dominant-baseline="middle">{b.name}</text>{/if}
+              <!-- #67: the market picked in the map's info box -->
+              {#if b.id && b.id === focusBody}<circle cx={p.x} cy={p.y} r={Math.max(b.kind === 'planet' ? b.radius : 0, svb.w / 300) + svb.w / 120} fill="none" stroke="#fff" stroke-width={svb.w / 600} stroke-dasharray="{svb.w / 200} {svb.w / 300}" />{/if}
             {/if}
           {/each}
           {#if !code.bodies.length}<text x="0" y={-svb.h / 4} font-size={svb.w / 70} fill="#8a94a6" text-anchor="middle">{code.star ? '' : `${code.name}'s bodies are made by the game's code and can't be read`}</text>{/if}
@@ -443,7 +600,20 @@
     {/if}
   </section>
   <aside class="right">
-    {#if typeSel && (m?.types?.entities.some((t) => t.id === typeSel) || m?.types?.planets.some((t) => t.id === typeSel))}
+    {#if view === 'system' && focusInfo}
+      {@const fb = focusInfo}
+      <!-- #67 (user, 2026-11-21): a vanilla planet or station clicked in the System view -->
+      <div class="bodyinfo">
+        <div class="bi-h"><b>{fb.body.name || fb.body.id}</b> <span class="mono muted small">{fb.body.id}</span><span class="spacer"></span><button class="mini" onclick={() => (focusBody = null)}>Close</button></div>
+        <div class="small">{fb.body.kind === 'planet' ? (planetInfo(fb.body.type)?.name ?? fb.body.type) : fb.body.kind === 'custom' ? (entityInfo(fb.body.type)?.name ?? fb.body.type) : fb.body.kind}{fb.orbits ? ` · orbits ${fb.orbits}` : ''}</div>
+        {#if fb.market}
+          <div class="small">Market: <span style="color:{fcolor(fb.market.faction)}">{fb.market.name}</span> · size {fb.market.size} · {fname(fb.market.faction)}</div>
+          {#if fb.market.industries.length}<div class="muted small">{fb.market.industries.length} industries · {fb.market.conditions.length} conditions</div>{/if}
+        {:else}<div class="muted small">No market.</div>{/if}
+        <div class="muted small">Vanilla, read-only. Your own stations and planets can orbit it (add to this system, then pick it under "Orbits").</div>
+      </div>
+    {/if}
+    {#if typeSel &&(m?.types?.entities.some((t) => t.id === typeSel) || m?.types?.planets.some((t) => t.id === typeSel))}
       <TypeForm id={typeSel} onDeleted={() => (typeSel = null)} />
       <p><button class="mini" onclick={() => (typeSel = null)}>Close</button></p>
     {:else if sys && ent}
@@ -468,8 +638,14 @@
         <Field label="Kind" help="What it is; fixed when it is added.">
           <span>{ENTITY_KINDS.find((k) => k.kind === ent.kind)?.label ?? ent.kind}</span>
         </Field>
-        <Field label="Type" help={ent.kind === 'planet' || ent.kind === 'moon' ? 'The planet type: its look and its surface in the planet info (barren, jungle, gas giant…).' : ent.kind === 'asteroidBelt' || ent.kind === 'ring' ? 'Belts and rings have no type.' : 'The custom entity type from custom_entities.json: its look and vanilla\'s own dialog for it (a wreck can be salvaged, a relay hacked).'}>
+        <Field label="Type" ref={ent.kind === 'planet' || ent.kind === 'moon' ? 'locations-planet-types' : ent.kind === 'derelict' ? undefined : 'locations-entity-types'} help={ent.kind === 'planet' || ent.kind === 'moon' ? 'The planet type: its look and its surface in the planet info (barren, jungle, gas giant…).' : ent.kind === 'asteroidBelt' || ent.kind === 'ring' ? 'Belts and rings have no type.' : 'The custom entity type from custom_entities.json: its look and vanilla\'s own dialog for it (a wreck can be salvaged, a relay hacked).'}>
           {#if ent.kind === 'asteroidBelt' || ent.kind === 'ring'}<span class="muted">{ent.kind === 'ring' ? 'ring band' : 'asteroid belt'}</span>
+          {:else if ent.kind === 'derelict'}
+            <!-- H1: a derelict is built from a ship variant (SagaLib's SystemBuilder); "wreck" = a random hull -->
+            <div class="typerow">
+              <IdInput value={ent.type || 'wreck'} options={[{ id: 'wreck', name: 'wreck (a random independent hull)' }, ...(index.variants ?? [])]} width="260px" placeholder="variant id, or wreck" strict onCommit={(v) => edEnt((x) => { x.type = v.trim() || 'wreck' })} />
+            </div>
+            <span class="small muted">The ship it is the wreck of: a variant id (e.g. tarsus_Standard), or "wreck" for a random independent hull.</span>
           {:else}
             {@const isPlanet = ent.kind === 'planet' || ent.kind === 'moon'}
             <div class="typerow">
@@ -509,7 +685,8 @@
         {/if}
       </div>
       <!-- SagaLib 1.1 (R25): an object that appears during a quest, optionally in another's place -->
-      {@const apMode = !ent.appears ? 'start' : ent.appears.quest ? 'stage' : 'action'}
+      <!-- #67 (user, 2026-11-22): the mode is whether a quest is named at all (as the checks read it); an empty quest is still "at a stage" -->
+      {@const apMode = !ent.appears ? 'start' : ent.appears.quest !== undefined ? 'stage' : 'action'}
       {@const apQuest = m?.quests.find((q) => q.id === ent.appears?.quest)}
       <div class="grid2">
         <Field label="Appears" for="le-ap" help="From the start (built with the system), when a quest reaches a stage, or only when an Action node places it. Before that it isn't in the game at all, so the player can't find it early. Needs SagaLib 1.1 unless From the start.">
@@ -520,7 +697,7 @@
         {#if apMode === 'stage'}
           <Field label="At" help="The quest and stage at which it is placed (once; it stays after).">
             <div class="typerow">
-              <select value={ent.appears?.quest ?? ''} onchange={(e) => { const v = e.currentTarget.value; edEnt((x) => { x.appears = { quest: v, stage: '' } }) }}>{#each questsWithStages as q (q.id)}<option value={q.id}>{q.title}</option>{/each}</select>
+              <select value={ent.appears?.quest ?? ''} onchange={(e) => { const v = e.currentTarget.value; edEnt((x) => { x.appears = { quest: v, stage: '' } }) }}><option value="">{questsWithStages.length ? '— quest —' : 'no quests yet'}</option>{#each questsWithStages as q (q.id)}<option value={q.id}>{q.title}</option>{/each}</select>
               <select value={ent.appears?.stage ?? ''} onchange={(e) => { const v = e.currentTarget.value; edEnt((x) => { x.appears = { quest: x.appears?.quest, stage: v } }) }}><option value="">—</option>{#each apQuest?.stages ?? [] as st (st.id)}<option value={st.id}>{st.title}</option>{/each}</select>
             </div>
           </Field>
@@ -532,8 +709,8 @@
         {/if}
         {#if (ent.kind === 'planet' || ent.kind === 'moon') && !ent.market}
           <!-- RC-F1: an uncolonised planet's conditions -->
-          <Field label="Conditions" help="What the planet info shows for an uncolonised planet: resources, hazards, ruins (ruins_scattered …). Needs SagaLib 1.1.">
-            <div class="chips">{#each ent.conditions ?? [] as c (c)}<span class="chip">{c}<button class="x" onclick={() => edEnt((x) => { x.conditions = (x.conditions ?? []).filter((y) => y !== c); if (!x.conditions.length) x.conditions = undefined })}>✕</button></span>{/each}
+          <Field label="Conditions" ref="locations-conditions" help="What the planet info shows for an uncolonised planet: resources, hazards, ruins (ruins_scattered …). Needs SagaLib 1.1.">
+            <div class="chips">{#each ent.conditions ?? [] as c (c)}<span class="chip" title={c}>{index.conditions.find((x) => x.id === c)?.name ?? c}<button class="x" onclick={() => edEnt((x) => { x.conditions = (x.conditions ?? []).filter((y) => y !== c); if (!x.conditions.length) x.conditions = undefined })}>✕</button></span>{/each}
               <IdInput value="" options={index.conditions.filter((c) => !/^population_/.test(c.id))} width="150px" placeholder="+ add" clearOnCommit onCommit={(v) => { if (v) edEnt((x) => { x.conditions = [...new Set([...(x.conditions ?? []), v])] }) }} /></div>
           </Field>
           {#if ent.conditions?.some((c) => /^ruins_/.test(c))}
@@ -541,14 +718,14 @@
               <label class="chk"><input id="le-ru" type="checkbox" checked={!!ent.ruinsUnexplored} onchange={(e) => { const v = e.currentTarget.checked; edEnt((x) => { x.ruinsUnexplored = v || undefined }) }} /> ruins stay unexplored</label>
             </Field>
           {/if}
-          <Field label="Surveyed" for="le-sv" help="How much the player knows at the start: none (survey it to see the conditions), preliminary, or full.">
+          <Field label="Surveyed" ref="locations-surveyed" for="le-sv" help="How much the player knows at the start: none (survey it to see the conditions), preliminary, or full.">
             <select id="le-sv" value={ent.surveyed ?? ''} onchange={(e) => { const v = e.currentTarget.value; edEnt((x) => { x.surveyed = (v || undefined) as typeof x.surveyed }) }}><option value="">game default</option><option value="none">none</option><option value="preliminary">preliminary</option><option value="full">full</option></select>
           </Field>
         {/if}
       </div>
       {#if !ent.market && ent.kind !== 'asteroidBelt' && ent.kind !== 'ring' && ent.kind !== 'jumpPoint' && ent.kind !== 'nebula'}
         <!-- Phase 7e (RC-F7): salvage loot and defenders -->
-        <div class="sect2">Salvage <button class="mini" onclick={() => edEnt((x) => { x.loot = [...(x.loot ?? []), { group: lootPools[0]?.id ?? '', chances: 1 }] })}>+ Loot</button>{#if !ent.defenders}<button class="mini" onclick={() => edEnt((x) => { x.defenders = { faction: 'pirates', minStr: 10, maxStr: 30 } })}>+ Defenders</button>{/if}</div>
+        <div class="sect2">Salvage <RefButton ref="loot-drop-groups" title="What each drop group can give: opens the reference" /> <button class="mini" onclick={() => edEnt((x) => { x.loot = [...(x.loot ?? []), { group: lootPools[0]?.id ?? '', chances: 1 }] })}>+ Loot</button>{#if !ent.defenders}<button class="mini" onclick={() => edEnt((x) => { x.defenders = { faction: 'pirates', minStr: 10, maxStr: 30 } })}>+ Defenders</button>{/if}</div>
         {#if !ent.loot?.length && !ent.defenders}<p class="f-help">What the player finds when salvaging it (a drop group: one of the mod's loot pools or a vanilla group such as rare_tech), and who guards it. Needs SagaLib 1.2.</p>{/if}
         {#each ent.loot ?? [] as l, i (i)}
           <div class="row3">
@@ -601,7 +778,7 @@
               <input id="lm-n" type="text" value={mk.name} onchange={(e) => { const v = e.currentTarget.value; edEnt((x) => { if (x.market) x.market.name = v }) }} />
             </Field>
             <Field label="Market id" for="lm-id" help="People's placement and stage markers use it. Don't change it after a release.">
-              <input id="lm-id" type="text" class="mono" value={mk.id} onchange={(e) => { const v = e.currentTarget.value.trim(); edEnt((x) => { if (x.market && v) x.market.id = v }) }} />
+              <input id="lm-id" type="text" class="mono" value={mk.id} onchange={(e) => { const v = e.currentTarget.value.trim(); if (!v) { e.currentTarget.value = mk.id; return } edEnt((x) => { if (x.market) x.market.id = v }) }} />
             </Field>
             <Field label="Faction" help="Who owns the colony: its flag, patrols, prices and who may dock.">
               <IdInput value={mk.faction} options={factions} strict onCommit={(v) => edEnt((x) => { if (x.market) x.market.faction = v })} />
@@ -622,14 +799,14 @@
             </Field>
           </div>
           {#each MARKET_LISTS as l (l.key)}
-            <div class="sect3">{l.label}</div>
-            <div class="chips">{#each mk[l.key] as c (c)}<span class="chip">{c}<button class="x" onclick={() => listEdit(l.key, (x) => x.filter((y) => y !== c))}>✕</button></span>{/each}
+            <div class="sect3">{l.label}<RefButton ref={`locations-${l.key}`} title={`What each ${l.key === 'industries' ? 'industry' : l.key.replace(/s$/, '')} is: opens the reference`} /></div>
+            <div class="chips">{#each mk[l.key] as c (c)}<span class="chip" title={c}>{(l.key === 'conditions' ? index.conditions : l.key === 'industries' ? index.industries : index.submarkets).find((x) => x.id === c)?.name ?? c}<button class="x" onclick={() => listEdit(l.key, (x) => x.filter((y) => y !== c))}>✕</button></span>{/each}
               <IdInput value="" options={l.options()} width="150px" placeholder="+ add" clearOnCommit onCommit={(v) => { if (v) listEdit(l.key, (x) => (x.includes(v) ? x : [...x, v])) }} /></div>
             <div class="f-help">{l.help}</div>
           {/each}
           <div class="sect3">People at this market</div>
           <div class="chips">{#each mk.people as p (p)}<span class="chip">{p}<button class="x" onclick={() => { const mid = mk.id; project.change((mm) => { if (mm.people.some((x) => x.id === p && x.placement.at === 'market' && x.placement.market === mid)) setPersonMarket(mm, p, null); else for (const s of mm.systems) for (const en of s.entities) if (en.market?.id === mid) en.market.people = en.market.people.filter((x) => x !== p) }) }}>✕</button></span>{/each}
-            <IdInput value="" options={m?.people.map((p) => ({ id: p.id, name: `${p.name.first} ${p.name.last}` })) ?? []} width="150px" placeholder="+ person" clearOnCommit onCommit={(v) => { if (v) { const mid = mk.id; project.change((mm) => setPersonMarket(mm, v, mid)) } }} /></div>
+            <IdInput value="" options={m?.people.map((p) => ({ id: p.id, name: fullName(p.name) })) ?? []} width="150px" placeholder="+ person" clearOnCommit onCommit={(v) => { if (v) { const mid = mk.id; project.change((mm) => setPersonMarket(mm, v, mid)) } }} /></div>
           <div class="f-help">This mod's people who live here. Adding someone here also sets their placement on the People page (and the other way round).</div>
           {#each mk.people as pid (pid)}
             {@const qs = m?.quests.filter((q) => q.start.kind === 'contact' && q.start.person === pid) ?? []}
@@ -664,7 +841,7 @@
             </Field>
           {/if}
           {#if !sys.starless}
-          <Field label="Star" help="The star's type: its color and the light on the planets. Stars are the planets.json entries marked isStar, from the game, the installed mods and this mod's own types.">
+          <Field label="Star" ref="locations-star-types" help="The star's type: its color and the light on the planets. Stars are the planets.json entries marked isStar, from the game, the installed mods and this mod's own types.">
             <div class="typerow">
               <TypeThumb planet={planetInfo(sys.star?.type ?? '')} size={36} />
               <span>{planetInfo(sys.star?.type ?? '')?.name ?? sys.star?.type}<br /><span class="mono small muted">{sys.star?.type}</span></span>
@@ -678,7 +855,7 @@
             <input id="ls-c" type="number" value={sys.star?.corona} onchange={(e) => { const v = Number(e.currentTarget.value); edSys((s) => { if (s.star) s.star.corona = v }) }} />
           </Field>
           {/if}
-          <Field label="Music" help="A music id played while the player is in the system. Empty: the game's default.">
+          <Field label="Music" ref="general-music" help="A music id played while the player is in the system. Empty: the game's default.">
             <IdInput value={sys.music ?? ''} options={index.music.map((x) => ({ id: x }))} onCommit={(v) => edSys((s) => { s.music = v || undefined })} />
           </Field>
         {/if}
@@ -700,7 +877,7 @@
             </Field>
             <Field label="When" help="The quest and the stage at which it disappears.">
               <div class="typerow">
-                <select value={r.quest} onchange={(e) => { const v = e.currentTarget.value; edSys((s) => { s.removals![i].quest = v; s.removals![i].stage = '' }) }}>{#each m?.quests.filter((q) => q.kind === 'quest') ?? [] as q (q.id)}<option value={q.id}>{q.title}</option>{/each}</select>
+                <select value={r.quest} onchange={(e) => { const v = e.currentTarget.value; edSys((s) => { s.removals![i].quest = v; s.removals![i].stage = '' }) }}><option value="">— quest —</option>{#each m?.quests.filter((q) => q.kind === 'quest') ?? [] as q (q.id)}<option value={q.id}>{q.title}</option>{/each}{#if r.quest && !rq}<option value={r.quest}>{r.quest} (missing)</option>{/if}</select>
                 <select value={r.stage} onchange={(e) => { const v = e.currentTarget.value; edSys((s) => { s.removals![i].stage = v }) }}><option value="">—</option>{#each rq?.stages ?? [] as st (st.id)}<option value={st.id}>{st.title}</option>{/each}</select>
               </div>
             </Field>
@@ -774,6 +951,8 @@
 {/if}
 
 <style>
+  /* #67 (user, 2026-11-22): a dark outline behind every map label, so a name stays readable over a light planet or a coloured ring (drawn under the fill: paint-order) */
+  .map text { paint-order: stroke; stroke: #0b0f14; stroke-opacity: 0.85; stroke-width: 0.3em; stroke-linejoin: round; }
   .page { display: grid; grid-template-columns: 260px minmax(0, 1fr) 340px; height: 100%; min-height: 0; }
   .left, .right { background: var(--panel); overflow: auto; min-height: 0; }
   .left { border-right: 1px solid var(--border); }
@@ -787,11 +966,26 @@
   .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .toolbar { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--border); font-size: 12px; }
   .seg { display: flex; }
-  .seg button { border-radius: 0; margin-left: -1px; padding: 3px 10px; font-size: 12px; }
+  .seg button { border-radius: 0; margin-left: -1px; padding: 3px 10px; font-size: 12px; white-space: nowrap; }
   .seg button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
   .seg button:last-child { border-radius: 0 4px 4px 0; }
   .seg button.on { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
   .spacer { flex: 1; }
+  /* #67 U26: the map and its hover panel */
+  .rnd { white-space: nowrap; cursor: help; }
+  .mapwrap { position: relative; flex: 1; min-height: 0; display: flex; }
+  .mapinfo { position: absolute; right: 12px; bottom: 12px; z-index: 5; background: rgba(14, 20, 28, .96); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 12px; min-width: 220px; max-width: 340px; box-shadow: 0 6px 18px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 2px; }
+  .mapinfo .lnk { border: none; background: none; padding: 0; color: var(--accent); cursor: pointer; font-size: inherit; text-align: left; }
+  .mapinfo .lnk:hover { text-decoration: underline; }
+  .hit { cursor: pointer; }
+  .pick { cursor: pointer; }
+  .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; border: 1px solid #3a4452; flex: none; align-self: center; }
+  .pad2 { padding: 2px 10px 4px; }
+  .pad2 input { width: 100%; }
+  .map.sys { cursor: grab; }
+  .bodyinfo { border: 1px solid var(--accent-2); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 3px; background: #121a24; }
+  .bi-h { display: flex; align-items: center; gap: 6px; }
+  .mt-h { font-weight: 600; font-size: 13px; }
   .map { flex: 1; width: 100%; min-height: 0; background: radial-gradient(ellipse at 60% 40%, #10202e 0%, #0a0f15 70%); cursor: grab; user-select: none; }
   .map .mine, .map .ent { cursor: move; }
   .map .van { cursor: pointer; }

@@ -114,11 +114,13 @@ export function seedOf(v: unknown): bigint | null {
 /**
  * Phase 8a: the drop groups a loot row or reward can roll: the mod's own loot tables (a pool that
  * adds to another group is not a group itself) and every group of the game and the installed mods.
+ * #60: the index's groups keep a definedBy for the pickers' filter: vanilla when vanilla has rows in
+ * it, else the source of its first row (the mod's own loot tables have none: always shown).
  */
-export function dropGroupChoices(pools: PoolPlan[], index: { dropGroups?: { group: string; item: string; definedBy: string }[] } | null): { id: string; name: string }[] {
+export function dropGroupChoices(pools: PoolPlan[], index: { dropGroups?: { group: string; item: string; definedBy: string }[] } | null): { id: string; name: string; definedBy?: string }[] {
   const own = pools.filter((p) => p.use === 'loot' && !p.addsTo).map((p) => ({ id: p.id, name: p.name }))
-  const counts = new Map<string, { n: number; core: boolean }>()
-  for (const r of index?.dropGroups ?? []) { const c = counts.get(r.group) ?? { n: 0, core: false }; c.n++; if (r.definedBy === 'starsector-core') c.core = true; counts.set(r.group, c) }
-  const others = [...counts.entries()].filter(([g]) => !own.some((o) => o.id === g)).sort((a, b) => a[0].localeCompare(b[0])).map(([g, c]) => ({ id: g, name: `${c.core ? 'vanilla' : 'a mod'}, ${c.n} row${c.n === 1 ? '' : 's'}` }))
+  const counts = new Map<string, { n: number; core: boolean; first: string }>()
+  for (const r of index?.dropGroups ?? []) { const c = counts.get(r.group) ?? { n: 0, core: false, first: r.definedBy }; c.n++; if (r.definedBy === 'starsector-core') c.core = true; counts.set(r.group, c) }
+  const others = [...counts.entries()].filter(([g]) => !own.some((o) => o.id === g)).sort((a, b) => a[0].localeCompare(b[0])).map(([g, c]) => ({ id: g, name: `${c.core ? 'vanilla' : 'a mod'}, ${c.n} row${c.n === 1 ? '' : 's'}`, definedBy: c.core ? 'starsector-core' : c.first }))
   return [...own, ...others]
 }

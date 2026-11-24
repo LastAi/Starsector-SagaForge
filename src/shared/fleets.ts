@@ -6,6 +6,7 @@
 import type { Problem } from './api'
 import type { CheckContext } from './checks'
 import type { FleetTemplateDef } from './model'
+import { fullName } from './personname'
 
 /** FleetFactoryV3.BASE_COUNTS_WITH_4 and MAX_EXTRA_WITH_4 (0.98a): ships per round by doctrine ship size 1–5 (small, medium, large, capital). */
 const BASE_4 = [[9, 4, 2, 0], [7, 4, 2, 0], [4, 3, 3, 0], [1, 1, 1, 0], [1, 1, 1, 1]]
@@ -56,7 +57,7 @@ export function fleetProblems(ctx: CheckContext): Problem[] {
     if (t.captain) {
       const p = m.people.find((x) => x.id === t.captain)
       if (!p) out.push({ level: 'error', area: 'Fleet', ref, message: `${t.name || t.id}: the captain "${t.captain}" isn't one of the mod's people.` })
-      else if (p.placement.at === 'market') out.push({ level: 'info', area: 'Fleet', ref, key: `captainmarket:${t.id}`, message: `${t.name || t.id}: its captain ${p.name.first} ${p.name.last} also lives at a market; the same person commands the fleet when it is out.` })
+      else if (p.placement.at === 'market') out.push({ level: 'info', area: 'Fleet', ref, key: `captainmarket:${t.id}`, message: `${t.name || t.id}: its captain ${fullName(p.name)} also lives at a market; the same person commands the fleet when it is out.` })
     }
     if (t.flagship !== undefined && (t.flagship < 0 || t.flagship >= t.ships.length)) out.push({ level: 'warning', area: 'Fleet', ref, message: `${t.name || t.id}: the flagship isn't one of its ships; the first ship is used.` })
   }

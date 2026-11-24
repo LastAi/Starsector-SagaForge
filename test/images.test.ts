@@ -14,7 +14,11 @@ describe('image kinds', () => {
       // #62: the mod's icon in LunaLib's settings menu (LunaLib: 40×40 shows unscaled)
       modIcon: 'graphics/icons/mod 40x40',
       // #65: MagicLib's achievement list draws them square at 48×48
-      achievementIcon: 'graphics/icons/achievements 64x64'
+      achievementIcon: 'graphics/icons/achievements 64x64',
+      // #77: Vaults of Knowledge's own tech icons are 320×320 (graphics/icons/tech)
+      techIcon: 'graphics/icons/tech 320x320',
+      // #67 U38: the source images, kept as they are where the game never loads them
+      original: 'sagaforge/originals 0x0'
     })
   })
 

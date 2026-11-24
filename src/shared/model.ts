@@ -36,6 +36,14 @@ export interface ProjectFile {
   /** The mod's own illustrations: key → image path in the mod (added to its settings.json on export). */
   illustrations?: Record<string, string>
   /**
+   * #67 U21: the user's own image groups, per image kind (an ImageKindId): a name and the image paths
+   * in it (an image may be in several). Editor only, never exported: the Images page sorts by them,
+   * the image pickers filter by them.
+   */
+  imageGroups?: Record<string, { name: string; images: string[] }[]>
+  /** #67 U38: Export packs sagaforge/originals (the source images) into the release zip too. */
+  packOriginals?: boolean
+  /**
    * The game version this mod targets (#47 D3), e.g. "0.98.5a-RC5": with a migration install set,
    * the editor loads that install for this mod. Missing: mod_info.json's gameVersion decides.
    */
@@ -152,6 +160,11 @@ export interface SettingDef {
   /** Tab on the page (empty = the main tab). */
   tab?: string
   notes?: string
+  /**
+   * #67 U18 (SagaLib 1.4): versions may depend on it (Boolean and Radio only). SagaLib records its
+   * value when a game starts; the save keeps the versions picked from that value.
+   */
+  versions?: boolean
 }
 
 /**
@@ -169,6 +182,12 @@ export interface ModUse {
   minVersion?: string
   /** Why it is incompatible (shown in game and in the release notes). */
   reason?: string
+  /**
+   * #76 (PLAN.md §10.8): other mods no player runs together with this one (besides the built-in
+   * list, e.g. AoTD and Industrial.Evolution). Their combinations get no version cell, no
+   * combination check and no Play mode combination.
+   */
+  neverWith?: string[]
 }
 
 /**
@@ -252,6 +271,11 @@ export interface Presence { faction?: FactionRef; atLeast: RepLevelId | 'notHost
 export interface PersonDef {
   id: string
   name: { first: string; last: string }
+  /**
+   * #79 (SagaLib 1.4): a character with one name (a cat called Tyger): kept in `name.last`, the
+   * first name empty. SagaLib fills $personFirstName with it (shared/personname.ts).
+   */
+  oneName?: boolean
   gender: 'MALE' | 'FEMALE' | 'ANY'
   faction: FactionRef
   rank: string
@@ -353,7 +377,8 @@ export type Visual =
   | { kind: 'none' }
   | { kind: 'keep' }
   | { kind: 'person'; person: PersonRef; second?: PersonRef; third?: PersonRef }
-  | { kind: 'illustration'; category: string; key: string }
+  /** #67 U4 (task #81): `female`: another picture when the player character is female (e.g. a player figure in the right shape). */
+  | { kind: 'illustration'; category: string; key: string; female?: { category: string; key: string } }
   | { kind: 'planet'; entity: EntityRef; info?: boolean }
   | { kind: 'mapMarker'; entity: EntityRef; title?: string }
   | { kind: 'fleets'; encounter: string }
@@ -447,8 +472,26 @@ export interface QuestVar {
 
 /** Phase 7c (RC-R1): one of vanilla's HubMissionWithSearch criteria (shared/targets.ts CRITERIA) and its arguments. */
 export interface Criterion { id: string; args: (string | number | string[])[] }
+/**
+ * #75 (SagaLib 1.3): what a commodity target picks and how much (PLAN.md §10.8). The criteria are
+ * the market's and the commodity's (shared/targets.ts); these are the parts that aren't criteria.
+ */
+export interface CommodityTargetDef {
+  /** vanilla (default): the 18 vanilla trade goods; any: every economy commodity; list: the ids below. */
+  which: 'vanilla' | 'any' | 'list'
+  ids?: string[]
+  /**
+   * econ (default): n economy units = n × the commodity's econUnit cargo units at the time of the
+   * search (× the market's size with perSize), so it follows vanilla's, AoTD ToT's or another mod's
+   * units; cargo: n cargo units. Rounded, at least 1.
+   */
+  amount: { unit: 'econ' | 'cargo'; n: number; perSize?: boolean }
+}
 export interface TargetDef {
-  pick: 'system' | 'planet' | 'entity' | 'market'
+  /** #75: commodity = a commodity at a market (vanilla pickCommodity). */
+  pick: 'system' | 'planet' | 'entity' | 'market' | 'commodity'
+  /** #75: pick commodity: which commodities and the amount. */
+  commodity?: CommodityTargetDef
   /** All must hold. */
   require: Criterion[]
   /** In order; each is dropped when it would leave nothing. */
@@ -456,7 +499,9 @@ export interface TargetDef {
   /** vanilla searchMakeSystemPreferencesMoreImportant. */
   systemFirst?: boolean
   /** Play mode stands in for the search with this (the sector exists only in a running game); details: Phase 7d facts. */
-  mock?: { name?: string; system?: string; dist?: number; faction?: string; factionId?: string; details?: Record<string, string | boolean>; personName?: string }
+  mock?: { name?: string; system?: string; dist?: number; faction?: string; factionId?: string; details?: Record<string, string | boolean>; personName?: string
+    /** #75: pick commodity: Play's commodity (empty: one of the allowed, at random) and the market's size (default 5). */
+    commodity?: string; size?: number }
   /** Phase 7d (RC-R4): a person at the picked colony: someone with one of the posts, else a new person of the faction (the colony's if empty). */
   person?: { posts: string[]; rank?: string; faction?: string }
 }
@@ -466,6 +511,8 @@ export interface Reward {
   credits?: number
   /** #62 (SagaLib 1.3): the credits scaled by one of the mod's settings when the reward is given. */
   creditsScale?: SettingScale
+  /** #75 (SagaLib 1.3): more credits: mult × a commodity target's base price × amount (its "_value"), added to `credits`. */
+  targetCredits?: { var: string; mult: number }
   rep?: { faction: FactionRef; amount: number }[]
   personRep?: { person: PersonRef; amount: number }[]
   items?: { item: ItemRef; qty: number }[]
@@ -476,7 +523,7 @@ export interface Reward {
   loot?: LootRef[]
 }
 
-export type NodeType = 'start' | 'dialog' | 'branch' | 'action' | 'stage' | 'encounter' | 'wait' | 'raid' | 'end' | 'link' | 'note'
+export type NodeType = 'start' | 'dialog' | 'branch' | 'action' | 'stage' | 'encounter' | 'wait' | 'raid' | 'end' | 'link' | 'note' | 'plugin' | 'fight' | 'group'
 
 interface NodeBase { id: string; type: NodeType; x: number; y: number; notes?: string }
 
@@ -495,6 +542,13 @@ export interface DialogNode extends NodeBase {
   script: string[]
   /** Phrases inline in this node (tokens "$<quest>_<node>_v1"...). */
   phrases: Phrase[]
+  /**
+   * #67 U6: the text shown when the player comes back to this node (Back from a question, a hub):
+   * `text` is the first-time text, this replaces it on later visits, with the same options.
+   * `scope` 'visit': again in full on the next visit (a flag that expires, `= true 0`);
+   * 'ever': once per playthrough ($global flag).
+   */
+  repeat?: { text: string; highlights?: string[]; scope: 'visit' | 'ever' }
 }
 /**
  * A Random branch's case (Phase 7a): its weight and limit; conditions as in a condition branch
@@ -578,7 +632,18 @@ export type ActionOp =
   | { op: 'removePerson'; person: string }
   /** Phase 7d (RC-R2): vanilla's mission spawning near a random target (removed when the quest ends); kind entity = a custom entity type, derelict = a faction's derelict ship. */
   | { op: 'spawnAtTarget'; target: string; kind: 'entity' | 'derelict'; type: string; where?: string }
-  | { op: 'startQuest'; quest: QuestRef }
+  /**
+   * #75 (SagaLib 1.3): a commodity target's goods: take them from the player's cargo (the delivery)
+   * or give them (SF_TargetCommodity). "Has the cargo" is the condition SF_TargetCommodity … has.
+   */
+  | { op: 'targetCargo'; target: string; do: 'take' | 'give' }
+  /** #75: credits = mult × the commodity's base price × the amount (SF_TargetCommodity … credits). */
+  | { op: 'targetCredits'; target: string; mult: number }
+  /**
+   * H5: start a quest of this mod. `stage`: the stage it starts at (SF_Step after SF_Start), so its
+   * journal entry, marker and first Arrive are there at once; without one it is only marked active.
+   */
+  | { op: 'startQuest'; quest: QuestRef; stage?: string }
   | { op: 'storyPoints'; amount: number }
   | { op: 'xp'; amount: number }
   | { op: 'line'; line: string }
@@ -596,7 +661,64 @@ export type ActionOp =
    * MagicLib it does nothing.
    */
   | { op: 'achievement'; achievement: string }
+  /**
+   * #77: make one of the mod's techs researchable (Saga › Research, "unlocked by a quest"): sets its
+   * global flag (VoK's otherReq). A plain rule line, no SagaLib; without VoK nothing reads it.
+   */
+  | { op: 'unlockResearch'; tech: string }
+  /**
+   * #77 (SagaLib 1.4): the player's faction gets a tech as researched (SF_GrantResearch, SagaLib's VoK
+   * bridge): the mod's own, VoK's or another mod's. Without VoK it does nothing.
+   */
+  | { op: 'grantResearch'; tech: string }
+  /**
+   * #79 (SagaLib 1.4): run one of the mod's own plugin classes (SF_RunPlugin; a class in a jar its
+   * mod_info.json lists, implementing lastai.sagalib.api.SagaPlugin). No branching here: a Plugin
+   * node branches on what it returns.
+   */
+  | { op: 'plugin'; className: string; args: PluginArg[] }
 export interface ActionNode extends NodeBase { type: 'action'; title?: string; ops: ActionOp[] }
+/** #79: one key=value argument of a plugin call (passed to the plugin's run() as a map entry). */
+export interface PluginArg { key: string; value: string }
+/**
+ * #79 (SagaLib 1.4): runs one of the mod's own plugin classes (SF_RunPlugin, docs/FORMATS.md
+ * "Plugins") and branches on what it returns: one output per declared result id, and "next" for no
+ * result, a result not declared, or a failure (no such class, an exception in the plugin). The
+ * result is also kept in $global.<quest>_<node>_result.
+ */
+export interface PluginNode extends NodeBase {
+  type: 'plugin'
+  title?: string
+  /** The class's full name, e.g. data.scripts.hel.ShrinkMarkets. */
+  className: string
+  args: PluginArg[]
+  /** The result ids the plugin may return (letters, digits, _), one output each. */
+  results: string[]
+}
+/**
+ * #67 U3 (task #82, SagaLib 1.4): a fight on the spot, as at Remnant-guarded ruins. When the dialog
+ * reaches it, SagaLib builds the fleet from these settings and opens vanilla's battle dialog with it
+ * (SF_Fight; Engage or Leave, like vanilla's salvage defenders, no fleet flying around). Outputs:
+ * `won` (the fleet was beaten: the dialog goes on at the place) and `left` (the player left or lost;
+ * not connected: the dialog closes). A fleet damaged and left behind stays for 10 days, like vanilla's.
+ */
+export interface FightNode extends NodeBase {
+  type: 'fight'
+  title?: string
+  fleet: {
+    faction: FactionRef
+    /** 'fp': the faction builds it (fleet points); 'explicit': these variants; 'template': a named fleet (Fleets page). */
+    size: 'fp' | 'explicit' | 'template'
+    points?: number
+    variants?: string[]
+    template?: string
+    quality?: number
+    name?: string
+    flagshipCommander?: PersonRef
+  }
+  /** The option that starts the battle (vanilla's: "Engage the automated defenses"). */
+  engageText?: string
+}
 export interface StageNode extends NodeBase { type: 'stage'; stage: string }
 export interface EncounterNode extends NodeBase { type: 'encounter'; encounter: string }
 export interface WaitNode extends NodeBase {
@@ -646,8 +768,11 @@ export interface RaidNode extends NodeBase {
   /** Shown while the raid happens, before vanilla's result screens. */
   raidText?: string
 }
-/** #65: `achievement`: a MagicLib achievement unlocked at this ending (SF_Achievement). */
-export interface EndNode extends NodeBase { type: 'end'; outcome: 'success' | 'fail' | 'abandon'; reward?: string; achievement?: string }
+/**
+ * #65: `achievement`: a MagicLib achievement unlocked at this ending (SF_Achievement).
+ * #77: `research`: VoK techs the player gets as researched at this ending (SF_GrantResearch, SagaLib 1.4).
+ */
+export interface EndNode extends NodeBase { type: 'end'; outcome: 'success' | 'fail' | 'abandon'; reward?: string; achievement?: string; research?: string[] }
 export interface LinkNode extends NodeBase {
   type: 'link'
   /**
@@ -655,20 +780,33 @@ export interface LinkNode extends NodeBase {
    * where there is none (SF_BackToMenu with SagaLib, else FireAll PopulateOptions);
    * 'option' = continue into an existing option id; 'trigger' = FireBest/FireAll a trigger;
    * 'node' = jump to another node of this quest; 'bar' (Phase 7b) = back to the bar after a bar
-   * scene (BarCMD returnFromEvent). `target` is unused for 'menu' and 'bar'.
+   * scene (BarCMD returnFromEvent); 'close' (#67 U7) = close the dialog (vanilla's EndConversation),
+   * for a comm link or a fleet that leaves. `target` is unused for 'menu', 'bar' and 'close'.
    */
-  mode: 'menu' | 'option' | 'trigger' | 'node' | 'bar'
+  mode: 'menu' | 'option' | 'trigger' | 'node' | 'bar' | 'close'
   target: string
   fire?: 'FireBest' | 'FireAll'
+  /**
+   * #67 U43: mode 'close' in a fleet's comm dialog: back to the fleet screen (Engage, Leave) instead
+   * of closing everything (vanilla's cutCommLinkNoText: ShowDefaultVisual, EndConversation NO_CONTINUE).
+   */
+  toFleet?: boolean
 }
 export interface NoteNode extends NodeBase { type: 'note'; text: string; w?: number; h?: number }
 
-export type QNode = StartNode | DialogNode | BranchNode | ActionNode | StageNode | EncounterNode | WaitNode | RaidNode | EndNode | LinkNode | NoteNode
+/**
+ * #67 U43 (user, 2026-11-23): a placed node group (shared/nodegroups.ts): one node on the chart
+ * standing for the normal nodes of its definition, which the mod carries a copy of. `values`: the
+ * fields the author set (missing = the definition's default). Its exits are the definition's.
+ */
+export interface GroupNode extends NodeBase { type: 'group'; group: string; values: Record<string, string | number | boolean>; title?: string }
+
+export type QNode = StartNode | DialogNode | BranchNode | ActionNode | StageNode | EncounterNode | WaitNode | RaidNode | EndNode | LinkNode | NoteNode | PluginNode | FightNode | GroupNode
 
 export interface QEdge {
   id: string
   from: string
-  /** Option id (dialog), case id (branch: 'else' for otherwise), 'defeated' / 'avoided' (encounter), or 'next'. */
+  /** Option id (dialog), case id (branch: 'else' for otherwise), 'defeated' / 'avoided' (encounter), a result id (plugin), or 'next'. */
   handle: string
   to: string
 }
@@ -834,6 +972,8 @@ export const emptyModTypes = (): ModTypes => ({ entities: [], planets: [] })
 /** A named, reusable fleet: the same ships, names and captain every time it spawns (SagaLib 1.1). */
 export interface FleetTemplateDef {
   id: string
+  /** #67 U41: planned, not exported (an encounter or Fight node that uses it isn't either). */
+  inactive?: boolean
   /** The fleet's name on the map ("Butters's Pride"); empty = the faction's name for its fleet type. */
   name: string
   faction: FactionRef
@@ -857,9 +997,14 @@ export const emptyFleetPlans = (): FleetPlans => ({ templates: [], typeNames: {}
 
 // ---------------------------------------------------------------- encounters (§4.6)
 
+/** #67 U40: a group of ships that may join a fleet: its chance (0 to 1), all its ships or some drawn by weight. */
+export interface FleetExtraGroup { chance: number; pick: 'all' | number; ships: { variant: string; weight?: number }[] }
+
 export interface EncounterDef {
   format: number
   id: string
+  /** #67 U41: planned, not exported (kept in the editor, never in the game). */
+  inactive?: boolean
   name: string
   fleet: {
     faction: FactionRef
@@ -874,6 +1019,10 @@ export interface EncounterDef {
     name?: string
     /** #62 (SagaLib 1.3): size 'fp' only: the points scaled by one of the mod's settings when it spawns. */
     sizeScale?: SettingScale
+    /** #67 U40 (SagaLib 1.4): exact ships or a named fleet, plus this many fleet points drawn like vanilla's own fleets. */
+    randomPoints?: number
+    /** #67 U40 (SagaLib 1.4): groups that may join the fleet when it spawns (any kind of fleet). */
+    extras?: FleetExtraGroup[]
   }
   /** `player-near` (SagaLib 1.1, RC-F5): when the player's fleet comes within `range` of `at` (0 = in its system). */
   /**
@@ -887,7 +1036,21 @@ export interface EncounterDef {
   flags: { hostile?: boolean; noRepImpact?: boolean; important?: boolean; allowDisengage?: boolean }
   /** Comm-link dialog: a dialog-kind QuestPlan id ("<encounter>_comm"). */
   commDialog?: string
+  /**
+   * #67 U43 (user, 2026-11-23): the fleet hails the player when it reaches them (vanilla's
+   * BeginFleetEncounter + HailPlayer), which opens its comm dialog before the fleet screen. `text`:
+   * lines shown first; `describe`: vanilla's fleet description first; `block` (default true):
+   * the player can't leave until the dialog lets them (a Fleet response).
+   */
+  hail?: { text?: string; describe?: boolean; block?: boolean }
   outcomes: { defeated?: string; avoided?: string }
+  /**
+   * #67 U46 (user, 2026-11-24; SagaLib 1.4): what happens when its fleet is beaten / leaves unbeaten,
+   * whoever spawned it (a quest, a progress stage, a world event, new game…). Runs before the
+   * quest's own Defeated / Avoided exits.
+   */
+  onDefeated?: ActionOp[]
+  onAvoided?: ActionOp[]
   notes?: string
   /** Fields marked "Set later" (R9; DESIGN-PHASE1.md §1): field path → note and the value when marked. */
   todo?: TodoMap

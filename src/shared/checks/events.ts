@@ -5,6 +5,7 @@ import type { Problem } from '../api'
 import type { CheckContext } from '.'
 import { prefixProblem } from '.'
 import { EVENT_OPS } from '../export/events'
+import { startQuestStageProblem } from '../quest'
 
 export function eventProblems(ctx: CheckContext): Problem[] {
   const out: Problem[] = []
@@ -41,6 +42,8 @@ export function eventProblems(ctx: CheckContext): Problem[] {
           if (!EVENT_OPS.includes(op.op)) out.push({ level: 'error', area: 'Events', ref, message: `${ew}: "${op.op}" can't run in a world event (no quest of its own).` })
           if ((op.op === 'spawn' || op.op === 'despawn') && op.encounter && !m.encounters.some((x) => x.id === op.encounter)) out.push({ level: 'error', area: 'Events', ref, message: `${ew} (${part}): there is no encounter "${op.encounter}".` })
           if (op.op === 'startQuest' && op.quest && !m.quests.some((x) => x.id === op.quest)) out.push({ level: 'error', area: 'Events', ref, message: `${ew} (${part}): there is no quest "${op.quest}".` })
+          if (op.op === 'rep' && op.person === '$person') out.push({ level: 'error', area: 'Events', ref, message: `${ew} (${part}): reputation with "the person you're talking to" - nobody is talked to when a world event runs. Name the person.` })
+          if (op.op === 'startQuest') { const sp = startQuestStageProblem(op, m.quests); if (sp) out.push({ level: sp.level, area: 'Events', ref, key: sp.level === 'warning' ? `evstartstage:${e.id}:${op.quest}` : undefined, message: `${ew} (${part}) ${sp.message}` }) }
         }
       }
       if (e.durationDays > 0 && e.start.some((op) => op.op === 'spawn') && !e.end.some((op) => op.op === 'despawn')) out.push({ level: 'warning', area: 'Events', ref, key: `evdespawn:${e.id}`, message: `${ew} spawns a fleet when it starts but doesn't remove it when it ends: add "Despawn" to its end actions, or the fleet stays.` })

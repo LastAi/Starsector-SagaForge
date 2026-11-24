@@ -17,6 +17,9 @@ import type { IndexCache } from './gameindex'
 import type { SourceInfo } from '../shared/api'
 import { FRAMEWORK_FILES } from '../shared/modlist'
 import { NEX_CONFIG_DIR, NEX_PLAN } from '../shared/nexconfig'
+import { RESEARCH_PLAN } from '../shared/research'
+import { modJars } from './jars'
+import type { NodeGroupDef } from '../shared/nodegroups'
 
 const slash = (p: string) => p.replace(/\\/g, '/')
 
@@ -42,6 +45,9 @@ export const SHARED_FILES = [
   'data/config/magic_achievements.csv',
   'data/config/exerelin/questSkip.json',
   'data/config/vayraBounties/unique_bounty_data.csv',
+  // #77: AoTD Vaults of Knowledge research (owned blocks; hand-written rows stay, or are taken into the editor)
+  'data/campaign/aotd_tech_options.csv',
+  'data/campaign/aotd_faction_behaviour.csv',
   // read only: the mod's own salvage tables, for Check mod's header check (RC-F6)
   'data/campaign/procgen/drop_groups.csv',
   'data/campaign/procgen/salvage_entity_gen_data.csv',
@@ -105,6 +111,8 @@ export async function loadProject(cache: IndexCache, src: SourceInfo): Promise<P
   const quests = await readDirJson<QuestPlan>('sagaforge/quests', '.quest.json')
   const systems = await readDirJson<StarSystemDef>('sagaforge/locations', '.system.json')
   const encounters = await readDirJson<EncounterDef>('sagaforge/encounters', '.encounter.json')
+  // #67 U43: copies of the node groups the mod uses
+  const nodeGroups = await readDirJson<NodeGroupDef>('sagaforge/nodegroups', '.group.json')
   const releases = (await readDirJson<ReleaseSnapshot>('sagaforge/releases', '.json')).sort((a, b) => cmpVersion(a.version, b.version))
   const factionsRuntimeRaw = await readJson<Record<string, unknown>>('sagaforge/factions.json')
   const descriptionsRaw = await readJson<Record<string, unknown>>('sagaforge/descriptions.json')
@@ -155,6 +163,7 @@ export async function loadProject(cache: IndexCache, src: SourceInfo): Promise<P
     if (!files[rel]) remember(rel, await fsp.readFile(f, 'utf8'))
   }
   const nexRaw = await readJson<Record<string, unknown>>(NEX_PLAN)
+  const researchRaw = await readJson<Record<string, unknown>>(RESEARCH_PLAN)
 
   const fr = factionsRuntimeRaw ?? {}
   return {
@@ -168,6 +177,8 @@ export async function loadProject(cache: IndexCache, src: SourceInfo): Promise<P
     factionsRuntime: { relations: (fr.relations ?? {}) as never, scripted: (fr.scripted ?? {}) as never, ...(fr.relationMods ? { relationMods: fr.relationMods as never } : {}) },
     // #60: framework files the mod ships (LunaLib, Nexerelin, MagicLib), for the uses-scan
     frameworkFiles: FRAMEWORK_FILES.filter((rel) => fs.existsSync(path.join(dir, rel))),
+    // #79: the jars mod_info.json lists and their classes (plugin classes for the Plugin node)
+    jars: modJars(dir, infoText),
     descriptions: ((descriptionsRaw?.descriptions ?? {}) as never),
     names: { people: (Array.isArray(namesRaw?.people) ? namesRaw.people : []) as never, ships: (Array.isArray(namesRaw?.ships) ? namesRaw.ships : []) as never },
     types: { entities: (Array.isArray(typesRaw?.entities) ? typesRaw.entities : []) as never, planets: (Array.isArray(typesRaw?.planets) ? typesRaw.planets : []) as never },
@@ -179,6 +190,8 @@ export async function loadProject(cache: IndexCache, src: SourceInfo): Promise<P
     bounties: (Array.isArray(bountiesRaw?.bounties) ? bountiesRaw.bounties : []) as never,
     ...(nexRaw ? { nexerelin: (nexRaw.factions && typeof nexRaw.factions === 'object' && !Array.isArray(nexRaw.factions) ? nexRaw.factions : {}) as never } : {}),
     ...(nexRaw?.player && typeof nexRaw.player === 'object' && !Array.isArray(nexRaw.player) ? { nexerelinPlayer: nexRaw.player as never } : {}),
+    ...(researchRaw ? { research: { techs: (Array.isArray(researchRaw.techs) ? researchRaw.techs : []) as never, factions: (researchRaw.factions && typeof researchRaw.factions === 'object' && !Array.isArray(researchRaw.factions) ? researchRaw.factions : {}) as never } } : {}),
+    nodeGroups,
     factions, releases, files, errors
   }
 }
@@ -266,6 +279,18 @@ export async function writeFiles(modDir: string, req: WriteRequest, rules: Write
   }
   for (const c of req.copies ?? []) {
     const abs = modPath(modDir, c.to)
+    // #67 U38: an image the user deleted (Images › Delete): backed up, then removed; only images
+    if (c.remove) {
+      if (!isFile(abs) || !/\.(png|jpe?g)$/i.test(abs)) continue
+      checkWritable(abs, rules)
+      const bdir = backupDir ?? path.join(modDir, 'sagaforge', 'backups', now.toISOString().replace(/[:.]/g, '-'))
+      backupDir = bdir
+      const rel = slash(path.relative(modDir, abs))
+      writeNewBytes(path.join(bdir, ...rel.split('/')), await fsp.readFile(abs), rules)
+      fs.rmSync(abs)
+      written.push(c.to)
+      continue
+    }
     if (isFile(abs)) {
       if (!c.replace) continue
       // an explicit replace (re-import): back the old file up, then write the new one

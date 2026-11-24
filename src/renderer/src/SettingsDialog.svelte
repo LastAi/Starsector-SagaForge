@@ -85,6 +85,15 @@
     const dir = await window.api.pickFolder(app.settings.releasesDir, 'Choose the folder for release zips')
     if (dir) await setReleases(dir)
   }
+  // ---- #67 U43: the node group library
+  async function setGroups(dir: string | null) {
+    error = null
+    try { app.settings = await window.api.setSetting('nodeGroupsDir', dir) } catch (e) { error = clean(e) }
+  }
+  async function chooseGroups() {
+    const dir = await window.api.pickFolder(app.settings.nodeGroupsDir, 'Choose the node group library folder')
+    if (dir) await setGroups(dir)
+  }
   async function finish() {
     const v = app.versions
     if (!v?.migration) return
@@ -157,6 +166,14 @@
       {#if app.settings.releasesDirChosen}<button onclick={() => setReleases(null)} disabled={working}>Default</button>{/if}
       <button onclick={() => window.api.showInFolder(app.settings.releasesDir)} disabled={working}>Open</button></div>
     <div class="muted small">Mark as released packs each version here as <span class="mono">[game version] Mod name version.zip</span>. Never inside a mod or a Starsector folder. Default: Saga Forge's data folder › releases.</div>
+
+    <!-- #67 U43: node groups used across mods -->
+    <h3>Node group library</h3>
+    <div class="row"><span class="mono path">{app.settings.nodeGroupsDir}</span>
+      <button onclick={chooseGroups} disabled={working}>Change…</button>
+      {#if app.settings.nodeGroupsDirChosen}<button onclick={() => setGroups(null)} disabled={working}>Default</button>{/if}
+      <button onclick={() => window.api.showInFolder(app.settings.nodeGroupsDir)} disabled={working}>Open</button></div>
+    <div class="muted small">Node groups you use across mods (<span class="mono">*.group.json</span>). They show in every mod's + Node menu; placing one copies it into the mod. A synced or git folder works too. Default: Saga Forge's data folder › nodegroups.</div>
 
     <h3>Checks</h3>
     <label class="ext">

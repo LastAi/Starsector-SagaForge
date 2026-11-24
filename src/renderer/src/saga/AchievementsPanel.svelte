@@ -36,7 +36,7 @@
 
   function add() {
     const id = uniqueId(`${m.project.prefix}achievement`, list.map((a) => a.id))
-    project.change((mm) => { (mm.project.achievements ??= []).push({ id, name: 'New achievement', description: '', spoiler: 'SPOILER', rarity: 'COMMON' }) })
+    project.change((mm) => { ((mm.project.achievements ??= []), mm.project.achievements).push({ id, name: 'New achievement', description: '', spoiler: 'SPOILER', rarity: 'COMMON' }) })
     app.selected.achievement = id
   }
   /** Until a quest unlocks it, the id follows the name. */
@@ -101,7 +101,7 @@
     <div class="row status">
       <span>MagicLib: <b class:good={magic === 'required' || magic === 'optional'}>{magic === 'required' ? 'required' : magic === 'incompatible' ? 'marked incompatible' : 'optional'}</b></span>
       <span class="muted small">{magic === 'required' ? 'In mod_info.json dependencies (Saga › Mods).' : 'Not in mod_info.json: without MagicLib there is no list, and quests unlock nothing.'}{magic === 'none' ? ' It isn\'t in the mod\'s list yet (Problems asks for it).' : ''}{installed ? '' : ' MagicLib is not installed in your game.'}</span>
-      {#if magic === 'none' && list.length}<button class="mini" title="List MagicLib in Saga › Mods as optional (nothing goes into mod_info.json)" onclick={() => project.change((mm) => { (mm.project.mods ??= []).push({ id: MAGICLIB_ID, name: 'MagicLib', use: 'optional' }) })}>Add as optional</button>{/if}
+      {#if magic === 'none' && list.length}<button class="mini" title="List MagicLib in Saga › Mods as optional (nothing goes into mod_info.json)" onclick={() => project.change((mm) => { ((mm.project.mods ??= []), mm.project.mods).push({ id: MAGICLIB_ID, name: 'MagicLib', use: 'optional' }) })}>Add as optional</button>{/if}
       <button class="mini" onclick={() => (app.selected.sagaOpen = 'mods')}>Saga › Mods</button>
     </div>
 
@@ -125,7 +125,7 @@
             {#each ACHIEVEMENT_SPOILERS as s (s)}<option value={s}>{s === 'VISIBLE' ? 'visible' : s === 'SPOILER' ? 'listed, details hidden (spoiler)' : 'hidden until unlocked'}</option>{/each}
           </select>
         </Field>
-        <Field label="Rarity" for="ac-r" help="The frame colour and the default image. Common for a quest anyone finishes, rarer for hard or hidden endings.">
+        <Field label="Rarity" ref="saga-achievement-rarity" for="ac-r" help="The frame colour and the default image. Common for a quest anyone finishes, rarer for hard or hidden endings.">
           <select id="ac-r" value={cur.rarity} onchange={(e) => { const v = e.currentTarget.value as AchievementDef['rarity']; ed((x) => { x.rarity = v }) }}>
             {#each ACHIEVEMENT_RARITIES as r (r)}<option value={r}>{r.toLowerCase()}</option>{/each}
           </select>

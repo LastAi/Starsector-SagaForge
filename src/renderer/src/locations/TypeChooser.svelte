@@ -4,10 +4,13 @@
    * filter chips by what the type is, a search, and for planets "fits here" from vanilla's random
    * generation (an estimate, never a rule).
    */
+  import RefButton from '../ui/RefButton.svelte'
   import { untrack } from 'svelte'
   import Modal from '../ui/Modal.svelte'
   import TypeThumb from './TypeThumb.svelte'
   import { app } from '../state/app.svelte'
+  import { mods } from '../state/mods.svelte'
+  import ShowAllMods from '../ui/ShowAllMods.svelte'
   import { ENTITY_GROUPS, PLANET_GROUPS, defaultEntityGroup, planetFits } from '../../../shared/celestial'
   import type { EntityTypeInfo, PlanetTypeInfo } from '../../../shared/api'
 
@@ -39,7 +42,8 @@
   const match = (id: string, name: string) => !q || `${id} ${name}`.toLowerCase().includes(q.toLowerCase())
 
   const planets = $derived.by(() => {
-    const all = [...ownPlanets, ...index.planetTypes.filter((t) => !ownPlanets.some((o) => o.id === t.id))]
+    // #67 U33: vanilla, this mod and its listed mods (Show all installed mods for every one)
+    const all = [...ownPlanets, ...mods.filter('types', index.planetTypes, (t) => t.definedBy).filter((t) => !ownPlanets.some((o) => o.id === t.id))]
     const list = all.filter((t) => (kind === 'star' ? t.isStar : !t.isStar) && match(t.id, t.name))
       .filter((t) => !group || PLANET_GROUPS.find((g) => g.id === group)!.test(t.id, catOf.get(t.id)))
       .filter((t) => !fitsOnly || fitOf(t.id)?.fits)
@@ -49,7 +53,7 @@
   })
   // the game's internal types (base_*, map labels with no picture) only under "Other"
   const internal = (t: EntityTypeInfo) => /^base_/.test(t.id) || (!t.sprite && !t.sheet && !t.icon)
-  const entities = $derived([...ownEntities, ...index.customEntityTypes.filter((t) => !ownEntities.some((o) => o.id === t.id))]
+  const entities = $derived([...ownEntities, ...mods.filter('types', index.customEntityTypes, (t) => t.definedBy).filter((t) => !ownEntities.some((o) => o.id === t.id))]
     .filter((t) => match(t.id, t.name) && (!group || ENTITY_GROUPS.find((g) => g.id === group)!.test(t)) && (group === 'other' || !internal(t) || t.id === current)))
   const groups = $derived(kind === 'entity' ? ENTITY_GROUPS.map((g) => ({ id: g.id, label: g.label })) : kind === 'planet' ? PLANET_GROUPS.map((g) => ({ id: g.id, label: g.label })) : [])
 </script>
@@ -57,6 +61,8 @@
 <Modal title={kind === 'star' ? 'Choose a star type' : kind === 'planet' ? 'Choose a planet type' : 'Choose an entity type'} width={900} onClose={onClose}>
   <div class="bar">
     <input type="search" placeholder="Filter by name or id…" bind:value={q} />
+    <RefButton ref={kind === 'star' ? 'locations-star-types' : kind === 'planet' ? 'locations-planet-types' : 'locations-entity-types'} title="What each type is and brings: opens the reference" />
+    <ShowAllMods list="types" hidden={kind === 'entity' ? mods.hidden('types', index.customEntityTypes, (t) => t.definedBy) : mods.hidden('types', index.planetTypes, (t) => t.definedBy)} />
     {#if groups.length}
       <div class="chips">
         <button class:on={!group} onclick={() => (group = null)}>All</button>

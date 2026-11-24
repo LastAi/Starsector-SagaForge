@@ -5,6 +5,8 @@
  */
 import type { ModUse, ModsCondition, ProjectFile } from './model'
 import type { GameIndex, SourceInfo } from './api'
+import { settingToken, subsets } from './itemversions'
+import { versionSettings, versionValues } from './settings'
 
 export const SAGALIB_ID = 'lastai_sagalib'
 export const CORE_ID = 'starsector-core'
@@ -171,12 +173,94 @@ export function modsJson(p: ProjectFile, mod: { id: string; name: string }): Rec
   }
 }
 
-/** Every optional-mod combination (2 mods → 4), for the combination check and Play mode. */
-export function combinations(ids: string[], max = 64): Set<string>[] {
+/** Every optional-mod combination (2 mods → 4), for the combination check and Play mode; `never` drops the impossible ones (#76). */
+export function combinations(ids: string[], max = 64, never: NeverPair[] = []): Set<string>[] {
   const n = Math.min(ids.length, Math.log2(max))
   const out: Set<string>[] = []
   for (let k = 0; k < 1 << n; k++) out.push(new Set(ids.slice(0, n).filter((_, i) => k & (1 << i))))
+  return never.length ? out.filter((s) => possible(s, never)) : out
+}
+
+// ---------------------------------------------------------------- mods that never run together (#76)
+
+/**
+ * AoTD's Theory of Toolbox and the AoTD modules that need it (PLAN.md §10.8). Dreams of Past
+ * (`Cryo_but_better`) needs only LazyLib and runs with Industrial.Evolution (user, 2026-11-19).
+ */
+export const AOTD_TOT_IDS = ['aotd_theory_of_toolbox', 'aotd_vok', 'aotd_sop']
+export const INDEVO_ID = 'IndEvo'
+/** Built-in pairs of mods no player runs together: ToT and the AoTD modules that need it, with Industrial.Evolution (user, 2026-11-19). */
+export const KNOWN_NEVER: [string, string][] = AOTD_TOT_IDS.map((a) => [a, INDEVO_ID])
+
+/** Two mods that never run together; `known` = from the built-in list (else marked in Saga › Mods). */
+export interface NeverPair { a: string; b: string; known: boolean }
+
+const pairKey = (a: string, b: string) => [a, b].sort().join('|')
+
+/** Every pair of mods that never run together: the built-in list plus the mod's own `neverWith` marks. */
+export function neverPairs(p: Pick<ProjectFile, 'mods'> | null | undefined): NeverPair[] {
+  const out = new Map<string, NeverPair>()
+  for (const [a, b] of KNOWN_NEVER) out.set(pairKey(a, b), { a, b, known: true })
+  for (const x of p?.mods ?? []) for (const b of x.neverWith ?? []) {
+    const k = pairKey(x.id, b)
+    if (b !== x.id && !out.has(k)) out.set(k, { a: x.id, b, known: false })
+  }
+  return [...out.values()]
+}
+
+/** The mods that never run with this one (built-in or marked), and whether each is built-in. */
+export function neverWithOf(p: Pick<ProjectFile, 'mods'> | null | undefined, id: string): { id: string; known: boolean }[] {
+  return neverPairs(p).filter((x) => x.a === id || x.b === id).map((x) => ({ id: x.a === id ? x.b : x.a, known: x.known }))
+}
+
+/** True when two mods never run together. */
+export const never = (pairs: NeverPair[], a: string, b: string): boolean => pairs.some((x) => (x.a === a && x.b === b) || (x.a === b && x.b === a))
+
+/** True when a combination of mods can happen (it holds no pair that never runs together). */
+export function possible(on: Iterable<string>, pairs: NeverPair[]): boolean {
+  const l = [...on]
+  for (let i = 0; i < l.length; i++) for (let j = i + 1; j < l.length; j++) if (never(pairs, l[i], l[j])) return false
+  return true
+}
+
+/**
+ * The versions strip's cells (PLAN.md §10.6): every combination of the optional mods (at most `max`)
+ * that can happen. #67 U18: with `settings`, for each setting marked for versions, one cell per
+ * value alone and each value with each single optional mod (not every combination: it stays small).
+ */
+export function versionCells(p: Pick<ProjectFile, 'mods' | 'settings'> | null | undefined, max = 4, settings = true): string[][] {
+  const pairs = neverPairs(p)
+  const opt = optionalMods(p ?? {}).map((x) => x.id)
+  const out = subsets(opt, max).filter((c) => possible(c, pairs))
+  if (!settings) return out
+  const singles = [...new Set(opt)].sort().slice(0, max)
+  for (const s of versionSettings(p?.settings)) {
+    for (const v of versionValues(s)) {
+      const t = settingToken(s.id, v)
+      out.push([t])
+      for (const m of singles) out.push([m, t].sort())
+    }
+  }
   return out
+}
+
+/**
+ * Play mode's switches: the optional mods that count after turning `id` on or off. Turning one on
+ * turns off the mods that never run with it, so Play mode never plays an impossible combination.
+ */
+export function switchPlay(on: Set<string>, id: string, value: boolean, pairs: NeverPair[]): Set<string> {
+  const out = new Set(on)
+  if (!value) { out.delete(id); return out }
+  out.add(id)
+  for (const x of [...out]) if (x !== id && never(pairs, x, id)) out.delete(x)
+  return out
+}
+
+/** The first pair of mods in a list that never runs together, or null. */
+export function neverPairIn(ids: Iterable<string>, pairs: NeverPair[]): [string, string] | null {
+  const l = [...new Set(ids)]
+  for (let i = 0; i < l.length; i++) for (let j = i + 1; j < l.length; j++) if (never(pairs, l[i], l[j])) return [l[i], l[j]]
+  return null
 }
 
 /** "Hazard Mining Incorporated + UAF" / "no optional mods". */
@@ -194,6 +278,20 @@ export const FRAMEWORK_FILE_MODS: Record<string, { mod: string; name: string; wh
   'data/config/exerelinFactionConfig/mod_factions.csv': { mod: 'nexerelin', name: 'Nexerelin', what: 'its faction config (exerelinFactionConfig)' },
   'data/config/magic_achievements.csv': { mod: 'MagicLib', name: 'MagicLib', what: 'its achievements (magic_achievements.csv)' },
   'data/config/exerelin/questSkip.json': { mod: 'nexerelin', name: 'Nexerelin', what: 'its quest skip entries (exerelin/questSkip.json)' },
-  'data/config/modFiles/magicBounty_data.json': { mod: 'MagicLib', name: 'MagicLib', what: 'its bounties (magicBounty_data.json)' }
+  'data/config/modFiles/magicBounty_data.json': { mod: 'MagicLib', name: 'MagicLib', what: 'its bounties (magicBounty_data.json)' },
+  // #77: only Vaults of Knowledge reads them
+  'data/campaign/aotd_tech_options.csv': { mod: 'aotd_vok', name: 'AoTD- Vaults of Knowledge', what: 'its techs (aotd_tech_options.csv)' },
+  'data/campaign/aotd_faction_behaviour.csv': { mod: 'aotd_vok', name: 'AoTD- Vaults of Knowledge', what: 'its factions\' research stances (aotd_faction_behaviour.csv)' }
 }
 export const FRAMEWORK_FILES = Object.keys(FRAMEWORK_FILE_MODS)
+
+/**
+ * #67 (user, 2026-11-21): a faction's colour as the active mod's game would have it: the last layer
+ * (in load order) from a source that counts (vanilla, the mod, its listed mods), not every installed
+ * mod's patch. Falls back to the merged colour for an older index.
+ */
+export function factionColor(f: { color: number[] | null; colors?: { sourceId: string; color: number[] }[] }, visible: Set<string>): number[] | null {
+  if (!f.colors) return f.color
+  const own = f.colors.filter((c) => isVisible(c.sourceId, visible))
+  return own.length ? own[own.length - 1].color : f.color
+}

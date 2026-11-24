@@ -4,13 +4,15 @@
    * read-only graph per conversation chain, with the in-game dialog preview and a live Play from
    * any rule.
    */
+  import RefButton from '../ui/RefButton.svelte'
   import ShowAllMods from '../ui/ShowAllMods.svelte'
   import { mods } from '../state/mods.svelte'
+  import { isVisible } from '../../../shared/modlist'
   import { SvelteFlow, Background, Controls, MiniMap, type Node, type Edge } from '@xyflow/svelte'
   import '@xyflow/svelte/dist/style.css'
   import { app } from '../state/app.svelte'
   import { buildChain, searchRules } from '../../../shared/rules/graph'
-  import { Engine, emptyView, assumeKey, builtinCondition, type EngineRule, type DialogView } from '../../../shared/rules/engine'
+  import { compileRules, Engine, emptyView, assumeKey, builtinCondition, type EngineRule, type DialogView } from '../../../shared/rules/engine'
   import RuleNode from '../graph/RuleNode.svelte'
   import { autoLayout } from '../graph/layout'
   import DialogPreview from '../dialog/DialogPreview.svelte'
@@ -25,7 +27,8 @@
   let edges = $state.raw<Edge[]>([])
   let stubs = $state<string[]>([])
   const sel = $derived(app.selected.dialog ?? null)
-  const rs = $derived(app.ruleSet)
+  // #67 U33: the chain graph and preview pick among the rules of vanilla, this mod and its listed mods (all with Show all)
+  const rs = $derived(app.ruleSet && !mods.all('dialog') ? compileRules(app.ruleSet.all.map((r) => r.row).filter((r) => isVisible(r.sourceId, mods.visible))) : app.ruleSet)
   // #60: vanilla, this mod and its listed mods (Show all installed mods for every rule)
   const allResults = $derived(rs ? searchRules(rs, query) : [])
   const results = $derived(mods.filter('dialog', allResults, (r) => r.row.sourceId))
@@ -153,9 +156,9 @@
       <h3 class="mono">{rule.row.id}</h3>
       <div class="muted small">{srcName(rule.row.sourceId)} · {rule.row.file}:{rule.row.line} · read-only</div>
       <dl>
-        <dt>Trigger</dt><dd class="mono">{rule.row.trigger}</dd>
-        <dt>Conditions</dt><dd><pre>{rule.row.conditions || '—'}</pre></dd>
-        <dt>Script</dt><dd><pre>{rule.row.script || '—'}</pre></dd>
+        <dt>Trigger <RefButton ref="rules-triggers" /></dt><dd class="mono">{rule.row.trigger}</dd>
+        <dt>Conditions <RefButton ref="rules-commands" /></dt><dd><pre>{rule.row.conditions || '—'}</pre></dd>
+        <dt>Script <RefButton ref="rules-commands" /></dt><dd><pre>{rule.row.script || '—'}</pre></dd>
         <dt>Text</dt><dd><pre class="txt">{rule.row.text || '—'}</pre></dd>
         <dt>Options</dt><dd><pre>{rule.row.options || '—'}</pre></dd>
         {#if rule.row.notes}<dt>Notes</dt><dd><pre>{rule.row.notes}</pre></dd>{/if}

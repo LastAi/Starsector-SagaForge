@@ -208,7 +208,8 @@ describe('#65 checks', () => {
 })
 
 describe('#65 shared drop groups (PLAN.md §10.7, question 5)', () => {
-  const MODS = path.resolve(__dirname, '..', '..', '..', 'mods')
+  // the throwaway test mods are archived in "old test mods" (2026-11-24); a rebuilt one is back in mods
+  const MODS = [path.resolve(__dirname, '..', '..', '..', 'mods'), path.resolve(__dirname, '..', '..', '..', 'old test mods')].find((d) => fs.existsSync(path.join(d, 'eight_a_twin'))) ?? path.resolve(__dirname, '..', '..', '..', 'mods')
   const rowsOf = (mod: string): DropGroupRow[] => {
     const f = path.join(MODS, mod, 'data', 'campaign', 'procgen', 'drop_groups.csv')
     return handDropRows(fs.readFileSync(f, 'utf8').replace(/^#.*$/gm, '')).map((r) => ({ ...r, freq: 100, definedBy: mod }))

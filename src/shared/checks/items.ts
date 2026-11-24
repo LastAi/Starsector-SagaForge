@@ -1,5 +1,6 @@
 /** Item checks (PLAN.md §4.7): new ids only, prefixed, not colliding with the game or any installed mod. */
 import type { Problem } from '../api'
+import { isIconPath } from '../research'
 import type { CheckContext } from '.'
 import { prefixProblem, ID_PATTERN } from '.'
 import { ITEM_PLUGINS, pluginInfo } from '../itemplugins'
@@ -42,6 +43,8 @@ export function imagePaths(model: CheckContext['model']): string[] {
   // #65: achievement images (MagicLib) and quest chain images (Nexerelin's skip screen)
   for (const a of model.project.achievements ?? []) if (a.image) out.add(a.image)
   for (const c of model.project.questSkip ?? []) if (c.image) out.add(c.image)
+  // #77: the mod's own tech icons (Vaults of Knowledge)
+  for (const t of model.research?.techs ?? []) if (isIconPath(t.icon)) out.add(t.icon!)
   return [...out]
 }
 
@@ -64,5 +67,6 @@ export function missingImageProblems(ctx: CheckContext): Problem[] {
   // #65
   for (const a of ctx.model.project.achievements ?? []) if (a.image && files[a.image] === false) out.push({ level: 'error', area: 'Achievements', message: `Achievement "${a.name || a.id}": image ${a.image} doesn't exist in the mod, the game or an installed mod.`, ref: { page: 'saga', id: 'achievements', sub: a.id } })
   for (const c of ctx.model.project.questSkip ?? []) if (c.image && files[c.image] === false) out.push({ level: 'error', area: 'Quest skip', message: `Quest chain "${c.name || c.id}": image ${c.image} doesn't exist in the mod, the game or an installed mod.`, ref: { page: 'saga', id: 'questskip', sub: c.id } })
+  for (const x of ctx.model.research?.techs ?? []) if (isIconPath(x.icon) && files[x.icon!] === false) out.push({ level: 'error', area: 'Research', message: `Tech "${x.name || x.id}": icon ${x.icon} doesn't exist in the mod, the game or an installed mod (Vaults of Knowledge shows a missing texture).`, ref: { page: 'saga', id: 'research', sub: x.id } })
   return out
 }

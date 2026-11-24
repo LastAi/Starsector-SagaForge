@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ConditionsEditor from '../quests/ConditionsEditor.svelte'
   import VersionStrip from '../ui/VersionStrip.svelte'
   import { itemVer } from '../state/itemver.svelte'
   /**
@@ -21,7 +22,8 @@
 
   const m = $derived(project.m!)
   const pools = $derived(m.pools ?? [])
-  const sel = $derived(app.selected.pool ?? pools[0]?.id ?? null)
+  // #67: a remembered pool from another mod (or a deleted one) falls back to the first (it said "No pool yet.")
+  const sel = $derived(pools.some((p) => p.id === app.selected.pool) ? app.selected.pool! : pools[0]?.id ?? null)
   // #64: the pool as in the open version (the versions strip; not for loot pools, which the game loads)
   const pool = $derived(((p) => (p?.use === 'loot' ? p : itemVer.view('pool', p?.id, p)))(pools.find((p) => p.id === sel) ?? null))
   const ch = $derived(pool ? Object.fromEntries(chances(pool).map((c) => [c.id, c.chance])) : {})
@@ -31,7 +33,7 @@
   const lootUsers = $derived(pool ? [...m.systems.flatMap((sy) => sy.entities.filter((e) => e.loot?.some((l) => l.group === pool.id)).map((e) => e.name)), ...(m.scatter ?? []).filter((sc) => sc.loot?.some((l) => l.group === pool.id)).map((sc) => `scatter ${sc.name}`)] : [])
   const use = $derived(pool?.use ?? 'branch')
   /** Loot entry ids: commodities, special items (item_), weapons (wpn_), wings (ftr_). */
-  const lootIds = $derived([...m.items.map((i) => ({ id: i.kind === 'special' ? `item_${i.id}` : i.id, name: i.name })), ...(app.index?.items ?? []).map((i) => ({ id: i.kind === 'special' ? `item_${i.id}` : i.id, name: i.name })), ...(app.index?.weapons ?? []).map((w) => ({ id: `wpn_${w.id}`, name: w.name })), ...(app.index?.wings ?? []).map((w) => ({ id: `ftr_${w.id}`, name: w.name }))])
+  const lootIds = $derived([...m.items.map((i) => ({ id: i.kind === 'special' ? `item_${i.id}` : i.id, name: i.name })), ...(app.index?.items ?? []).map((i) => ({ id: i.kind === 'special' ? `item_${i.id}` : i.id, name: i.name, definedBy: i.definedBy })), ...(app.index?.weapons ?? []).map((w) => ({ id: `wpn_${w.id}`, name: w.name, definedBy: w.definedBy })), ...(app.index?.wings ?? []).map((w) => ({ id: `ftr_${w.id}`, name: w.name, definedBy: w.definedBy }))])
   const USE_HELP: Record<string, string> = {
     loot: "A loot table: a drop group of the mod's own in drop_groups.csv (vanilla's file, no SagaLib). Salvage entities and scatters roll it (Locations › Loot). Entries are commodities, special items (item_<id>), weapons (wpn_<id>) or fighter wings (ftr_<id>); weights are vanilla's freq.",
     encounters: "Random encounters: SagaLib 1.2 adds the pool to vanilla's own encounter creators, which pick one at vanilla's encounter points (in slipstreams, just outside a star system) by frequency. Entries are the mod's encounters; the picked one's fleet lies in wait there and leaves when the player is gone.",
@@ -63,6 +65,8 @@
     <ul class="list">{#each pools as p (p.id)}<li class:on={p.id === sel}><button class="li" onclick={() => (app.selected.pool = p.id)}>{p.name || p.id}<span class="sub">{p.entries.length}</span></button></li>{/each}</ul>
     <p class="muted small pad">A named list of things that can happen, each with a weight, like a loot table or a deck of story cards. One entry is picked by weight, or nothing. A pool is for Random branches (SagaLib 1.2), a loot table (a drop group, no SagaLib) or random encounters (SagaLib 1.2).</p>
   </div>
+  <!-- #67 U16: the strip and the form share the right column (as two grid cells the form fell into the left one) -->
+  <div class="main">
   {#if pool && pool.use !== 'loot'}<VersionStrip kind="pool" id={pool.id} what="this pool" />{/if}
   <div class="scroll pad">
     {#if pool}
@@ -79,7 +83,7 @@
           </select>
         </Field>
         {#if use === 'loot'}
-          <Field label="Adds to" help="Empty: a drop group of the mod's own (its id is the pool's id). Or an existing group (vanilla's rare_tech, blueprints, ai_cores2…, or another mod's): the entries are added to that group, its own items stay (checked in game). Then this pool is not a group itself: entities and rewards roll the group you add to.">
+          <Field label="Adds to" ref="loot-drop-groups" help="Empty: a drop group of the mod's own (its id is the pool's id). Or an existing group (vanilla's rare_tech, blueprints, ai_cores2…, or another mod's): the entries are added to that group, its own items stay (checked in game). Then this pool is not a group itself: entities and rewards roll the group you add to.">
             <IdInput value={pool.addsTo ?? ''} options={dropGroupChoices([], app.index)} width="220px" placeholder="(a group of the mod's own)" onCommit={(v) => { const g = v.trim(); edPool((p) => { p.addsTo = g || undefined }) }} />
           </Field>
         {/if}
@@ -128,7 +132,7 @@
             <label title="At least this many days between two picks">cooldown <input type="number" class="short" min="0" value={en.limit?.cooldownDays ?? 0} onchange={(e) => { const v = Math.max(0, Number(e.currentTarget.value) || 0); edEntry(i, (x) => { x.limit = { ...(x.limit ?? {}), cooldownDays: v || undefined } }) }} /> days</label>
             <label title="At most this many picks per playthrough">at most <input type="number" class="short" min="0" value={en.limit?.max ?? 0} onchange={(e) => { const v = Math.max(0, Math.floor(Number(e.currentTarget.value) || 0)); edEntry(i, (x) => { x.limit = { ...(x.limit ?? {}), max: v || undefined } }) }} /> times</label>
           </div>
-          <LinesInput lines={en.conditions} {templates} placeholder="may be picked only if… (optional)" onChange={(l) => edEntry(i, (x) => { x.conditions = l })} />
+          <ConditionsEditor lines={en.conditions} {templates} placeholder="may be picked only if… (optional)" onChange={(l) => edEntry(i, (x) => { x.conditions = l })} />
           {/if}
         </div>
       {/each}
@@ -139,15 +143,17 @@
       <p><button class="mini danger" disabled={users.length > 0 || lootUsers.length > 0} title={users.length || lootUsers.length ? 'Still used' : ''} onclick={() => { const id = pool!.id; project.change((mm) => { mm.pools = (mm.pools ?? []).filter((p) => p.id !== id) }); app.selected.pool = null }}>Delete pool</button></p>
     {:else}<div class="muted">No pool yet. <button class="mini" onclick={newPool}>+ New pool</button></div>{/if}
   </div>
+  </div>
 </div>
 
 <style>
   .split { display: grid; grid-template-columns: 260px minmax(0, 1fr); height: 100%; min-height: 0; }
   .side { border-right: 1px solid var(--border); overflow: auto; background: var(--panel); }
-  .scroll { overflow: auto; }
+  .main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .scroll { overflow: auto; flex: 1; min-height: 0; }
   .pad { padding: 10px 14px; }
   .sect, .sect2 { display: flex; justify-content: space-between; align-items: center; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 8px 10px 4px; }
-  .sect2 { padding: 14px 0 4px; }
+  .sect2 { padding: 14px 0 4px; max-width: 720px; }
   .list { list-style: none; margin: 0; padding: 0; }
   .li { width: 100%; text-align: left; border: none; background: none; padding: 4px 10px; display: flex; justify-content: space-between; }
   .list li.on .li { background: var(--accent-2); color: #fff; }

@@ -1,6 +1,6 @@
 // Screenshot mode: launches the built app with its own settings folder (.userdata/smoke), points it
 // at a Starsector install and a mods workspace, opens a page and writes a PNG, then quits.
-//   npm run build && node scripts/smoke.mjs <page>[:<arg>] [--game D:/Starsector] [--ws <dir>] [--mod <dir>] [--out <file>] [--exe <packaged exe>]
+//   npm run build && node scripts/smoke.mjs <page>[:<arg>] [--game D:/Starsector] [--ws <dir>] [--mod <dir>] [--out <file>] [--exe <packaged exe>] [--size WxH]
 //     [--migration <second install> [--target main|migration]]   (#47)
 // The workspace defaults to a copy-free fixture folder in .userdata/smoke/ws (mods are only read
 // unless --mod points at a mod there). Nothing in the game folder is ever written.
@@ -30,7 +30,7 @@ const exe = opt('exe', null)
 const r = spawnSync(exe ? path.resolve(exe) : electron, exe ? [] : ['.'], {
   cwd: root,
   stdio: 'inherit',
-  env: { ...process.env, SF_USERDATA: dataDir, SF_SMOKE: page }
+  env: { ...process.env, SF_USERDATA: dataDir, SF_SMOKE: page, ...(opt('size', null) ? { SF_SMOKE_SIZE: opt('size', null) } : {}) }
 })
 const png = path.join(dataDir, `smoke-${page.replace(/[^\w.-]/g, '_')}.png`)
 const out = opt('out', null)

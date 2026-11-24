@@ -37,7 +37,7 @@
     <select {id} value={value?.setting ?? ''} onchange={(e) => pick(e.currentTarget.value)}>
       <option value="">(not scaled)</option>
       {#each usable as s (s.id)}<option value={s.id}>{s.label || s.id} ({s.type === 'Int' ? 'percent' : s.type === 'Double' ? 'times' : s.type === 'Boolean' ? 'on/off' : 'choice'})</option>{/each}
-      {#if value?.setting && !cur}<option value={value.setting}>{value.setting} (not a setting)</option>{/if}
+      {#if value?.setting && !usable.some((s) => s.id === value.setting)}<option value={value.setting}>{value.setting} ({cur ? 'can\'t scale: not a number, on/off or choice' : 'not a setting'})</option>{/if}
     </select>
     {#if keys.length}
       {#each keys as k (k)}<label class="small">{cur?.type === 'Boolean' ? (k === 'true' ? 'on' : 'off') : k} × <input type="number" step="0.05" min="0" class="f" value={value?.factors?.[k] ?? 1} onchange={(e) => setFactor(k, Number(e.currentTarget.value))} /></label>{/each}

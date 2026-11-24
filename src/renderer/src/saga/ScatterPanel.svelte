@@ -20,8 +20,8 @@
   let selId = $state<string | null>(app.selected.scatterItem ?? null)
   const sel = $derived(list.find((x) => x.id === (selId ?? list[0]?.id)) ?? null)
   const lootPools = $derived((m.pools ?? []).filter((p) => p.use === 'loot' && !p.addsTo))
-  const types = $derived([...(m.types?.entities ?? []).map((t) => ({ id: t.id, name: t.name })), ...(app.index?.customEntityTypes ?? []).map((t) => ({ id: t.id, name: t.name ?? t.id }))])
-  const places = $derived([...m.systems.flatMap((sy) => sy.entities.flatMap((e) => [{ id: e.id, name: `${e.name} (${sy.name})` }, ...(e.market && e.market.id !== e.id ? [{ id: e.market.id, name: `${e.market.name} market` }] : [])])), ...(app.index?.markets ?? []).map((x) => ({ id: x.id, name: `${x.name} market` }))])
+  const types = $derived([...(m.types?.entities ?? []).map((t) => ({ id: t.id, name: t.name })), ...(app.index?.customEntityTypes ?? []).map((t) => ({ id: t.id, name: t.name ?? t.id, definedBy: t.definedBy }))])
+  const places = $derived([...m.systems.flatMap((sy) => sy.entities.flatMap((e) => [{ id: e.id, name: `${e.name} (${sy.name})` }, ...(e.market && e.market.id !== e.id ? [{ id: e.market.id, name: `${e.market.name} market` }] : [])])), ...(app.index?.markets ?? []).map((x) => ({ id: x.id, name: `${x.name} market`, definedBy: x.definedBy }))])
   const factions = $derived([...m.factions.filter((f) => f.kind === 'addition').map((f) => ({ id: f.id })), ...(app.index?.factions ?? [])])
 
   const ed = (fn: (s: ScatterPlan) => void) => { const id = sel?.id; project.change((mm) => { const s = mm.scatter?.find((x) => x.id === id); if (s) fn(s) }) }
@@ -54,7 +54,7 @@
         <Field label="How many" for="sc-c" help="Copies to place, each in a different star system (fewer if not enough places fit).">
           <input id="sc-c" type="number" min="1" max="50" value={sel.count} onchange={(e) => { const v = Math.max(1, Math.min(50, Math.round(Number(e.currentTarget.value) || 1))); ed((s) => { s.count = v }) }} />
         </Field>
-        <Field label="Object" help="A custom entity type (custom_entities.json): supply_cache, weapons_cache, derelict_probe, station_research, … or one of the mod's own types.">
+        <Field label="Object" ref="locations-entity-types" help="A custom entity type (custom_entities.json): supply_cache, weapons_cache, derelict_probe, station_research, … or one of the mod's own types.">
           <IdInput value={sel.entity.type} options={types} width="220px" onCommit={(v) => ed((s) => { s.entity.type = v.trim() })} />
         </Field>
         <Field label="Its name" for="sc-en" help="The name on the map and in its dialog.">
@@ -66,7 +66,7 @@
         <Field label="Existing saves" for="sc-ex" help="Also place them in a game that was started before the mod was added (on the next load), not only in new games.">
           <label class="chk"><input id="sc-ex" type="checkbox" checked={!!sel.addToExistingSaves} onchange={(e) => { const v = e.currentTarget.checked; ed((s) => { s.addToExistingSaves = v || undefined }) }} /> also in existing saves</label>
         </Field>
-        <Field label="Loot" help="Drop groups its salvage rolls: one of the mod's loot pools (Saga › Pools, a loot table) or a vanilla group.">
+        <Field label="Loot" ref="loot-drop-groups" help="Drop groups its salvage rolls: one of the mod's loot pools (Saga › Pools, a loot table) or a vanilla group.">
           <div class="col">
             {#each sel.loot ?? [] as l, i (i)}
               <div class="row">

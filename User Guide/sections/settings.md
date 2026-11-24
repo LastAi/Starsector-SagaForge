@@ -12,21 +12,28 @@ never writes code, and never overwrites a file that was changed on disk since it
 
 ### The window
 
-![The Saga Forge window with The Lost Convoy open](../img/app-window.png)
+![The Saga Forge window with Heliopolis open on its quest Persea](../img/app-window.png)
 
 - **The header**, left to right: the tabs (Saga, Factions, People, Items, Quests, Locations,
   Encounters, Fleets, Images, Dialog, Problems; Problems shows a count when something needs
-  attention), the **active mod** list, **+ New mod**, **+ Translation**, the **Works with** pill (the other
-  mods your mod uses; it opens [Saga › Mods](saga.md#mods)), then **Save**, **Check mod**,
-  **Export…** and **⚙** (Settings).
+  attention), the **active mod** list (its last entries are **+ New mod…** and **+ New translation of
+  an installed mod…**), the **Cross Mod Support** pill with the number of other mods your mod works
+  with (their names are in its tooltip; it opens [Saga › Mods](saga.md#mods)), then **Save**,
+  **Discard** (only while there are unsaved changes), **Check mod**, **Export…** and **⚙** (Settings).
 - **The page** of the tab you picked. Most tabs have a list on the left, the editor in the middle
   and details or a preview on the right. The dividers between them can be dragged.
 - **The footer**: the active mod's name and a count of its factions, quests and people on the
   left; on the right the game version Saga Forge read and how many mods it indexed.
 
 Every form field has a label and a short help line under it: what the field is and where it shows
-in game. Where a label has an **ⓘ** next to it, it opens Saga Forge's reference page about that
-field's choices in a separate window.
+in game. Where a label has an **ⓘ** next to it, it opens Saga Forge's reference about that field's
+choices in a separate window. Every list the editor offers has one: entity types with their dialog,
+salvage and defenders; planet and star types; industries and submarkets; colony conditions; drop
+groups and what each can give; blueprint tags; skills; reputation levels; rule commands, triggers,
+memory keys and text tokens; quest node types; conditions and their scopes; dialog options; music
+and sounds, and more. The reference is split into groups (People, Factions, Locations, Rules …),
+one page each, with every group and list in the sidebar. Lists built from the game show what your
+mod sees: vanilla, your mod and the mods it lists in [Saga › Mods](saga.md#mods).
 
 ### First start
 
@@ -64,6 +71,10 @@ Factions tab with no active mod: everything is read-only until you pick or creat
 - **Checks › Style checks**: vanilla's writing conventions (speech in quotes, second-person
   narration, highlighted numbers and names). Off by default. When on, they show as level *Style*
   in [Problems](problems.md) and never block Export.
+- **Node group library**: a folder for the node groups you use in more than one mod (see
+  [Quests › Node groups](quests.md#node-groups)). Groups there show in every mod's **+ Node** menu;
+  placing one copies it into the mod. **Change…**, **Default** (Saga Forge's data folder ›
+  `nodegroups`) and **Open**, as for the releases folder. A synced or git folder works too.
 - **Format definitions**: which game version's rules Saga Forge uses for this install, and the
   folder where you could put adjusted definition files (only needed for a game version Saga Forge
   doesn't know yet).
@@ -75,10 +86,12 @@ Factions tab with no active mod: everything is read-only until you pick or creat
 
 The list in the header picks the mod you are editing. It lists the mods in your mods folder
 (Settings › Where your mods are), by name and folder, with the mod's id prefix after the one that
-is open. **(none: read only)** closes the mod.
+is open. **(none: read only)** closes the mod. Its last two entries create a new mod and a
+translation mod. While the open mod has unsaved changes the list is locked: **Save** or
+**Discard** first.
 
-Every id Saga Forge creates in a mod starts with the mod's **id prefix** (`vgc_` for Vanguard
-Compact: faction `vgc_vanguard`, quest `vgc_lost_convoy`). It is asked for once, when a mod is
+Every id Saga Forge creates in a mod starts with the mod's **id prefix** (`hel_` for Heliopolis:
+faction `hel_heliopolis`, quest `hel_persea`). It is asked for once, when a mod is
 opened in Saga Forge for the first time, and should never change after the mod is released. The
 prefix and the rest of your plans live in the mod's `sagaforge/` folder, which the game ignores
 and which stays out of release zips.
@@ -100,9 +113,11 @@ A **translation mod** opens differently: it has only one tab, Translation (see
 - Every save and export first copies the files it replaces into
   `sagaforge/backups/<date and time>/`. The last 10 are kept; named snapshots (see
   [Move a mod to a new game version](#move-a-mod-to-a-new-game-version)) are never deleted.
+- **Discard** (next to Save while there are unsaved changes) throws the changes away and reloads
+  the mod from disk.
 - If a file was changed outside Saga Forge since it was opened (by a text editor, or another
-  program), nothing is saved and Saga Forge tells you which files: reload the mod, or copy your
-  changes somewhere first.
+  program), nothing is saved and Saga Forge tells you which files: press **Discard** to load the
+  files as they are now (copy your changes somewhere first if you need them).
 
 ## How to set up the basics
 
@@ -137,7 +152,7 @@ folder. On Windows a folder link (junction) does it without copying, for example
 prompt:
 
 ```
-mklink /J "C:\Program Files (x86)\Fractal Softworks\Starsector\mods\vanguard_compact" "D:\MyMods\vanguard_compact"
+mklink /J "C:\Program Files (x86)\Fractal Softworks\Starsector\mods\the_other_captain" "D:\MyMods\the_other_captain"
 ```
 
 Then enable the mod in the game's launcher as usual. A mod made with Saga Forge also needs
@@ -145,18 +160,18 @@ Then enable the mod in the game's launcher as usual. A mod made with Saga Forge 
 
 ### Create a new mod
 
-1. Header › **+ New mod**.
+1. Header › the active mod list › **+ New mod…** (its next-to-last entry).
 2. **Mods folder** shows where the new mod's folder goes. If none is chosen yet, choose one here
    (**Choose a folder…** or **Use the game's mods folder**).
-3. **Mod id**: the id in `mod_info.json` and the folder's name, e.g. `vanguard_compact`. Other
+3. **Mod id**: the id in `mod_info.json` and the folder's name, e.g. `the_other_captain`. Other
    mods and saves refer to it: never change it after a release.
-4. **Name**: the name in the game's launcher, e.g. `Vanguard Compact`. Empty: the id.
+4. **Name**: the name in the game's launcher, e.g. `The Other Captain`. Empty: the id.
 5. **Create**. The mod becomes the active mod.
 
 ![New mod](../img/app-newmod.png)
 
 6. Saga Forge asks for the **id prefix**. It suggests one from the mod id; change it if you like
-   (2 to 8 lowercase letters or digits, starting with a letter, then `_`, e.g. `vgc_`) and press
+   (2 to 8 lowercase letters or digits, starting with a letter, then `_`, e.g. `toc_`) and press
    **Use this prefix**. This creates `sagaforge/project.json` in the mod.
 
 You now have an empty mod with a `mod_info.json`. Add content on the other tabs, then
@@ -166,8 +181,8 @@ You now have an empty mod with a `mod_info.json`. Add content on the other tabs,
 
 1. Make sure the mod's folder is in your mods folder (see
    [Choose your mods folder](#choose-your-mods-folder)).
-2. Pick it in the header's active mod list. If you have unsaved changes in the open mod, Saga
-   Forge asks first.
+2. Pick it in the header's active mod list. If the open mod has unsaved changes, the list is
+   locked until you **Save** or **Discard** them.
 3. A mod made with Saga Forge opens as you left it. A mod that wasn't made with it asks for an id
    prefix once (it creates `sagaforge/project.json`); from then on Saga Forge adds its own files
    and its own marked blocks in shared files such as `rules.csv`, and leaves your hand-written
@@ -177,10 +192,11 @@ To bring a mod's hand-written quests and dialog into Saga Forge's plans (so you 
 the tabs), there is a separate guide for doing that with an AI assistant:
 [AI-CONVERSION.md](https://github.com/LastAi/Starsector-SagaForge/blob/main/docs/AI-CONVERSION.md).
 
-Saga Forge's example mod, Vanguard Compact, is on the Saga Forge release page
+Saga Forge's small example mod, Vanguard Compact, is on the Saga Forge release page
 (`VanguardCompact-<version>.zip`, and `example/VanguardCompact` in the source): unzip it into
 your mods folder and open it to see the tabs filled in. Its `sagaforge/` folder is the editor
-project.
+project. The pictures in this guide show two larger mods, Heliopolis and The Other Captain (see the introduction, "The example mods in
+the pictures").
 
 ### Move a mod to a new game version
 
@@ -190,14 +206,14 @@ install the new one in a folder of its own. Then:
 1. **⚙** › **Migration install** › **Choose…** and pick the other install. Saga Forge reads both;
    neither is ever written to.
 2. A pill appears in the header with the targeted version, e.g. **0.98.5a-RC5** (orange when the
-   older version is targeted; wide windows also show the word *Target* in front). Pick the
-   version the active mod should target. It is remembered per mod; the game data, the other mods
+   older version is targeted; wide windows also show the word *Target* in front). A mod starts on
+   the version it was made for: pick the version the active mod should target. It is remembered per mod; the game data, the other mods
    and Export all follow it. Id fields mark what only one of the versions has, and
    [Problems](problems.md) blocks an export that uses something the target lacks.
 3. A mod made for an older version than the one it targets shows a bar under the header:
    *This mod was made for Starsector …; it now targets …* › **Open migration**.
 
-![Vanguard Compact, made for 0.98a, targeting 0.98.5a: the target pill and the migration bar](../img/app-migration-bar.png)
+![The Other Captain, made for 0.98a, targeting 0.98.5a: the target pill and the migration bar](../img/app-migration-bar.png)
 
 4. In the migration dialog:
    - **0. Snapshot**: **Save a … snapshot** keeps a copy of the mod as it is now in
@@ -212,12 +228,12 @@ install the new one in a folder of its own. Then:
 5. When you no longer need the old version: **⚙** › **Finish migration…** makes the new install
    the main one and empties the migration slot.
 
-![The migration dialog: one Must change item (the game version, done by the export) and four things to check](../img/app-migration-real.png)
+![The migration dialog: one Must change item (the game version, done by the export) and one thing to check](../img/app-migration-real.png)
 
 Here the only thing that must change is the game version in `mod_info.json`, which the next export
-writes (**Export now…**), so **Export for 0.98.5a…** is ready. The four Check items are 0.98.5a
-changes that touch what Vanguard Compact uses (commission pay, Survival Mode, ambush fleets, the
-quest wreck); the test list below them says what to try in game.
+writes (**Export now…**), so **Export for 0.98.5a…** is ready. The Check item is a 0.98.5a change
+that touches what The Other Captain uses (its encounter fleets no longer make the player count as
+sought by patrols); the test list below it says what to try in game.
 
 Without a migration install, the dialog still works, but it can only compare Saga Forge's built-in
 knowledge of both versions, not the two games' actual files.

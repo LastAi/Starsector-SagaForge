@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import { versions } from '../state/versions.svelte'
   import { mods } from '../state/mods.svelte'
   /**
@@ -44,6 +45,9 @@
     const o = options.find((x) => x.id === v)
     if (o?.definedBy) void mods.picked(o.definedBy, `"${o.name || v}"`)
     if (clearOnCommit) text = ''
+    // #67: when the page keeps the old value (an empty or unchanged commit it ignores), show it again
+    // rather than the typed text: the field showed one thing while another was stored
+    else void tick().then(() => { if (text !== (value ?? '')) text = value ?? '' })
   }
 </script>
 

@@ -26,6 +26,8 @@
     })
   }
   let addType = $state('startShipsSolo')
+  /** #67: "+ another fleet" did nothing (an empty fleet isn't stored): a new row waits here for its first ship. */
+  let adding = $state<Record<string, boolean>>({})
   const known = (id: string) => !variantOptions.length || variantOptions.some((o) => o.id === id)
 </script>
 
@@ -43,7 +45,15 @@
           <button class="mini" title="Remove this fleet" onclick={() => editFleets(t.key, (l) => l.filter((_, i) => i !== fi))}>✕ fleet</button>
         </div>
       {/each}
-      <button class="mini" onclick={() => editFleets(t.key, (l) => [...l, []])} disabled={fleets[t.key].some((x) => !x.length)}>+ another {t.label.toLowerCase()} fleet</button>
+      {#if adding[t.key]}
+        <div class="chips">
+          <span class="muted small">#{fleets[t.key].length + 1}</span>
+          <span class="addchip"><IdInput value="" options={variantOptions} placeholder="first variant…" width="170px" clearOnCommit onCommit={(id) => { if (id) { editFleets(t.key, (l) => [...l, [id]]); adding[t.key] = false } }} /></span>
+          <button class="mini" onclick={() => (adding[t.key] = false)}>Cancel</button>
+        </div>
+      {:else}
+        <button class="mini" onclick={() => (adding[t.key] = true)}>+ another {t.label.toLowerCase()} fleet</button>
+      {/if}
     </div>
   </div>
 {:else}<div class="muted small">No ready-made fleets yet.</div>{/each}

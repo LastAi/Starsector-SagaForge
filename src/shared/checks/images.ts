@@ -15,7 +15,8 @@ export function imageSizeProblems(ctx: CheckContext): Problem[] {
   const out: Problem[] = []
   for (const [p, s] of Object.entries(ctx.imageSizes ?? {})) {
     const kind = kindOfPath(p)
-    if (!kind || (s.w === kind.w && s.h === kind.h)) continue
+    // #67 U38: originals keep their own size
+    if (!kind || !kind.w || (s.w === kind.w && s.h === kind.h)) continue
     out.push({
       level: 'warning', area: 'Image', file: p, ref: { page: 'images' },
       message: `${p} is ${s.w}×${s.h}; vanilla's ${kind.label.toLowerCase()} images are ${kind.w}×${kind.h}, so the game shows it scaled${kind.w / kind.h !== s.w / s.h ? ' and stretched' : ''}. Re-import it on the Images page (it crops and resizes).`,

@@ -5,12 +5,14 @@
  * MagicLib's location fields. Pure; the export merges the result into the mod's
  * data/config/modFiles/magicBounty_data.json by key.
  */
+import { effectiveFleet } from './encounters'
 import type { GameIndex } from './api'
 import type { ModModel } from './serialize'
 import type { BountyPlan, Criterion, DialogNode, EncounterDef, PersonDef, QuestPlan, TargetDef } from './model'
 import { criterion, targetKey, targetVars, targetVarOf } from './targets'
 import { parseLooseObject } from './loosejson'
 import { parseCsvRecords } from './csvedit'
+import { storedName } from './personname'
 
 export const MAGICLIB_ID = 'MagicLib'
 export const BOUNTY_FILE = 'data/config/modFiles/magicBounty_data.json'
@@ -254,7 +256,8 @@ export function bountyJson(m: ModModel, b: BountyPlan, index: GameIndex | null =
   if (withMods.length) json.required_mods_id = withMods
 
   // ---- the captain and texts' tokens
-  const cap: PersonDef | undefined = e?.fleet.flagshipCommander ? m.people.find((p) => p.id === e.fleet.flagshipCommander) : undefined
+  const capId = e ? effectiveFleet(e, m).flagshipCommander : undefined
+  const cap: PersonDef | undefined = capId ? m.people.find((p) => p.id === capId) : undefined
   const tokens: Record<string, string> = {}
   if (cap) Object.assign(tokens, { [`$${cap.id}_name`]: '$name', [`$${cap.id}_firstName`]: '$firstName', [`$${cap.id}_lastName`]: '$lastName' })
   const where = bountyWhere(m, b)
@@ -354,7 +357,8 @@ export function bountyJson(m: ModModel, b: BountyPlan, index: GameIndex | null =
   // ---- target (the captain)
   if (cap) {
     Object.assign(json, {
-      target_first_name: cap.name.first, target_last_name: cap.name.last,
+      // #79: a one-name captain as SagaLib stores them (first empty, the one name last)
+      target_first_name: storedName(cap).first, target_last_name: storedName(cap).last,
       ...(cap.portrait ? { target_portrait: cap.portrait } : {}),
       target_gender: cap.gender === 'ANY' ? 'UNDEFINED' : cap.gender,
       ...(cap.rank ? { target_rank: cap.rank } : {}), ...(cap.post ? { target_post: cap.post } : {}),

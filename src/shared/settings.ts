@@ -8,6 +8,7 @@
  */
 import type { ModModel } from './serialize'
 import type { SettingDef, SettingScale, SettingType } from './model'
+import { parseSettingToken, settingToken } from './itemversions'
 
 export const LUNA_SETTINGS_CSV = 'data/config/LunaSettings.csv'
 export const LUNA_SETTINGS_CONFIG = 'data/config/LunaSettingsConfig.json'
@@ -74,6 +75,62 @@ export function settingsMemory(defs: SettingDef[], player: Record<string, unknow
 export function valueText(v: unknown): string {
   if (typeof v === 'number') return Number.isInteger(v) ? String(v) : String(Math.round(v * 1e6) / 1e6)
   return String(v)
+}
+
+// ---------------------------------------------------------------- #67 U18: versions by a setting fixed at new game
+
+/** Types a version may depend on. */
+export const VERSION_TYPES = new Set<SettingType>(['Boolean', 'Radio'])
+/**
+ * #67 U37 (user, 2026-11-22): the player's gender, which versions may depend on like a setting
+ * marked for versions: SagaLib records it once when the game starts (never changed after). Built
+ * in: not one of the mod's settings, never written to LunaSettings.csv.
+ */
+export const PLAYER_GENDER_ID = 'player_gender'
+export const PLAYER_GENDER: SettingDef = { id: PLAYER_GENDER_ID, label: 'Player', type: 'Radio', default: 'MALE', choices: ['MALE', 'FEMALE'], versions: true }
+/** The mod's settings plus the built-in ones versions may depend on. */
+const withBuiltins = (defs: SettingDef[] | undefined): SettingDef[] => [...(defs ?? []).filter((s) => s.id !== PLAYER_GENDER_ID), PLAYER_GENDER]
+/** The settings marked for versions (Boolean and Radio only), then the player's gender. */
+export const versionSettings = (defs: SettingDef[] | undefined): SettingDef[] => withBuiltins(defs).filter((s) => !!s.versions && VERSION_TYPES.has(s.type) && !!s.id)
+/** The values a version can ask of a setting: Boolean true/false, a Radio's choices (one holding "+" can't be a version's: comboKey joins with it). */
+export const versionValues = (s: SettingDef): string[] => (s.type === 'Boolean' ? ['true', 'false'] : s.type === 'Radio' ? (s.choices ?? []).filter((c) => !c.includes('+')) : [])
+/** "on" / "off" for a Boolean, the choice for a Radio. */
+export const valueLabel = (s: Pick<SettingDef, 'type'> | undefined, value: string): string => (s?.type === 'Boolean' ? (value === 'true' ? 'on' : value === 'false' ? 'off' : value) : s === PLAYER_GENDER ? value.toLowerCase() : value)
+
+/** Why a setting token can't be used in a version (null: it can). */
+export function tokenProblem(token: string, defs: SettingDef[] | undefined): string | null {
+  const t = parseSettingToken(token)
+  if (!t) return `"${token}" isn't a setting value (setting:<id>=<value>)`
+  const s = withBuiltins(defs).find((x) => x.id === t.id)
+  if (!s) return `the setting ${t.id} doesn't exist (Saga › Settings)`
+  if (!VERSION_TYPES.has(s.type)) return `the setting "${s.label || s.id}" is ${TYPE_LABEL[s.type].toLowerCase()}; only on/off and choice settings can pick versions`
+  if (!s.versions) return `the setting "${s.label || s.id}" isn't marked "Versions may depend on it" (Saga › Settings)`
+  if (t.value.includes('+')) return `the value "${t.value}" holds a "+", which a version's key can't`
+  if (!versionValues(s).includes(t.value)) return `the setting "${s.label || s.id}" can't be "${t.value}" (${s.type === 'Boolean' ? 'true or false' : `one of ${(s.choices ?? []).join(', ')}`})`
+  return null
+}
+export const tokenValid = (token: string, defs: SettingDef[] | undefined): boolean => tokenProblem(token, defs) === null
+
+/** "Difficulty = Hard", "Ironman = on" (an unknown setting by its id). */
+export function tokenLabel(token: string, defs: SettingDef[] | undefined): string {
+  const t = parseSettingToken(token)
+  if (!t) return token
+  const s = withBuiltins(defs).find((x) => x.id === t.id)
+  return `${s?.label || t.id} = ${valueLabel(s, t.value)}`
+}
+
+/**
+ * The tokens that count for these values (the Test context's: id → value text, missing = the
+ * default): one per setting marked for versions, as SagaLib records it at new game.
+ */
+export function settingTokensOn(defs: SettingDef[] | undefined, values: Record<string, unknown> = {}, playerGender?: string): string[] {
+  const marked = versionSettings(defs).filter((s) => s !== PLAYER_GENDER)
+  const mem = settingsMemory(marked, values)
+  const out: string[] = []
+  for (const s of marked) { const v = mem.get(settingKey(s.id)); if (v !== undefined) out.push(settingToken(s.id, valueText(v))) }
+  // #67 U37: the Test context's player gender, as SagaLib records the player's at new game
+  if (playerGender) out.push(settingToken(PLAYER_GENDER_ID, playerGender))
+  return out
 }
 
 // ---------------------------------------------------------------- multipliers
@@ -174,7 +231,53 @@ export function settingsRead(m: ModModel): Map<string, string[]> {
   for (const s of m.events ?? []) scan(s, `event scheduler ${s.name || s.id}`)
   for (const p of m.progress ?? []) scan(p, `progress event ${p.name || p.id}`)
   for (const p of m.pools ?? []) scan(p.entries, `pool ${p.name || p.id}`)
+  // #67 (found by the user, 2026-11-21): a version that depends on the setting reads it too (its
+  // id stopped following the label only for conditions, so a rename orphaned the versions)
+  const versioned: [string, unknown][] = [
+    ...m.quests.map((q): [string, unknown] => [`quest ${q.title || q.id}`, q]), ...m.people.map((p): [string, unknown] => [`person ${p.id}`, p]),
+    ...m.encounters.map((e): [string, unknown] => [`encounter ${e.name || e.id}`, e]), ...m.systems.map((s): [string, unknown] => [`system ${s.name || s.id}`, s]),
+    ...(m.events ?? []).map((s): [string, unknown] => [`event scheduler ${s.name || s.id}`, s]), ...(m.pools ?? []).map((p): [string, unknown] => [`pool ${p.name || p.id}`, p]),
+    ...(m.progress ?? []).map((p): [string, unknown] => [`progress event ${p.name || p.id}`, p]), ['starting relations and scripted changes', m.factionsRuntime]
+  ]
+  for (const [where, x] of versioned) {
+    const vs = (x as { versions?: { mods: string[] }[] } | undefined)?.versions ?? []
+    for (const v of vs) for (const t of v.mods) {
+      const id = /^setting:([^=]+)=/.exec(t)?.[1]
+      if (id && defs.some((d) => d.id === id)) add(id, `versions of ${where}`)
+    }
+  }
   return out
+}
+
+/**
+ * #67 (found by the user, 2026-11-21): a setting's id changed (it follows its label until something
+ * reads it, or set by hand): everything that points at it follows. Its memory key in conditions,
+ * texts and keys ($global.<id>), the version tokens (setting:<id>=<value>), test profiles' keys and
+ * the scales that name it. Walks the whole model, so nothing that names it is left behind.
+ */
+export function renameSetting(m: ModModel, from: string, to: string): void {
+  if (!from || from === to) return
+  const key = new RegExp(`\\$global\\.${esc(from)}(?![A-Za-z0-9_])`, 'g')
+  const token = `setting:${from}=`
+  const fix = (s: string) => (s.startsWith(token) ? `setting:${to}=${s.slice(token.length)}` : s.replace(key, `$global.${to}`))
+  const seen = new Set<object>()
+  const walk = (o: unknown): void => {
+    if (!o || typeof o !== 'object' || seen.has(o)) return
+    seen.add(o)
+    if (Array.isArray(o)) { for (let i = 0; i < o.length; i++) { const v = o[i]; if (typeof v === 'string') { const n = fix(v); if (n !== v) o[i] = n } else walk(v) } return }
+    const r = o as Record<string, unknown>
+    for (const k of Object.keys(r)) {
+      const v = r[k]
+      if (k === 'setting' && v === from) r[k] = to
+      else if (typeof v === 'string') { const n = fix(v); if (n !== v) r[k] = n }
+      else walk(v)
+      const nk = fix(k)
+      if (nk !== k && !(nk in r)) { r[nk] = r[k]; delete r[k] }
+    }
+  }
+  // the setting list itself is left alone (its own id is the caller's)
+  if (m.project.settings) seen.add(m.project.settings)
+  walk(m)
 }
 
 /** The mod uses its settings at runtime (only SagaLib sets their keys): some setting is read or scales something. */

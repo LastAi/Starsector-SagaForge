@@ -3,6 +3,7 @@
  * reads. Pure: computes every file's new text and its state; the main process only writes (write
  * guard, changed-on-disk check, backups). Nothing outside owned blocks / owned keys is changed.
  */
+import { hailRules } from './hails'
 import type { GameIndex, Problem } from '../api'
 import type { ModModel } from '../serialize'
 import type { FileWrite, ProjectState } from '../project'
@@ -14,7 +15,7 @@ import { RULES_HEADER } from './csvrows'
 import { COMMODITIES_HEADER, SPECIAL_HEADER, DESCRIPTIONS_HEADER, itemRow, descriptionRows, itemKindLookup } from './items'
 import { PERSON_NAMES_HEADER, personNameRows, shipNameLists } from './names'
 import { ownTypeInfos } from '../celestial'
-import { needsSagaLib11, needsSagaLib12, needsSagaLib13, usesBountyCommands } from './runtime'
+import { needsSagaLib11, needsSagaLib12, needsSagaLib13, needsSagaLib14, usesBountyCommands } from './runtime'
 import { lockedEntityIds } from '../patterns'
 import { updateLooseText, serialize } from '../jsonedit'
 import { parseLooseObject } from '../loosejson'
@@ -24,6 +25,7 @@ import { versionFileName, versionFileText, VERSION_FILES_CSV } from '../releasep
 import { tokenizeRules, type RuleStrings } from './texttokens'
 import { eventRules } from './events'
 import { progressRules } from './progress'
+import { encounterOutcomeRules } from './encounteroutcomes'
 import { textFile, TEXT_FILE, translatable as isTranslatable } from '../translate'
 import { exportableModel } from '../inactive'
 import { bountiesFile, withoutBountyOnly, BOUNTY_FILE } from '../bounties'
@@ -35,7 +37,9 @@ import { NEX_MOD_FACTIONS, NEX_PLAYER_CONFIG, hasPlayerFleets, nexConfigJson, ne
 import { comboKey, mentionedMods } from '../itemversions'
 import { MAGIC_ACHIEVEMENTS_CSV, MAGIC_ACHIEVEMENTS_HEADER, achievementRow, preloadCategory, preloadImages } from '../achievements'
 import { QUEST_SKIP_FILE, questSkipJson } from '../questskip'
-import { addNameTokens, nameVersioned, findVersionable, hasVersions, lowerPlacesModel, resolveModel, versionedRuleRows, type VKind } from '../modelversions'
+import { VOK_FACTIONS_CSV, VOK_FACTION_HEADER, VOK_ICON_CATEGORY, VOK_TECHS_CSV, VOK_TECH_HEADER, factionRow, researchFactions, techIcons, techRow, withoutHandRows } from '../research'
+import { addNameTokens, nameVersioned, findVersionable, hasVersions, lowerPlacesModel, resolveModel, usesSettingVersions, versionedRuleRows, type VKind } from '../modelversions'
+import { expandModelGroups } from '../nodegroups'
 
 /** #64: the mod per combination of its optional mods, for items with versions (export and Check mod). */
 export interface VersionContext {
@@ -123,7 +127,7 @@ export function usesSagaLib(m: ModModel, info: ProjectState['modInfo']): boolean
 export function planExport(model: ModModel, loaded: ProjectState, index: GameIndex, gameRules: RuleRow[] | null, opts: ExportOptions = {}): ExportPlan {
   // inactive people and quests are not exported (R10); files exported before are removed below.
   // #27: quests and encounters exported only as MagicLib bounties don't go to SagaLib either
-  const plain = exportableModel(withoutBountyOnly(model))
+  const plain = exportableModel(expandModelGroups(withoutBountyOnly(model)))
   // #60: every "Only with / Only without" (own, automatic, inherited) folded into rule conditions
   const modConds = effectiveConds(plain, index, loaded.sourceId)
   // #64: versions resolved per combination of optional mods; the base is the mod without them
@@ -167,10 +171,13 @@ export function planExport(model: ModModel, loaded: ProjectState, index: GameInd
   const ruleStrings: RuleStrings = {}
 
   /** Apply owned blocks to a CSV file. */
-  const blockFile = (path: string, header: string[], blocks: { key: string; rows: string[] }[], dropKeys: (key: string) => boolean, summaryOf: (n: number) => string) => {
+  const blockFile = (path: string, header: string[], blocks: { key: string; rows: string[] }[], dropKeys: (key: string) => boolean, summaryOf: (n: number) => string, prep?: (text: string) => { text: string; note?: string }) => {
     const old = existing(path)
     const eol = eolOf(old)
     let text = old ?? header.join(',') + eol
+    // #77: hand-written rows taken into the editor leave the hand-written part (the block writes them)
+    let note = ''
+    if (prep) { const p = prep(text); text = p.text; note = p.note ? ` · ${p.note}` : '' }
     const cols = headerOf(text)?.length ?? header.length
     const states: ExportFile['blocks'] = []
     // detach first, then remove blocks we no longer own
@@ -191,7 +198,7 @@ export function planExport(model: ModModel, loaded: ProjectState, index: GameInd
     const handRows = countHandRows(text)
     if (old === text) { files.push({ path, state: 'same', summary: 'unchanged', blocks: states, handRows }); return }
     writes.push({ path, text, expectedHash: hashOf(path) })
-    files.push({ path, state: old == null ? 'new' : 'changed', summary: summaryOf(blocks.reduce((a, b) => a + b.rows.length, 0)), blocks: states, handRows })
+    files.push({ path, state: old == null ? 'new' : 'changed', summary: summaryOf(blocks.reduce((a, b) => a + b.rows.length, 0)) + note, blocks: states, handRows })
   }
 
   // ---- rules.csv: one block per quest / conversation
@@ -206,13 +213,22 @@ export function planExport(model: ModModel, loaded: ProjectState, index: GameInd
       if (translatable) { const t = tokenizeRules(rows); rows = t.rows; Object.assign(ruleStrings, t.strings) }
       return { key: `quest=${q.id}`, rows: rows.map((r) => csvLine(header.map((h) => cell(r, h)))) }
     })
+    // #67 U43: encounters that hail the player on contact (their comm dialog opens first)
+    {
+      let hRows = hailRules(m.encounters, loaded.sourceId)
+      if (translatable && hRows.length) { const t = tokenizeRules(hRows); hRows = t.rows; Object.assign(ruleStrings, t.strings) }
+      if (hRows.length) blocks.push({ key: 'hails', rows: hRows.map((r) => csvLine(header.map((h) => cell(r, h)))) })
+    }
     // Phase 8d: world events' start and end actions
     const evRows = eventRules(m.events ?? [], loaded.sourceId, itemKindLookup(m.items, index.items ?? []))
     if (evRows.length) blocks.push({ key: 'events', rows: evRows.map((r) => csvLine(header.map((h) => cell(r, h)))) })
     // Phase 8d-3: progress events' stage actions
     const peRows = progressRules(m.progress ?? [], loaded.sourceId, itemKindLookup(m.items, index.items ?? []))
     if (peRows.length) blocks.push({ key: 'progress', rows: peRows.map((r) => csvLine(header.map((h) => cell(r, h)))) })
-    blockFile(path, header, blocks, (k) => k.startsWith('quest=') || k === 'events' || k === 'progress', (n) => `${n} rule${n === 1 ? '' : 's'} in ${blocks.length} owned block${blocks.length === 1 ? '' : 's'}`)
+    // #67 U46: encounters' own outcome actions SagaLib can't run itself
+    const eoRows = encounterOutcomeRules(m.encounters, loaded.sourceId, itemKindLookup(m.items, index.items ?? []))
+    if (eoRows.length) blocks.push({ key: 'encounter-outcomes', rows: eoRows.map((r) => csvLine(header.map((h) => cell(r, h)))) })
+    blockFile(path, header, blocks, (k) => k.startsWith('quest=') || k === 'events' || k === 'progress' || k === 'hails' || k === 'encounter-outcomes', (n) => `${n} rule${n === 1 ? '' : 's'} in ${blocks.length} owned block${blocks.length === 1 ? '' : 's'}`)
   }
 
   if (!opts.dialogOnly) {
@@ -379,6 +395,26 @@ export function planExport(model: ModModel, loaded: ProjectState, index: GameInd
       }
     }
 
+    // ---- #77: AoTD Vaults of Knowledge: the mod's techs and its factions' research stances, owned
+    // blocks in the files VoK merges across mods (only VoK reads them). A hand-written row with an id
+    // the block writes was taken into the editor: it leaves the hand-written part.
+    {
+      const research = (path: string, defHeader: string[], keyCol: string, key: string, rows: Record<string, string>[], what: (n: number) => string) => {
+        if (!rows.length && !existing(path)?.includes(`sagaforge:begin ${key}`)) return
+        const old = existing(path)
+        const header = (old && headerOf(old)) || defHeader
+        const keys = new Set(rows.map((r) => r[keyCol]))
+        blockFile(path, header, rows.length ? [{ key, rows: rows.map((r) => csvLine(header.map((h) => r[h] ?? ''))) }] : [], (k) => k === key, what, (t) => {
+          const w = withoutHandRows(t, keyCol, keys)
+          return { text: w.text, note: w.removed.length ? `takes over ${w.removed.length} hand-written row${w.removed.length === 1 ? '' : 's'} (${w.removed.join(', ')})` : undefined }
+        })
+      }
+      research(VOK_TECHS_CSV, VOK_TECH_HEADER, 'id', 'research', (m.research?.techs ?? []).map((t) => techRow(t, loaded.modInfo.id)),
+        (n) => `${n} tech${n === 1 ? '' : 's'} in the mod's own tree (only Vaults of Knowledge reads this file)`)
+      research(VOK_FACTIONS_CSV, VOK_FACTION_HEADER, 'factionId', 'research', researchFactions(m).map((id) => factionRow(id, m.research!.factions[id])),
+        (n) => `${n} faction research stance${n === 1 ? '' : 's'} (only Vaults of Knowledge reads this file)`)
+    }
+
     // ---- #65: Nexerelin's quest skip: the mod's chains and quests, merged by key into its questSkip.json
     // (both sections; hand-written entries stay). Each chain names SagaLib's bridge plugin.
     {
@@ -429,7 +465,10 @@ export function planExport(model: ModModel, loaded: ProjectState, index: GameInd
       const pre = preloadImages(m)
       const preCat = preloadCategory(m.project.prefix)
       const preBefore = (project.exported.preloadImages ?? '').split(',').filter(Boolean)
-      if (Object.keys(want).length || before.length || Object.keys(pre).length || preBefore.length) {
+      // #77: the techs' own icons, where VoK looks them up (graphics.ui_icons_tech_tree.<iconId>)
+      const icons = techIcons(m)
+      const iconsBefore = (project.exported.techIcons ?? '').split(',').filter(Boolean)
+      if (Object.keys(want).length || before.length || Object.keys(pre).length || preBefore.length || Object.keys(icons).length || iconsBefore.length) {
         const old = existing(path)
         let value: Record<string, unknown> = {}
         try { value = old ? parseLooseObject(old).value : {} } catch { problems.push({ level: 'error', area: 'Export', message: `${path} can't be read, so illustrations can't be added. Fix the file by hand.`, file: path }) }
@@ -447,11 +486,21 @@ export function planExport(model: ModModel, loaded: ProjectState, index: GameInd
           project.exported.preloadImages = Object.keys(pre).sort().join(',')
           if (!project.exported.preloadImages) delete project.exported.preloadImages
         }
+        if (Object.keys(icons).length || iconsBefore.length) {
+          const cat = { ...((graphics[VOK_ICON_CATEGORY] as Record<string, unknown>) ?? {}) }
+          for (const k of iconsBefore) if (!(k in icons)) delete cat[k]
+          Object.assign(cat, icons)
+          if (Object.keys(cat).length) graphics[VOK_ICON_CATEGORY] = cat
+          else delete graphics[VOK_ICON_CATEGORY]
+          project.exported.techIcons = Object.keys(icons).sort().join(',')
+          if (!project.exported.techIcons) delete project.exported.techIcons
+        }
         const next = { ...value, graphics }
         const text = old ? updateLooseText(old, next) : serialize(next, '', { unit: '\t', eol: '\n' }) + '\n'
         project.exported.illustrations = Object.keys(want).sort().join(',')
         const np = Object.keys(pre).length
-        if (text !== old) { writes.push({ path, text, expectedHash: hashOf(path) }); files.push({ path, state: old ? 'changed' : 'new', summary: `${Object.keys(want).length} illustration key${Object.keys(want).length === 1 ? '' : 's'}${np ? `, ${np} image${np === 1 ? '' : 's'} for MagicLib or Nexerelin loaded at startup` : ''} (merged by key into the game's settings)`, blocks: [], handRows: 0 }) }
+        const ni = Object.keys(icons).length
+        if (text !== old) { writes.push({ path, text, expectedHash: hashOf(path) }); files.push({ path, state: old ? 'changed' : 'new', summary: `${Object.keys(want).length} illustration key${Object.keys(want).length === 1 ? '' : 's'}${np ? `, ${np} image${np === 1 ? '' : 's'} for MagicLib or Nexerelin loaded at startup` : ''}${ni ? `, ${ni} tech icon${ni === 1 ? '' : 's'} for Vaults of Knowledge` : ''} (merged by key into the game's settings)`, blocks: [], handRows: 0 }) }
       }
     }
 
@@ -514,7 +563,7 @@ export function planExport(model: ModModel, loaded: ProjectState, index: GameInd
   const newGame = opts.gameVersion?.trim()
   const setGame = !!newGame && newGame !== loaded.modInfo.gameVersion && !opts.dialogOnly
   // SagaLib 1.1 features need SagaLib 1.1 (DESIGN-PHASE4.md): the dependency names the version
-  const libVersion = needsLib && (needsSagaLib13(plain, modConds) || usesBountyCommands(exportableModel(model)) || hasVersions(plain)) ? '1.3.0' : needsLib && needsSagaLib12(m) ? '1.2.0' : needsLib && needsSagaLib11(m) ? '1.1.0' : null
+  const libVersion = needsLib && (needsSagaLib14(m) || usesSettingVersions(plain)) ? '1.4.0' : needsLib && (needsSagaLib13(plain, modConds) || usesBountyCommands(exportableModel(expandModelGroups(model))) || hasVersions(plain)) ? '1.3.0' : needsLib && needsSagaLib12(m) ? '1.2.0' : needsLib && needsSagaLib11(m) ? '1.1.0' : null
   const depsNow = (() => { try { return (parseLooseObject(existing('mod_info.json') ?? '{}').value.dependencies as Record<string, unknown>[] | undefined) ?? [] } catch { return [] } })()
   const depNow = depsNow.find((d) => d?.id === SAGALIB_ID)
   const setLibVersion = !!libVersion && !opts.dialogOnly && (addDep || (!!depNow && String(depNow.version ?? '') !== libVersion && !(String(depNow.version ?? '') > libVersion)))
@@ -590,7 +639,7 @@ function countHandRows(text: string): number {
  * them, against every rule of the game and the other mods.
  */
 export function modTakeoverProblems(model: ModModel, loaded: ProjectState, index: GameIndex, gameRules: RuleRow[]): Problem[] {
-  const plain = exportableModel(withoutBountyOnly(model))
+  const plain = exportableModel(expandModelGroups(withoutBountyOnly(model)))
   const eff = effectiveConds(plain, index, loaded.sourceId)
   const m = versionContext(plain, eff).at([])
   const sagalib = usesSagaLib(m, loaded.modInfo) || usesModConds(eff, plain)

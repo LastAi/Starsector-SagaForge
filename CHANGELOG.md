@@ -1,5 +1,341 @@
 # Changelog
 
+## 1.3.0 (2026-11-24)
+
+For Starsector **0.98a and 0.98.5a**. Released as a **pre-release**: the user-experience pass (#67)
+is built and tested with automated tests, a story test mod (The Other Captain) and Play mode, but its
+in-game checks (`docs/INGAME-CHECKS.md`, "Task #67") are still open. New in game, needing **SagaLib
+1.4** (the export sets the dependency only when a mod uses them): the Fight node, world events and
+progress stages that act without a dialog, encounter outcome actions, hails and the Fleet response
+group, mixed random fleets, versions by the player's gender or a LunaLib setting, pictures by the
+player's gender, commodity targets, AoTD Vaults of Knowledge research, a node that runs the mod's own
+Java, and one-name characters. The rest is the editor: a new condition editor, the token window, node
+groups, repeat text, a rebuilt Saga board and Hyperspace map, image groups, the active-mod lock with
+Discard, and Play mode that offers ways to start a quest and carries on after a dialog closes.
+Tasks #75, #77, #79 and #80 passed their in-game checks on 0.98a-RC8.
+
+### User-experience pass (#67; the list is docs/UX-PASS.md)
+- **Play: hailed by a fleet** (U52): out in space offers "Let <fleet> catch you", which opens its comm-link
+  dialog; a fleet that lets you go (Fleet response, `SF_Despawn`) is reported avoided once the dialog closes.
+- **Play: out in space** (U51): when a dialog closes, Play offers what the quest waits for now (travel to
+  a place, wait the days, a fleet's outcome), plus Restart and Step back. Leave at a market works again.
+- **Play: quest starts and docking** (U50): a quest whose start doesn't match offers up to 5 ways to meet
+  it (markets that fit, or its conditions set here). Arrive, a start choice and the Test context's Market
+  dock as the game does (market, owner, menu, names), so one Arrive reaches the quest's option. The
+  game's checks Play can't evaluate take the usual case (false). Fixed: `!= null` and two unset keys in
+  conditions; Leave / a closed dialog now says what to do next.
+- **Unsaved changes** (U48): the Active mod list is locked until you Save or Discard; the new **Discard**
+  button reloads the mod from disk (also after a save refused because files changed outside Saga Forge).
+- **Pictures from another Saga Forge mod** (U49): a picture another mod has but hasn't exported yet is
+  named in the warning, with the fix (export that mod).
+- Fixed (U47): a "show once" option leading straight into an Action, Stage, End or Branch node is now
+  hidden after it is picked (it never set its key); flags tested by a Dialog node's own phrases count
+  as read.
+- **Encounter outcomes** (U46): Encounters › Outcomes › When defeated / When avoided: actions that run
+  whoever spawned the fleet (a quest, a progress stage, a world event, new game), before a quest's own
+  Encounter exits. New conditions: how an encounter's fleet ended, how often a named fleet was beaten.
+  Needs SagaLib 1.4.
+- **Conditions** (U45): every condition list (dialogs, options, branches, phrases, quest starts,
+  pools, world events, progress events) uses one editor: each line in plain words, whether it holds
+  for the Test context (click a flag to switch it there), "+ add…" templates, a type-in row that
+  suggests the mod's own keys, and where a flag is set and read. Conditions that can never be true
+  where they are ($person, $market… outside a dialog) are marked and listed in Problems. New
+  reference pages: Rules › Conditions and Condition scopes.
+- **Token window** (U44): "$ Tokens" opens a window that stays above the editor: every text token,
+  grouped and searchable, with what it becomes in this conversation (a fleet's comm link: its
+  Flagship by), portraits and crests, your people's own name tokens (`$<person>_name`), phrases and
+  quest variables, recently used first; Insert puts a token at the cursor of the last text field you
+  clicked, Copy copies it. Typing `$` in a text field suggests tokens. New checks: market tokens in a
+  comm link, and a portrait that isn't the person the `$person…` tokens name.
+- **Node groups** (U43): a group is a JSON definition of normal nodes with fields the author sets;
+  the chart shows it as one node ("+ Node › Node groups"), and the export, Play, Script and
+  Problems see the nodes it stands for. The mod carries a copy of each group it uses
+  (`sagaforge/nodegroups/<id>.group.json`), so it never depends on files outside it. Versions:
+  an id plus a content hash, and a version number; a newer one (built in or in your library) can
+  **Replace** the mod's copy, keeping values by field key and listing what is lost first. **Expand
+  into nodes** turns a placed group into its normal nodes (one way). **Export…** / **Import…** share
+  groups as files; a **library** folder (Settings) holds the groups you use across mods. Format:
+  docs/FORMATS.md, "Node groups".
+- **Hail** (U43) on Encounters: the fleet hails the player when it reaches them and its comm-link
+  dialog opens before the fleet screen, with leaving blocked until the dialog lets them go (vanilla's
+  interception, as the Knights of Ludd's stop). The built-in **Fleet response** node group ends the
+  dialog: let them go (the fleet leaves: avoided; SagaLib 1.4), fight, or the player flees (the fleet
+  chases; the next hail can test "The player fled from this fleet"). Link › close the dialog has
+  "back to the fleet screen". Comm-link dialog: **Unlink** (also for one deleted on the Quests page).
+- **Header**: "+ New mod" and "+ New translation of an installed mod…" are the last entries of the
+  active-mod list; the mods pill reads **Cross Mod Support** with a count (the list of mods stays in
+  its tooltip). The mod's name no longer shrinks to "Heli…" on a ~1,500 px window.
+- **Versions strip** (#68): one row: Base, one cell per optional mod (short names, full names in
+  the tooltips) and the combinations that set something; the others are in a "Combinations" menu.
+- **Quest chart**: a long quest opens at 70% on its Start node instead of shrinking to fit; picking
+  another quest opens its chart the same way (it used to keep the last quest's view).
+- **Quest settings**: the Kind list reads "Quest" / "Conversation only" (it was cut off).
+- **Fight node** (#82, SagaLib 1.4): a battle on the spot, as at Remnant-guarded ruins. The fleet
+  is set on the node (faction and fleet points, exact variants, or a named fleet; quality, captain,
+  name, the Engage option's text); SagaLib builds it and opens vanilla's battle dialog
+  (`SF_Fight`). Outputs **Won** (the dialog goes on at the place) and **Left** (not connected: the
+  dialog closes, as in vanilla). Replaces raw `SalvageGenFromSeed` / `SalvageDefenderInteraction`
+  lines, a hand-written salvage spec row and a second conversation on `BeatDefendersContinue`.
+  Play mode asks how the fight went.
+- **Pictures by the player's gender** (#81): an illustration can have a second picture for a female
+  player (plain rules: `$player.gender == FEMALE`, no SagaLib). Conditions: "Player is male" next
+  to "Player is female".
+- **First-time and repeat text** on Dialog nodes ("When you come back"): a short text for later
+  visits to the node (a question's Back), with the same options; once per visit or once ever.
+  Replaces the intro node + hub node pattern. Play mode, the chart and the Script tab show it.
+- **Link › close the dialog** (`EndConversation`): for comm links and fleets that leave, instead
+  of a raw script line ("back to the menu" returns to the fleet's own menu).
+- **Conversations that continue another** (a Link › fire a trigger into another quest's node): the
+  nodes after it count as reachable; the node it enters gets an info line saying where from.
+- **World events and progress events change things without a dialog** (SagaLib 1.4): their actions
+  go into the event's JSON and SagaLib runs them itself, with campaign messages; only an action
+  with a raw rules line still runs as a rule in a dialog of its own (which used to flash open and
+  shut for every event).
+- **Hyperspace map**: each system's star as in game (colour and size by type; a black hole black, no
+  star or a nebula an empty circle), a ring in the colour of the faction that owns the most there,
+  and on hover its markets coloured by faction, with their sizes.
+- **System view**: drag empty space to pan; click a vanilla planet or station for its details (type,
+  what it orbits, its market with faction and size).
+- **Hyperspace map**: a system is easy to hit (the whole area of its ring); an info box in the corner
+  shows the last system hovered (it stays a few seconds); click a market there to open the System
+  view centred on its planet or station.
+- **Hyperspace map**: labels grow as you zoom in (within limits) and start after the faction ring;
+  a dashed outline marks the edge of normal hyperspace; Limbo and the Tri-Tachyon black site (made
+  in vanilla's code) are shown; "ⓘ 3 not shown" names the places the game puts somewhere new every game.
+- **The editor follows the mod's list** (Saga › Mods): what the game has for a mod is vanilla, the
+  mod and the mods it lists, so that is what the editor shows, offers and checks. "Show all installed
+  mods" still shows the rest.
+  - **Pickers** (conditions, industries, submarkets, hullmods, loot groups, research, people,
+    factions, items, ships, quests…) list only those mods' entries, and offer "Add as optional"
+    for the others like the faction and people lists.
+  - **Values**: where several installed mods change one entry (a market's owner, a replaced CSV row,
+    a patched planet type, a faction's name, colour, logo or crest), the editor shows the version
+    those mods give, not the last installed mod's. Exported planet and star types start from that
+    version too.
+  - **Locations**: an **Existing systems (read-only)** list like People's; the map, markets and the
+    type chooser follow the list.
+  - **Play mode and the dialog preview** run only those mods' rules; **images, fonts and dialog
+    colours** come from those mods.
+  - **Problems**: a condition, industry, submarket, hullmod or loot group from an installed mod that
+    isn't listed is warned about, like factions and items.
+- **Reference pages for every list that only showed a name** (the ⓘ next to a field): entity
+  types (dialog, salvage, defenders, own code, description) and their tags, planet and star types,
+  industries, submarkets, drop groups (what each can give), blueprint tags, skills, reputation
+  levels, rule commands, triggers, memory keys and text tokens, quest node types, how a quest
+  starts, variable types, random target criteria, dialog visuals, raid danger, encounter spawns and
+  behaviours, survey levels, item presets, intel tabs, achievement rarity, MagicLib's bounty board
+  values, Nexerelin alignments and new-game fleets, music and sounds. Pages built from the game
+  follow the mod's list (vanilla, the mod and its listed mods); Importance is now described. The
+  reference window opens wider.
+- The reference opens one group at a time (People, Factions, Locations, Rules, …), each a page of its own with the full list in its sidebar: much faster than one page of every list.
+- Factions › Ships and Doctrine suggest blueprint tags (with how many hulls, fighters, weapons and
+  hullmods carry each) and skills; market chips show industry and submarket names; every random
+  target criterion has its help text; Scripted changes show the doctrine key's help.
+- **Fixed**: a ship_data.csv row commented out by its name (#Doom) counted as a hull.
+- **Fixed**: an encounter switched to a named fleet kept using its old faction and fleet type (in
+  Problems, the list and, if the named fleet had no type, the export); fleet points and exact ships no
+  longer export leftovers of an earlier choice.
+- **Fleets and encounters** (U41): **+ Copy…** makes a copy of a named fleet under a new name; an
+  extra group can pull in a named fleet's ships; encounters and named fleets can be marked
+  **Inactive** (kept in the editor, not exported; Problems lists what still uses them).
+- **Mixed fleets** (U40, SagaLib 1.4): an encounter's exact ships or named fleet can come with **Plus
+  random ships** (fleet points drawn like the faction's own fleets), and any encounter fleet can have
+  **Extra groups**: each with a chance, adding all its ships or some drawn by weight, rolled every spawn
+  (e.g. a 30% chance of two heavy escorts, always one of a Condor or a Drover).
+- **Fleets › Ships** (U39): **+ From a faction's fleet…** gives a starting list as that faction's
+  fleets would have it (a kind: patrol, raiders, carriers, phase, trade convoy, civilian; a size;
+  vanilla's ship roles and weights, only hulls the faction knows; Reroll), to add or replace and then
+  edit. The variant list can show **only the faction's ships** (on by default), and variants show
+  their hull and name.
+- **Images** (U38): the import dialog has a **Name** field (the prefix is added; "Saved as" only
+  shows the path: a changed path used to be lost on Import). A crop smaller than the result turns the
+  frame **red** ("enlarged": it will look blurrier). New kind **Original (not in the game)**: your source
+  images as they are, renamed, in sagaforge/originals/; **+ From Originals…** makes a cropped copy for
+  any kind. **Delete…** for selected images (on Save, backed up; asks first when something uses them).
+  Export can pack the originals into the release zip ("with the original images"; off by default).
+- **Versions by the player's gender** (U37, SagaLib 1.4): every versions strip (people, quests,
+  encounters, systems, events, pools, faction changes) offers "Player = male" and "Player = female"
+  under "Versions ▾", alone and with each optional mod. Base is for any player; SagaLib records the
+  player's gender when the game starts and the version never changes after. Play mode and the dialog
+  preview use the Test context's "Player is". Items and descriptions can't (they are picked before
+  any save).
+- Locations: map labels have a dark outline, so a name stays readable over a light planet.
+- **Fixed: fields that showed another value than the one stored** (an object's Appears looked reset
+  to "when an Action places it"). Encounters › Range, Respawn after and Leaves every, and a Wait's
+  days showed a number that wasn't stored (the game used 0); they are now stored when you pick the
+  mode. Items › Preset "(custom)" no longer applies the first preset. Selects show an empty or
+  "(missing)" entry instead of their first option when nothing or a deleted id is stored. Renaming a
+  reward renames it where it is given. A refused edit (an empty id) shows the stored value again.
+  Nexerelin's "+ another fleet" works; the wreck protection's "until" keeps your choice.
+- Reference pages for **dialog options** (what an interjection can cut into or a Link can pick, from
+  the rules of vanilla and the listed mods), **raid objective icons** and **Vaults of Knowledge's
+  tech icons**, with pictures. An interjection's Option suggests every option the rules answer; a
+  Raid node's Icon is a picker with a preview; a tech's icon id shows its picture. Research ›
+  Unlocks says that VoK 5.0.7 doesn't show or grant ability rewards.
+- **Fixed**: a faction's colour in the editor came from every installed mod's patch (a test mod made
+  Hegemony red everywhere); it now comes from vanilla, the mod and the mods it lists.
+- **Fixed**: the core worlds (Corvus and the other systems the game makes from starmap.json) had no
+  star or planets in the editor: their scripts fetch the system instead of creating it.
+- **Fixed**: renaming a setting lost what used it. Versions that depend on a setting now count as
+  reading it (so its id stops following the label), and changing an id by hand renames it in every
+  condition, text, action, version and test profile that names it.
+- **Fixed**: an edit in a mod version of an item that had no versions yet was dropped (the field kept
+  the typed text, so it looked as if Base had changed). The same slip lost the first entry of other
+  new lists too: the first bounty, quest place, achievement, quest-skip chain or key, a mod added
+  with "Add as optional", the first image group. Since versions came in (#64).
+- **Fixed**: Play mode and the dialog preview never set `$player.gender`, so "Player is female"
+  conditions were always false there.
+- Screenshot mode: `--size WxH` for the window.
+- **Saga › Board as storylines**: one lane per questline (prerequisites, one quest starting or going
+  on in another, a flag one quest sets that another's start needs), left to right by step; the
+  quests with no link in a last lane. Select a card for its shared flags (dashed) and a side panel.
+- **Versions**: "Base", a button for each version that sets something (with how many fields), and a "Mod versions" menu listing every mod and combination
+  (with how many fields each sets).
+- **Versions by a setting fixed at new game** (U18, SagaLib 1.4): an on/off or choice setting can
+  be marked "Versions may depend on it" (Saga › Settings). The versions strip (then "Versions ▾")
+  gets a "With a setting" section (one cell per value) and each value with each optional mod under
+  Combinations. SagaLib records the setting's value when a game starts and keeps that version for
+  the save; changing it later in LunaLib's menu doesn't change it. Exported as `settingsWith`;
+  Play mode plays the version of the Test context's values. Problems: a missing or unmarked setting,
+  another type, a value it can't take, a choice with "+", two values of one setting in a version,
+  item and description versions by a setting (they follow the installed mods at startup).
+- **Image groups**: Images › Groups per kind (only for you, never exported); the image pickers
+  filter by group.
+- Saga › Pools and Events: the form no longer falls into the narrow left column when the versions
+  strip shows; the board's explanation sits under the tabs.
+
+### Fixes found while building Heliopolis (#80)
+- **Derelicts from a ship variant** (H1): a derelict's type is a variant id (with a variant picker
+  on the Locations page), or `wreck` for a random hull, as SagaLib builds it. The check names an
+  unknown variant instead of calling it an unknown custom entity type.
+- **Locked places** (H2): only a lock-like conversation at a place (dialog, branch and Link nodes
+  that only leave, as "Protect this wreck" makes) turns its Arrive nodes into takeovers. A
+  first-visit scene that changes something or hands back no longer does.
+- **A progress event stage's Spawn** counts for the Encounters check (H3).
+- **Interjections that go on to an Arrive** (H4): a branch of an interjection that ends at a Wait
+  (e.g. Stage → Arrive) hands back to the option it cut into, so the quest moves on and vanilla's
+  own dialog (salvage) goes on in the same visit.
+- **Start another quest at a stage** (H5): the op picks the stage (SF_Start, then SF_Step), and
+  preselects the stage the quest's Start leads into. Problems warns when a quest is started
+  without one while it has a first stage (unless the quest fires that node itself), and names an
+  unknown stage. In quests, world events and progress stages.
+- **Reputation with a named person** (H6): exports vanilla's `AdjustRepPerson <person> <limit>
+  <points>` (it used to change whoever you were talking to). The form chooses a faction, a person,
+  or "the person you're talking to" (`AdjustRepActivePerson`). World events and progress stages
+  can change a named person's reputation too (their export used to drop it; found in game).
+- **Special trade good** item preset (H7): a special item to buy and sell outside the economy.
+- **An Arrive straight after an Encounter's outcome** (H8): a warning when no Stage node sits
+  between them (the arrival is reachable before the fight is decided).
+- Test mod `mods/eighty_a`; in game: `docs/INGAME-CHECKS.md`, "Task #80".
+
+### Commodity targets (#75)
+- A quest's **target** variable can pick **a commodity at a market** (vanilla's `pickCommodity`):
+  the market criteria, plus the commodity's: not crew or marines, legal / illegal there, tags, base
+  price, and yes/no only for "produces it", "is short of it", "has a surplus", plus "at least N in
+  stock". No demand thresholds: with AoTD Theory of Toolbox they would never match.
+- **Which commodities**: vanilla's 18 trade goods (default), any economy commodity, or a list
+  (another mod's commodity in it makes that mod used; the quest gets an automatic "Only with" only
+  when every listed commodity is an optional mod's, since the others can still be picked). **Amount** in economy units (× the
+  commodity's `econUnit` when SagaLib picks it, optionally × the market's size) or fixed cargo
+  units; the form shows what it comes to for a few vanilla goods.
+- Tokens `<var>_commodity`, `_commodityId`, `_amount`, `_basePrice`, `_value`, with the market's.
+  Action ops **The target's goods: take / give** and **Credits for the target's goods**, the
+  condition **has its goods**, and a reward's **+ for goods** (mult × base price × amount). Problems
+  warns about a delivery without a cargo check.
+- **Play mode** uses the mock's commodity (or one of the allowed at random) and market size; a note
+  in the target editor and Play's log when AoTD ToT is in Saga › Mods.
+- Fixed: the game index read commented-out rows of another mod's `commodities.csv` /
+  `special_items.csv` (Nexerelin ships `#Transplutonics,rare_metals,…`), which the game skips; the
+  names and numbers of those commodities came from the comment.
+- Needs **SagaLib 1.4.0** (the export sets the dependency only for mods that use it). Test mod
+  `mods/seventyfive_a`; in game: `docs/INGAME-CHECKS.md`, "Task #75" (0.98a-RC8, vanilla, Industrial.Evolution and AoTD ToT, 2026-11-19).
+
+### Mods that never run together (#76)
+- Saga › Mods has a **Never with** column: the mods no player runs together with a listed mod,
+  stored as `neverWith` on its entry in `sagaforge/project.json`. Built in and shown greyed
+  ("known"): AoTD's Theory of Toolbox and the modules that need it (Vaults of Knowledge, Seats of
+  Power) never run with Industrial.Evolution. Dreams of Past doesn't need Theory of Toolbox and
+  runs with it.
+- The versions strip has no cell for such a combination (VoK and IndEvo optional → Base, VoK,
+  IndEvo), the combination and versions checks skip it, and Play mode's and the Test context's
+  switches turn the other mod off. "Only with A and B" for such a pair, or a version for it, is a
+  warning. Editor only: nothing changes in the export or in SagaLib.
+
+### AoTD Vaults of Knowledge research (#77)
+- Shown once the mod lists **Vaults of Knowledge** (`aotd_vok`) in Saga › Mods. **Saga › Research**:
+  the mod's own techs, one tree of their own in VoK's research screen (named after the mod): name,
+  id, tier, days, place in the tree (with a grid of the tier), icon (an image of the mod, or an icon
+  id such as VoK's `basic`), prerequisites (VoK's techs, other mods' and the mod's own, read by the
+  game index), costs, what it unlocks (industries, ships, weapons, hullmods, abilities, a modifier
+  text), researched from the start, and **unlocked by a quest** with the text VoK shows until then.
+  Exported as rows of `data/campaign/aotd_tech_options.csv` in an owned block; the images are
+  listed in the mod's `settings.json` under `graphics.ui_icons_tech_tree`.
+- **Factions › Research** on the mod's own factions: research stance, databank price and reputation
+  multipliers, the four lines of the databank conversation, forbidden techs. Exported as rows of
+  `data/campaign/aotd_faction_behaviour.csv` in an owned block.
+- Hand-written rows of both files stay; they're listed with **Edit in Saga Forge**, which reads one
+  into the editor (the next export moves it into the block).
+- Quests: the action **Unlock research** sets the tech's flag (`$global.<tech>_unlocked`, VoK's
+  `otherReq`; no SagaLib), the action **Grant research** and an End node's **Research** give a tech
+  as researched (`SF_GrantResearch`), and the condition **Has researched** (`SF_HasResearch <tech>
+  [faction]`). Play mode follows Play's mod switches (without VoK nothing is granted).
+- Problems: ids, prerequisites (unknown, loops), places taken twice, a tech nobody unlocks, costs
+  and rewards the game doesn't have, what VoK's reader trips on (no icon, no rewards line, a colon
+  in a text, malformed hand-written rows), and VoK listed in Saga › Mods.
+- Needs **SagaLib 1.4.0** only for granting and testing research. Test mod `mods/seventyseven_a`; in
+  game: `docs/INGAME-CHECKS.md`, "Task #77" (0.98a-RC8, without and with VoK, 2026-11-20; VoK 5.0.7 never
+  offers its own databank trade, so a stance has no visible effect yet).
+- Problems warns about an option label (an option, start option or arrival option) that ends in a
+  quote mark: the game drops it (found in the #77 check).
+
+### A quest node that runs the mod's own Java (#79)
+- A mod may ship its own jar with **plugin** classes (they implement SagaLib's
+  `lastai.sagalib.api.SagaPlugin`). The new quest node **Plugin** runs one: class, key = value
+  arguments (a `$key` value is read from memory when it runs) and the **results** it may return, one
+  output each, plus **otherwise** (no result, another result, or a failure: SagaLib logs it and the
+  game goes on). The result is also kept in `$global.<quest>_<node>_result` for later Branches.
+- The class picker lists the classes of the jars the mod's `mod_info.json` names under `"jars"`,
+  read straight from the jars (no Java needed), plugins first; **Rescan jars** after a rebuild. Any
+  name can be typed.
+- The action **Run a plugin** (Action nodes, world events, progress stages) runs one without
+  branching.
+- Exported as `SF_RunPlugin <class> "quest=<q>" "node=<n>" "key=value" …` then a result trigger with
+  one rule per connected result and a fallback (FORMATS.md "Plugins"; each pair is quoted: the game
+  refuses an unquoted `=` in a command line while loading rules). Rules view, Script view, quest skip
+  and the flags registry know it. **Play mode** can't run Java: it shows a button per declared result
+  and "No result, or the plugin fails".
+- Problems: no class, not a class name, no jar listed or not built, the class not in the jars or not
+  a SagaPlugin, `quest` / `node` as argument keys, bad or unconnected results, and hand-written
+  `SF_RunPlugin` lines with an unquoted `=`. New for every node type: two rules that would get one id
+  (a node `x_ok` next to node `x` with a case or result `ok`) are an error.
+- Needs **SagaLib 1.4.0** (the export sets it). FORMATS.md has a recipe for building a plugin jar.
+  Test mod `mods/seventynine_a` (its own `build.sh` builds `jars/pga_plugins.jar`); in game:
+  `docs/INGAME-CHECKS.md`, "Task #79 plugin node".
+
+### One-name characters (#79)
+- People: a **One name** switch for characters with a single name (Tyger the cat). The name is kept
+  as the game's last name with an empty first name (the First name field is hidden, the help says
+  why); New person can make one directly; the preview lists what `$personName`, `$personFirstName`,
+  `$personLastName` say. Exported as `"oneName": true`.
+- In game, SagaLib 1.4 fills `$personFirstName` and `$PersonFirstName` with the one name for any
+  one-name person (vanilla leaves them empty), and the person's `$<id>_firstName` token is the one
+  name. Play mode and the Test context do the same; another mod's person whose name is one word
+  counts as one-name.
+- Problems warns where a line uses `$personFirstName` / `$PersonFirstName` with a one-name person in
+  the conversation, or a one-name person's `$<id>_firstName`, so the wording gets checked. The export
+  needs SagaLib 1.4.0 for such lines.
+- Names in lists and messages are trimmed (no leading space for a one-name person); a MagicLib
+  bounty's one-name captain is exported with the name as the last name.
+- Facts in FORMATS.md, "One-name characters". In game: `docs/INGAME-CHECKS.md`, "Task #79 one-name
+  characters" (test mod `mods/seventynine_a`).
+
+### Found while building Heliopolis (#79)
+
+- Export: a script line `SalvageDefenderInteraction` (vanilla's battle screen with an object's salvage
+  defenders, as at Remnant-guarded ruins) now ends the conversation branch: no "back to the menu" is
+  added after it, which would have cut the battle off. Heliopolis uses it for the guardians of its
+  black site: they appear when you interact, like vanilla's, and never fly around.
+
 ## 1.2.0 (2026-11-19)
 
 For Starsector **0.98a and 0.98.5a**. Support for other mods: optional, required and incompatible

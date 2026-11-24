@@ -11,6 +11,7 @@
   import ImageView from './ImageView.svelte'
   import ImportImages from './ImportImages.svelte'
   import { imageKind } from '../../../shared/imagekinds'
+  import { groupsOf, inFilter, UNGROUPED } from '../../../shared/imagegroups'
   import { picker } from '../state/imagepicker.svelte'
   import { app } from '../state/app.svelte'
   import { project } from '../state/project.svelte'
@@ -45,8 +46,10 @@
       list = [...mine, ...game]
     } else {
       const found = await window.api.listImages(kind.folder)
-      const pending = project.pendingCopies.filter((c) => c.to.startsWith(`${kind.folder}/`) && !found.some((f) => f.path === c.to)).map((c) => ({ path: c.to, sourceId: own }))
-      list = [...pending, ...found].map((f) => ({ value: f.path, path: f.path, sourceId: f.sourceId, mine: f.sourceId === own }))
+      const pending = project.pendingCopies.filter((c) => !c.remove && c.to.startsWith(`${kind.folder}/`) && !found.some((f) => f.path === c.to)).map((c) => ({ path: c.to, sourceId: own }))
+      // #67 U38: images deleted (waiting for Save) aren't offered
+      const gone = new Set(project.pendingCopies.filter((c) => c.remove).map((c) => c.to))
+      list = [...pending, ...found.filter((f) => !gone.has(f.path))].map((f) => ({ value: f.path, path: f.path, sourceId: f.sourceId, mine: f.sourceId === own }))
       // walk F31: flags and crests share graphics/factions; vanilla names crests "crest_…"
       const isCrest = (p: string) => /crest/i.test(p.replace(/^.*\//, ''))
       if (kind.id === 'flag') list = list.filter((x) => !isCrest(x.path))
@@ -58,13 +61,18 @@
   }
   onMount(load)
 
-  const shown = $derived.by(() => {
+  // #67 U21: the user's groups for this kind (Images page) as a filter
+  const groups = $derived(project.m ? groupsOf(project.m.project, req.kind) : [])
+  let group = $state('')
+  /** Every image the filters let through (the grid shows the first 400). */
+  const filtered = $derived.by(() => {
     const f = filter.trim().toLowerCase()
     // #60: vanilla, this mod and its listed mods (Show all installed mods for every image)
-    const vis = mods.filter('images', all, (e) => e.sourceId)
-    return (f ? vis.filter((e) => `${e.value} ${e.path} ${srcName(e.sourceId)}`.toLowerCase().includes(f)) : vis).slice(0, 400)
+    const vis = mods.filter('images', all, (e) => e.sourceId).filter((e) => !group || !project.m || inFilter(project.m.project, req.kind, group, e.path))
+    return f ? vis.filter((e) => `${e.value} ${e.path} ${srcName(e.sourceId)}`.toLowerCase().includes(f)) : vis
   })
-  const matches = $derived(filter.trim() ? all.filter((e) => `${e.value} ${e.path} ${srcName(e.sourceId)}`.toLowerCase().includes(filter.trim().toLowerCase())).length : all.length)
+  const shown = $derived(filtered.slice(0, 400))
+  const matches = $derived(filtered.length)
 
   function click(v: string) {
     // #60: an image from a mod that isn't in the list offers Add as optional / required
@@ -78,6 +86,11 @@
 <Modal title={req.title ?? `Choose ${req.multi ? 'images' : 'an image'}: ${kind.label.toLowerCase()} (${kind.w}×${kind.h})`} onClose={() => picker.close([])} width={900}>
   <div class="bar">
     <input type="search" placeholder="Filter by name or source…" bind:value={filter} />
+    {#if groups.length}
+      <select bind:value={group} title="Your groups for this kind (Images page)">
+        <option value="">All groups</option>{#each groups as g (g.name)}<option value={g.name}>{g.name}</option>{/each}<option value={UNGROUPED}>In no group</option>
+      </select>
+    {/if}
     <span class="muted small">{loading ? 'Reading the game and mods…' : `${matches} image${matches === 1 ? '' : 's'}${matches > shown.length ? `, first ${shown.length} shown: filter to narrow` : ''}`}</span>
     <ShowAllMods list="images" hidden={mods.hidden('images', all, (e) => e.sourceId)} />
     <span class="spacer"></span>

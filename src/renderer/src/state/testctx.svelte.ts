@@ -1,6 +1,7 @@
 /** The Test context shared by the dialog previews and Play mode, plus lookups into the index and the mod. */
 import { defaultTestContext, contextFrom, type Lookup, type TestContext } from '../../../shared/rules/context'
 import { mods } from './mods.svelte'
+import { factionColor } from '../../../shared/modlist'
 import type { PlayContext } from '../../../shared/rules/engine'
 import type { PersonLook } from '../dialog/DialogPreview.svelte'
 import { app } from './app.svelte'
@@ -8,12 +9,22 @@ import { project } from './project.svelte'
 import { resolveItem } from '../../../shared/itemversions'
 import type { PersonDef } from '../../../shared/model'
 import { repLevelId } from '../../../shared/replevels'
-import { settingsMemory } from '../../../shared/settings'
+import { settingsMemory, settingTokensOn } from '../../../shared/settings'
+import { fullName, splitIndexName, storedName } from '../../../shared/personname'
 
-/** #64: a person of the mod in the version the optional mods' switches pick (Test context, Play mode). */
+/**
+ * #64: what Play mode and the Test context count for versions: the optional mods' switches, and
+ * (#67 U18) the Test context's values of the settings marked for versions, as SagaLib records them
+ * when the game starts (Play's own setting controls, LunaLib's menu mid-game, don't change them).
+ */
+export function playVersionOn(): string[] {
+  return [...mods.playMods(), ...settingTokensOn(project.m?.project.settings, testCtx.settings ?? {}, testCtx.playerGender)]
+}
+
+/** #64: a person of the mod in the version the optional mods' switches (and #67 U18 the settings) pick (Test context, Play mode). */
 function ownPerson(id: string): PersonDef | undefined {
   const p = project.m?.people.find((x) => x.id === id)
-  return p?.versions?.length ? resolveItem(p, [...mods.playMods()]).value : p
+  return p?.versions?.length ? resolveItem(p, playVersionOn()).value : p
 }
 
 const KEY = 'sf.testctx'
@@ -38,7 +49,8 @@ export function factionLook(id: string): { name: string; withArticle: string; lo
     return { name: String(r.displayName ?? id), withArticle: String(r.displayNameWithArticle ?? ''), long: String(r.displayNameLong ?? ''), color: r.color as number[], crest: String(r.crest ?? '') }
   }
   const f = app.index?.factions.find((x) => x.id === id)
-  return f ? { name: f.name, withArticle: `the ${f.name}`, long: f.name, color: f.color ?? undefined, crest: f.crest } : null
+  // #67: the colour of the sources that count for the active mod, not every installed mod's patch
+  return f ? { name: f.name, withArticle: `the ${f.name}`, long: f.name, color: factionColor(f, mods.visible) ?? undefined, crest: f.crest } : null
 }
 
 export const lookup: Lookup = {
@@ -47,12 +59,15 @@ export const lookup: Lookup = {
     if (p) {
       const rank = app.defs.ranks.find((r) => r.id === p.rank)?.name ?? p.rank
       const post = app.defs.posts.find((r) => r.id === p.post)?.name ?? p.post
-      return { first: p.name.first, last: p.name.last, gender: p.gender, rank, post, faction: p.faction }
+      // #79: as exported (a one-name person: first "", the one name last)
+      const n = storedName(p)
+      return { first: n.first, last: n.last, gender: p.gender, rank, post, faction: p.faction }
     }
     const ip = app.index?.people.find((x) => x.id === id)
     if (ip) {
-      const [first, ...rest] = ip.name.split(' ')
-      return { first, last: rest.join(' '), gender: 'ANY', rank: '', post: '', faction: ip.faction }
+      // #79: another mod's person with one word for a name is a one-name person
+      const n = splitIndexName(ip.name)
+      return { first: n.first, last: n.last, gender: 'ANY', rank: '', post: '', faction: ip.faction }
     }
     return null
   },
@@ -74,7 +89,7 @@ export function personLook(id: string): PersonLook | null {
   if (!l) return { name: titleCase(realId), rank: '', faction: '', portrait: '' }
   const f = factionLook(l.faction)
   return {
-    name: `${l.first} ${l.last}`.trim(),
+    name: fullName(l),
     rank: [l.rank, l.post].filter(Boolean).join(' · '),
     faction: f?.name ?? l.faction,
     factionColor: f?.color,
@@ -98,6 +113,21 @@ export function illustrationPath(category: string, key: string): string | null {
 
 export function itemName(id: string): string {
   return project.m?.items.find((i) => i.id === id)?.name ?? app.index?.items.find((i) => i.id === id)?.name ?? id
+}
+
+/** #75: a commodity as a commodity target needs it (the mod's own, else the game index); undefined when unknown. */
+export function commodityInfo(id: string): { id: string; name: string; econUnit: number; basePrice: number } | undefined {
+  const own = project.m?.items.find((i) => i.id === id && i.kind === 'commodity')
+  if (own) return { id, name: own.name.toLowerCase(), econUnit: Number(own.otherColumns?.econUnit) || 1, basePrice: own.basePrice }
+  const ix = app.index?.items.find((i) => i.id === id && i.kind === 'commodity')
+  return ix ? { id, name: ix.name.toLowerCase(), econUnit: ix.econUnit || 1, basePrice: ix.basePrice } : undefined
+}
+
+/** #75: every economy commodity the game index knows (not nonecon, not meta). */
+export function economyCommodities(): string[] {
+  const ids = new Set<string>()
+  for (const i of [...(app.index?.items ?? []), ...(project.m?.items ?? [])]) if (i.kind === 'commodity' && !i.tags.includes('nonecon') && !i.tags.includes('meta')) ids.add(i.id)
+  return [...ids]
 }
 
 export function makePlayContext(): PlayContext {

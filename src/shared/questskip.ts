@@ -10,6 +10,7 @@
  * gives the rewards (the quest JSON's "skip" section). Pure: used by the export, Problems and the panel.
  */
 import type { ModModel } from './serialize'
+import { unlockFlag } from './research'
 import type { ActionOp, QNode, QuestPlan, QuestSkipChain, QuestSkipPlan, Reward } from './model'
 import { parseScriptLine } from './rules/parse'
 
@@ -136,6 +137,8 @@ export function skipEffects(q: QuestPlan, ending: string): SkipEffects {
     if (s.name === 'SF_Reward' && s.args[0] === q.id) reward(s.args[1])
     else if (s.name === 'AddCredits') direct.credits = (direct.credits ?? 0) + (Number(s.args[0]) || 0)
     else if (s.name === 'SF_Start' && s.args[0] && s.args[0] !== q.id) note(`Starts quest ${s.args[0]} (${where}); a skip doesn't.`)
+    else if (s.name === 'SF_GrantResearch') note(`Grants research ${s.args[0] ?? '?'} (${where}); a skip doesn't.`)
+    else if (s.name === 'SF_RunPlugin') note(`Runs the plugin ${s.args[0] ?? '?'} (${where}); a skip doesn't.`)
   }
   const op = (o: ActionOp, where: string) => {
     switch (o.op) {
@@ -144,15 +147,20 @@ export function skipEffects(q: QuestPlan, ending: string): SkipEffects {
       case 'line': line(o.line, where); break
       case 'reward': reward(o.reward); break
       case 'credits': direct.credits = (direct.credits ?? 0) + o.amount; break
-      case 'rep': if (o.person) (direct.personRep ??= []).push({ person: o.person, amount: o.amount }); else if (o.faction) (direct.rep ??= []).push({ faction: o.faction, amount: o.amount }); else note(`Reputation with the person talked to (${where}) isn't given: name the person.`); break
-      case 'item': (direct.items ??= []).push({ item: o.item, qty: o.qty }); break
+      case 'rep': if (o.person && o.person !== '$person') ((direct.personRep ??= []), direct.personRep).push({ person: o.person, amount: o.amount }); else if (o.faction) ((direct.rep ??= []), direct.rep).push({ faction: o.faction, amount: o.amount }); else note(`Reputation with the person talked to (${where}) isn't given: name the person.`); break
+      case 'item': ((direct.items ??= []), direct.items).push({ item: o.item, qty: o.qty }); break
       case 'xp': direct.xp = (direct.xp ?? 0) + o.amount; break
       case 'storyPoints': direct.storyPoints = (direct.storyPoints ?? 0) + o.amount; break
       case 'startQuest': if (o.quest !== q.id) note(`Starts quest ${o.quest} (${where}); a skip doesn't.`); break
       case 'achievement': note(`Unlocks MagicLib achievement ${o.achievement || '?'} (${where}); a skip doesn't.`); break
+      // #77: the unlock is a plain flag (set by the skip too); granting goes through SagaLib's VoK bridge
+      case 'unlockResearch': if (o.tech) line(`${unlockFlag(o.tech)} = true`, where); break
+      case 'grantResearch': note(`Grants research ${o.tech || '?'} (${where}); a skip doesn't.`); break
       case 'startBounty': note(`Starts MagicLib bounty ${o.bounty || '?'} (${where}); a skip doesn't, so later content sees it as not taken.`); break
       case 'removePerson': note(`Removes ${o.person} (${where}); a skip doesn't.`); break
       case 'placeEntity': case 'removeEntity': note(`${o.op === 'placeEntity' ? 'Places' : 'Removes'} ${o.entity} (${where}); a skip doesn't.`); break
+      // #79: the mod's own Java doesn't run for a skipped quest
+      case 'plugin': note(`Runs the plugin ${o.className || '?'} (${where}); a skip doesn't.`); break
       default: break
     }
   }
@@ -162,9 +170,10 @@ export function skipEffects(q: QuestPlan, ending: string): SkipEffects {
     const where = `${n.type} ${('title' in n && n.title) || n.id}`
     if (n.type === 'action') for (const o of n.ops) op(o, where)
     else if (n.type === 'dialog') for (const l of n.script) line(l, where)
-    else if (n.type === 'end') { reward(n.reward); if (n.achievement) note(`Unlocks MagicLib achievement ${n.achievement} (${where}); a skip doesn't.`) }
+    else if (n.type === 'end') { reward(n.reward); if (n.achievement) note(`Unlocks MagicLib achievement ${n.achievement} (${where}); a skip doesn't.`); for (const t of n.research ?? []) if (t) note(`Grants research ${t} (${where}); a skip doesn't.`) }
     else if (n.type === 'encounter') note(`Encounter ${n.encounter} isn't spawned; its outcome on the way is taken as given.`)
     else if (n.type === 'wait' && n.mode === 'bounty') note(`MagicLib bounty ${n.bounty || '?'} isn't taken or ended; its outcome on the way is taken as given.`)
+    else if (n.type === 'plugin') note(`The plugin ${n.className || '?'} (${where}) doesn't run; its result on the way is taken as given.`)
   }
   for (const id of named) { const r = q.rewards.find((x) => x.id === id); if (r) out.rewards.push(JSON.parse(JSON.stringify(r)) as Reward) }
   if (direct.credits || direct.rep?.length || direct.personRep?.length || direct.items?.length || direct.xp || direct.storyPoints) out.rewards.push(direct)

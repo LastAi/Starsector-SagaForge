@@ -1,4 +1,5 @@
 <script lang="ts">
+  import TokenOverlay from './tokens/TokenOverlay.svelte'
   /** The app window: header with pages and the active mod, the page, footer, dialogs. */
   import { onMount } from 'svelte'
   import SettingsDialog from './SettingsDialog.svelte'
@@ -8,7 +9,7 @@
   import ImagePicker from './ui/ImagePicker.svelte'
   import { picker, chooseImages } from './state/imagepicker.svelte'
   import type { ImageKindId } from '../../shared/imagekinds'
-  import { app, PAGES, cleanError, type PageId } from './state/app.svelte'
+  import { app, images, PAGES, cleanError, type PageId } from './state/app.svelte'
   import { project } from './state/project.svelte'
   import { problems } from './state/problems.svelte'
   import { savedByNewer } from '../../shared/checks/appversions'
@@ -38,6 +39,9 @@
 
   let showSettings = $state(false)
   let showNewMod = $state(false)
+  // #67 U1: the active-mod list's entries that open the New mod / New translation dialogs
+  const NEW_MOD = '__sf_new_mod'
+  const NEW_TR = '__sf_new_translation'
   let showNewTranslation = $state(false)
   let showExport = $state(false)
   let prefixInput = $state('')
@@ -128,6 +132,15 @@
   const pages = $derived(trMod ? [{ id: 'translation' as PageId, label: 'Translation' }] : PAGES.filter((p) => p.id !== 'translation'))
   const Page = $derived(trMod ? TranslationPage : app.page === 'translation' ? SagaPage : PAGE_COMPONENTS[app.page] ?? FactionsPage)
 
+  // #67 U33: image and font lookups prefer the sources this mod counts; pictures already loaded may change
+  let visKey = ''
+  $effect(() => {
+    const ids = [...mods.visible].sort()
+    const k = ids.join(","), first = !visKey
+    if (k === visKey) return
+    visKey = k
+    window.api.setVisibleSources(ids).then(() => { if (!first) images.refresh() })
+  })
   onMount(async () => {
     await refreshIndex(false)
     if (app.smoke) {
@@ -161,14 +174,25 @@
     <span class="spacer"></span>
     <span class="activemod">
       <span class="am-label">Active mod</span>
-      <select value={active?.writeDir ?? ''} onchange={(e) => pickActive(e.currentTarget.value)} disabled={loadingIndex}>
+      <!-- #67 U1: "+ New mod" and "+ Translation" are the list's last entries (the header had no room) -->
+      <!-- #67 U48 (user, 2026-11-24): locked while there are unsaved changes, until Save or Discard -->
+      <select value={active?.writeDir ?? ''} disabled={loadingIndex || project.dirty}
+        title={project.dirty ? 'Save or Discard your changes first: the active mod cannot change while this one has unsaved changes.' : 'The mod you edit. Its last entries create a new mod or a translation of an installed Saga Forge mod.'}
+        onchange={(e) => {
+          const v = e.currentTarget.value
+          if (v === NEW_MOD || v === NEW_TR) { e.currentTarget.value = active?.writeDir ?? ''; if (v === NEW_MOD) showNewMod = true; else showNewTranslation = true; return }
+          // a switch that doesn't happen (cancelled) leaves the list showing the mod that is really active
+          e.currentTarget.value = active?.writeDir ?? ''
+          pickActive(v)
+        }}>
         <option value="">(none: read only)</option>
         {#each mine as s (s.writeDir)}
           <option value={s.writeDir}>{s.name}{s.id === active?.id && project.prefix ? ` (${project.prefix})` : ''} — {s.folder}</option>
         {/each}
+        <option disabled>──────────</option>
+        <option value={NEW_MOD}>+ New mod…</option>
+        <option value={NEW_TR}>+ New translation of an installed mod…</option>
       </select>
-      <button title="Create a new mod in your mods folder" onclick={() => (showNewMod = true)}>+ New mod</button>
-      <button title="Translate an installed Saga Forge mod: a small mod of its own that SagaLib applies in game" onclick={() => (showNewTranslation = true)}>+ Translation</button>
     </span>
     {#if vinfo && app.versions}
       <!-- #47: which game version the active mod targets -->
@@ -184,10 +208,11 @@
       <!-- #60 (PLAN.md §10.1, §10.7 q2): the mod's list of other mods; opens Saga › Mods -->
       {@const listed = (project.m.project.mods ?? []).filter((x) => x.use !== 'incompatible')}
       {@const bad = (project.m.project.mods ?? []).filter((x) => x.use === 'incompatible')}
-      <button class="pill" onclick={openModsTab} title={['The other mods this mod has content for (Saga › Mods). Lists and pickers show vanilla, this mod and these.', ...((project.m.project.mods ?? []).map((x) => `${x.name}: ${x.use}`)), ...(project.m.project.mods?.length ? [] : ['None yet.'])].join('\n')}>Works with: {listed.length ? listed.map((x) => x.name + (x.use === 'required' ? ' (req.)' : '')).join(', ') : 'vanilla only'}{#if bad.length}<span class="pill-bad"> · {bad.length} conflict{bad.length === 1 ? '' : 's'}</span>{/if}</button>
+      <button class="pill" onclick={openModsTab} title={['The other mods this mod has content for (Saga › Mods). Lists and pickers show vanilla, this mod and these.', ...((project.m.project.mods ?? []).map((x) => `${x.name}: ${x.use}`)), ...(project.m.project.mods?.length ? [] : ['None yet.'])].join('\n')}>Cross Mod Support{#if listed.length}<span class="pill-n">{listed.length}</span>{/if}{#if bad.length}<span class="pill-bad"> · {bad.length} conflict{bad.length === 1 ? '' : 's'}</span>{/if}</button>
     {/if}
     <span class="sep"></span>
     <button onclick={() => project.save()} disabled={!project.dirty || project.saving} title="Save plans and faction files (Ctrl+S)">{project.dirty ? '● ' : ''}Save</button>
+    {#if project.dirty}<button onclick={() => project.discard()} disabled={project.saving} title="Throw away the unsaved changes and reload the mod from disk">Discard</button>{/if}
     <button onclick={() => problems.checkMod()} disabled={!project.m} title="Compare the whole mod with the game and every installed mod">Check mod</button>
     <button class="primary" onclick={() => (showExport = true)} disabled={!project.m}>Export…</button>
     <button title="Settings" onclick={() => (showSettings = true)}>⚙</button>
@@ -228,6 +253,9 @@
     <button onclick={() => (app.error = null)}>Close</button>
   </div>
 {/if}
+
+<!-- #67 U44: the "$" autocomplete, the token lookup in screenshot mode -->
+<TokenOverlay />
 
 {#if app.asking}
   {@const a = app.asking}
@@ -311,14 +339,14 @@
   .spacer { flex: 1; }
   /* only the mod list and the target pill shrink (ellipsis); the span never gets narrower than its
      buttons plus a short mod list, so nothing overlaps what follows (seen at 1486 px with two installs) */
-  .activemod { display: flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; min-width: 250px; flex-shrink: 1; }
-  .activemod select { max-width: 220px; min-width: 60px; flex: 1 1 auto; text-overflow: ellipsis; padding: 3px 6px; }
+  .activemod { display: flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; min-width: 160px; flex-shrink: 1; }
+  .activemod select { max-width: 280px; min-width: 120px; flex: 1 1 auto; text-overflow: ellipsis; padding: 3px 6px; }
   .am-label { font-size: 12px; white-space: nowrap; }
   @media (max-width: 1600px) { .am-label { display: none; } }
-  .activemod button { flex-shrink: 0; }
   .target { padding: 3px 8px; border-radius: 12px; border-color: var(--accent-2); color: var(--accent); font-size: 12px; max-width: 200px; flex: 0 0 auto; }
   .target.older { border-color: #6b4a1f; color: var(--warn); }
-  .pill { padding: 3px 10px; border-radius: 12px; border-color: var(--accent-2); color: var(--accent); font-size: 12px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 4 auto; min-width: 120px; }
+  .pill { padding: 3px 10px; border-radius: 12px; border-color: var(--accent-2); color: var(--accent); font-size: 12px; overflow: hidden; white-space: nowrap; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; }
+  .pill-n { font-size: 10px; border-radius: 8px; background: #2a3a4c; padding: 0 5px; color: var(--text, #ddd); }
   .pill-bad { color: var(--bad); }
   .sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
   main { min-height: 0; min-width: 0; overflow: hidden; }

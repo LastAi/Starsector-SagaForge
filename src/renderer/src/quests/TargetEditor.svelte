@@ -4,11 +4,15 @@
    * (shared/targets.ts). Requires all hold; prefers are tried in order and each is dropped when it
    * would leave nothing. SagaLib runs it when the quest is offered; Play mode uses the mock.
    */
+  import RefButton from '../ui/RefButton.svelte'
   import Field from '../ui/Field.svelte'
-  import { CRITERIA, criteriaFor, criterion, defaultArgs, newTarget, RUINS_SIZES, TARGET_DETAILS, TARGET_FACTS, type TargetPick } from '../../../shared/targets'
+  import { allowedCommodities, atMarket, cargoUnits, COMMODITY_FACTS, commodityValue, CRITERIA, criteriaFor, criterion, defaultArgs, newCommodityTarget, newTarget, RUINS_SIZES, TARGET_DETAILS, TARGET_FACTS, VANILLA_GOODS, type TargetPick } from '../../../shared/targets'
+  import { commodityInfo, economyCommodities } from '../state/testctx.svelte'
   import { app } from '../state/app.svelte'
   import type { Criterion, TargetDef } from '../../../shared/model'
   import { project } from '../state/project.svelte'
+  import { mods } from '../state/mods.svelte'
+  import ShowAllMods from '../ui/ShowAllMods.svelte'
   import { bountyWhere, targetToMagic } from '../../../shared/bounties'
 
   interface Props { quest: string; name: string; target: TargetDef | undefined; onChange: (t: TargetDef) => void; /** Phase 7e: for a scatter (no facts, mock or person). */ scatter?: boolean }
@@ -18,14 +22,36 @@
   // #27 (DESIGN-MAGICLIB-BOUNTIES.md §3): the same "where" as a MagicLib bounty, for the bounties that use this target
   const bountyIds = $derived((project.m?.bounties ?? []).filter((b) => { const w = project.m ? bountyWhere(project.m, b) : null; return w?.kind === 'target' && w.quest.id === quest && w.v === name }).map((b) => b.id))
   const asMagic = $derived(bountyIds.length ? targetToMagic(t) : null)
+  /** #67 U34: the reference for a criterion's list of ids. */
+  const LIST_REF: Record<string, string> = { plConditions: 'locations-conditions', mkConditions: 'locations-conditions', enType: 'locations-entity-types', enTags: 'locations-entity-tags', mkIndustries: 'locations-industries' }
   const upd = (fn: (x: TargetDef) => void) => { const c: TargetDef = JSON.parse(JSON.stringify(t)); fn(c); onChange(c) }
   const PICKS: { id: TargetPick; label: string; help: string }[] = [
     { id: 'planet', label: 'a planet', help: 'A planet or moon (vanilla pickPlanet): system criteria pick its system first.' },
     { id: 'entity', label: 'an entity', help: 'A station, derelict, probe, cache… (pickEntity), by custom entity type or tags.' },
     { id: 'system', label: 'a star system', help: 'A whole system (pickSystem): Arrive is true anywhere in it.' },
-    { id: 'market', label: 'a market', help: 'A colony (pickMarket). Vanilla\'s market search ignores system criteria; use market ones.' }
+    { id: 'market', label: 'a market', help: 'A colony (pickMarket). Vanilla\'s market search ignores system criteria; use market ones.' },
+    { id: 'commodity', label: 'a commodity at a market', help: 'One commodity at one colony (vanilla pickCommodity): the market criteria, then the commodity\'s. Arrive at the target is its market; the amount is set below.' }
   ]
-  const GROUPS: Record<string, string> = { system: 'System', planet: 'Planet', entity: 'Entity', market: 'Market' }
+  const picks = $derived(scatter ? PICKS.filter((p) => p.id !== 'commodity') : PICKS)
+  const GROUPS: Record<string, string> = { system: 'System', planet: 'Planet', entity: 'Entity', market: 'Market', commodity: 'Commodity' }
+  // #75: commodity targets (PLAN.md §10.8)
+  const cm = $derived(t.commodity ?? newCommodityTarget())
+  const updC = (fn: (c: NonNullable<TargetDef['commodity']>) => void) => upd((x) => { const c = x.commodity ?? newCommodityTarget(); fn(c); x.commodity = c })
+  const allowed = $derived(allowedCommodities(t) ?? economyCommodities())
+  const SAMPLES = ['food', 'rare_metals', 'supplies', 'luxury_goods']
+  const samples = $derived(SAMPLES.map((id) => commodityInfo(id)).filter((x) => !!x).map((c) => { const n = cargoUnits(cm.amount, c!.econUnit, t.mock?.size ?? 5); return `${c!.name} ${n} (${commodityValue(c!.basePrice, n).toLocaleString('en-US')}¢)` }))
+  const tot = $derived((project.m?.project.mods ?? []).some((x) => x.id === 'aotd_theory_of_toolbox'))
+  // #60: the index's commodities keep their source: the suggestions show vanilla, the mod and its listed mods
+  const indexCommodities = $derived((app.index?.items ?? []).filter((i) => i.kind === 'commodity' && !i.tags.includes('nonecon') && !i.tags.includes('meta')))
+  const allCommodities = $derived([...new Set([...(project.m?.items ?? []).filter((i) => i.kind === 'commodity').map((i) => i.id), ...mods.filter('commodities', indexCommodities, (i) => i.definedBy).map((i) => i.id)])])
+  /** A typed commodity from a mod that isn't listed offers to add it (Saga › Mods). */
+  function pickedCommodities(ids: string[]) {
+    for (const id of ids) {
+      if ((project.m?.items ?? []).some((i) => i.id === id)) continue
+      const o = indexCommodities.find((i) => i.id === id)
+      if (o) void mods.picked(o.definedBy, `"${o.name || id}"`)
+    }
+  }
   const fits = $derived(criteriaFor(t.pick))
   const add = (list: 'require' | 'prefer', id: string) => {
     const spec = criterion(id)
@@ -50,7 +76,7 @@
         {#if a.kind === 'mode'}
           <select title={a.label} value={String(cr.args[ai] ?? 'ANY')} onchange={(e) => setArg(list, i, ai, e.currentTarget.value)}><option value="ANY">any of</option><option value="ALL">all of</option><option value="NOT_ANY">none of</option><option value="NOT_ALL">not all of</option></select>
         {:else if a.kind === 'list'}
-          <input type="text" class="mono" placeholder={a.label.toLowerCase() + ', comma-separated'} value={listText(cr.args[ai])} onchange={(e) => setArg(list, i, ai, toList(e.currentTarget.value))} />
+          <input type="text" class="mono" placeholder={a.label.toLowerCase() + ', comma-separated'} value={listText(cr.args[ai])} onchange={(e) => setArg(list, i, ai, toList(e.currentTarget.value))} />{#if LIST_REF[cr.id]}<RefButton ref={LIST_REF[cr.id]} title="The ids it takes: opens the reference" />{/if}
         {:else if a.kind === 'number'}
           <input type="number" class="num" title={a.label} value={Number(cr.args[ai] ?? 0)} onchange={(e) => setArg(list, i, ai, Number(e.currentTarget.value) || 0)} /><span class="muted small">{a.label.toLowerCase()}</span>
         {:else if a.kind === 'from'}
@@ -69,7 +95,7 @@
     {#each Object.keys(GROUPS).filter((g) => fits.some((f) => f.group === g)) as g (g)}
       <optgroup label={GROUPS[g]}>{#each fits.filter((f) => f.group === g && (list === 'require' ? !!f.req : !!f.pref)) as f (f.id)}<option value={f.id} title={f.help}>{f.label}</option>{/each}</optgroup>
     {/each}
-  </select>
+  </select><RefButton ref="quests-target-criteria" title="What each criterion means: opens the reference" />
 {/snippet}
 
 <div class="te">
@@ -77,12 +103,12 @@
   <div class="grid2">
     <Field label="Pick" for="te-p" help={PICKS.find((p) => p.id === t.pick)?.help ?? ''}>
       <select id="te-p" value={t.pick} onchange={(e) => { const v = e.currentTarget.value as TargetPick; upd((x) => { x.pick = v; const ok = new Set(criteriaFor(v).map((c) => c.id)); x.require = x.require.filter((c) => ok.has(c.id)); x.prefer = x.prefer.filter((c) => ok.has(c.id)) }) }}>
-        {#each PICKS as p (p.id)}<option value={p.id}>{p.label}</option>{/each}
+        {#each picks as p (p.id)}<option value={p.id}>{p.label}</option>{/each}
       </select>
     </Field>
     <Field label="Must" help="All of these must hold (vanilla require…).">
       <div class="list">{@render rows('require')}
-        {#if t.pick !== 'market' && !avoidsDanger}<button class="mini preset" title="Adds System tags › none of theme_unsafe, theme_remnant_main, theme_remnant_secondary: no system with dangerous fleets or active Remnants (vanilla's own mission filter avoids theme_unsafe)" onclick={() => upd((x) => { x.require.push({ id: 'sysTags', args: ['NOT_ANY', [...DANGER]] }) })}>+ Avoid dangerous systems</button>{/if}
+        {#if !atMarket(t) && !avoidsDanger}<button class="mini preset" title="Adds System tags › none of theme_unsafe, theme_remnant_main, theme_remnant_secondary: no system with dangerous fleets or active Remnants (vanilla's own mission filter avoids theme_unsafe)" onclick={() => upd((x) => { x.require.push({ id: 'sysTags', args: ['NOT_ANY', [...DANGER]] }) })}>+ Avoid dangerous systems</button>{/if}
       </div>
     </Field>
     <Field label="Prefer" help="Tried in this order; each is dropped when nothing would be left (vanilla prefer…). The list is the fallback chain.">
@@ -94,6 +120,32 @@
       </Field>
     {/if}
   </div>
+  {#if t.pick === 'commodity' && !scatter}
+    <!-- #75 (PLAN.md §10.8): which commodities and how much -->
+    <div class="sect">The commodity</div>
+    {#if tot}<p class="f-help note">AoTD Theory of Toolbox is in Saga › Mods: with it, "short of it", "has a surplus" and "produces it" ask ToT's own economy, and amounts in economy units follow ToT's units (food ×0.1, transplutonics ×10, …). The quest needs no condition on ToT.</p>{/if}
+    <div class="grid2">
+      <Field label="Which" for="te-cw" help="The commodities it may pick from. Vanilla's 18 trade goods by default, so the quest's texts and amounts fit goods you know; any economy commodity includes other mods' (e.g. Industrial.Evolution's ship components); or a list you choose (another mod's commodity in it makes that mod used).">
+        <select id="te-cw" value={cm.which} onchange={(e) => { const v = e.currentTarget.value as 'vanilla' | 'any' | 'list'; updC((c) => { c.which = v; if (v === 'list' && !c.ids?.length) c.ids = [] }) }}>
+          <option value="vanilla">vanilla's 18 trade goods</option><option value="any">any economy commodity</option><option value="list">these commodities…</option>
+        </select>
+        {#if cm.which === 'list'}
+          <input type="text" class="mono" list="te-coms" placeholder="commodity ids, comma-separated" value={(cm.ids ?? []).join(', ')} onchange={(e) => { const l = toList(e.currentTarget.value); updC((c) => { c.ids = l }); pickedCommodities(l) }} />
+          <datalist id="te-coms">{#each allCommodities as id (id)}<option value={id}></option>{/each}</datalist>
+          {@const comHidden = mods.hidden('commodities', indexCommodities, (i) => i.definedBy)}
+          {#if comHidden > 0 || mods.showAll['commodities']}<ShowAllMods list="commodities" hidden={comHidden} />{/if}
+        {:else if cm.which === 'vanilla'}<div class="muted small mono">{VANILLA_GOODS.join(', ')}</div>{/if}
+      </Field>
+      <Field label="Amount" for="te-ca" help="In economy units (default): SagaLib turns them into cargo units with the commodity's econUnit when it picks, so the amount fits vanilla's units, AoTD ToT's or another mod's commodity (food's econUnit is 2000, transplutonics' 200: 0.1 is 200 food or 20 transplutonics). Or a fixed number of cargo units. Rounded, at least 1.">
+        <div class="row">
+          <input id="te-ca" type="number" class="num" step="any" min="0" value={cm.amount.n} onchange={(e) => { const v = Number(e.currentTarget.value) || 0; updC((c) => { c.amount.n = v }) }} />
+          <select value={cm.amount.unit} onchange={(e) => { const v = e.currentTarget.value as 'econ' | 'cargo'; updC((c) => { c.amount.unit = v; if (v === 'cargo') delete c.amount.perSize }) }}><option value="econ">economy units</option><option value="cargo">cargo units</option></select>
+          {#if cm.amount.unit === 'econ'}<label class="chk"><input type="checkbox" checked={!!cm.amount.perSize} onchange={(e) => { const v = e.currentTarget.checked; updC((c) => { c.amount.perSize = v || undefined }) }} /> × the market's size</label>{/if}
+        </div>
+        {#if samples.length}<div class="muted small">With vanilla's units{cm.amount.perSize ? ` and size ${t.mock?.size ?? 5}` : ''}: {samples.join(' · ')}</div>{/if}
+      </Field>
+    </div>
+  {/if}
   {#if !scatter}
   <div class="sect">Facts and mock</div>
   <p class="f-help">SagaLib stores the pick in <span class="mono">$global.{quest}_{name}</span> and these facts, usable in texts and conditions. Play mode can't see the generated sector, so it uses the mock values below.</p>
@@ -103,6 +155,19 @@
         <input id={`te-m-${f}`} type={f === 'dist' ? 'number' : 'text'} value={String(t.mock?.[f] ?? '')} onchange={(e) => { const v = e.currentTarget.value; upd((x) => { x.mock = { ...(x.mock ?? {}), [f]: f === 'dist' ? Number(v) || 0 : v } }) }} />
       </Field>
     {/each}
+    {#if t.pick === 'commodity'}
+      <Field label="Commodity" help={`Set when picked: $global.${quest}_${name}_commodity (its name for texts, lower case), _commodityId, _amount (cargo units), _basePrice and _value (base price × amount, in credits). Use them in texts ("deliver $global.${quest}_${name}_amount $global.${quest}_${name}_commodity to $global.${quest}_${name}_name"), the Action "Take the target's goods", the condition "has the target's goods" and credit rewards. Play mode picks one of the allowed commodities at random, unless you choose one here.`}>
+        <div class="row">
+          <select title="Play mode's commodity" value={t.mock?.commodity ?? ''} onchange={(e) => { const v = e.currentTarget.value; upd((x) => { x.mock = { ...(x.mock ?? {}), commodity: v || undefined } }) }}>
+            <option value="">(one of the allowed, at random)</option>
+            {#each allowed as id (id)}<option value={id}>{commodityInfo(id)?.name ?? id}</option>{/each}
+            {#if t.mock?.commodity && !allowed.includes(t.mock.commodity)}<option value={t.mock.commodity}>{commodityInfo(t.mock.commodity)?.name ?? t.mock.commodity} (not allowed any more)</option>{/if}
+          </select>
+          <span class="muted small">market size</span><input type="number" class="num" min="1" max="10" title="The mock market's size (for × the market's size)" value={t.mock?.size ?? 5} onchange={(e) => { const v = Number(e.currentTarget.value) || 5; upd((x) => { x.mock = { ...(x.mock ?? {}), size: v } }) }} />
+        </div>
+        <div class="muted small mono">{COMMODITY_FACTS.map((f) => `_${f}`).join(' · ')}</div>
+      </Field>
+    {/if}
     <!-- Phase 7d (RC-R3): what the pick is like, for Branch conditions and phrases -->
     <Field label="Details" help={`What the pick is like, set by SagaLib with the facts: $global.${quest}_${name}_<detail>. Use them in Branch cases and phrases ("the target is decivilised"). The boxes are the mock's values for Play.`}>
       <div class="details">
@@ -110,7 +175,7 @@
           {#if d.kind === 'bool'}
             <label class="chk" title={`$global.${quest}_${name}_${d.id}`}><input type="checkbox" checked={t.mock?.details?.[d.id] === true} onchange={(e) => { const v = e.currentTarget.checked; upd((x) => { x.mock = { ...(x.mock ?? {}), details: { ...(x.mock?.details ?? {}), [d.id]: v } } }) }} /> {d.label}</label>
           {:else if d.kind === 'ruins'}
-            <label class="chk" title={`$global.${quest}_${name}_${d.id}`}>{d.label} <select value={String(t.mock?.details?.[d.id] ?? '')} onchange={(e) => { const v = e.currentTarget.value; upd((x) => { x.mock = { ...(x.mock ?? {}), details: { ...(x.mock?.details ?? {}), [d.id]: v } } }) }}><option value="">none</option>{#each RUINS_SIZES as r (r)}<option value={r}>{r}</option>{/each}</select></label>
+            <label class="chk" title={`$global.${quest}_${name}_${d.id}`}>{d.label} <select value={String(t.mock?.details?.[d.id] ?? '')} onchange={(e) => { const v = e.currentTarget.value; upd((x) => { x.mock = { ...(x.mock ?? {}), details: { ...(x.mock?.details ?? {}), [d.id]: v } } }) }}><option value="">none</option>{#each RUINS_SIZES as r (r)}<option value={r}>{r}</option>{/each}</select>{#if d.id === "ruins"}<RefButton ref="quests-ruins-sizes" />{/if}</label>
           {:else}
             <label class="chk wide" title={`$global.${quest}_${name}_${d.id}`}>{d.label} <input type="text" class="mono" value={String(t.mock?.details?.[d.id] ?? '')} onchange={(e) => { const v = e.currentTarget.value.trim(); upd((x) => { x.mock = { ...(x.mock ?? {}), details: { ...(x.mock?.details ?? {}), [d.id]: v } } }) }} /></label>
           {/if}
@@ -123,12 +188,12 @@
     <div class="sect">A person there</div>
     <p class="f-help">Someone at the picked colony with one of these posts (vanilla's findOrCreatePerson): an existing person, or a new one of the faction, who leaves again when the quest ends. Talking to them is the place <span class="mono">target:{name}.person</span> for an Arrive node; their name is <span class="mono">$global.{quest}_{name}_personName</span>. A pick without a colony isn't offered.</p>
     <div class="grid2">
-      <Field label="Posts" for="te-pp" help="One or more post ids, comma-separated, e.g. portmaster, supplyOfficer, administrator, merchant. Empty: no person.">
+      <Field label="Posts" ref="people-post" for="te-pp" help="One or more post ids, comma-separated, e.g. portmaster, supplyOfficer, administrator, merchant. Empty: no person.">
         <input id="te-pp" type="text" class="mono" list="te-posts" value={(t.person?.posts ?? []).join(', ')} onchange={(e) => { const l = toList(e.currentTarget.value); upd((x) => { x.person = l.length ? { ...(x.person ?? {}), posts: l } : undefined }) }} />
         <datalist id="te-posts">{#each app.defs.posts as p (p.id)}<option value={p.id}>{p.name}</option>{/each}</datalist>
       </Field>
       {#if t.person?.posts.length}
-        <Field label="Rank" for="te-pr" help="The rank a new person gets (vanilla's defaultRank).">
+        <Field label="Rank" ref="people-rank" for="te-pr" help="The rank a new person gets (vanilla's defaultRank).">
           <select id="te-pr" value={t.person.rank ?? 'citizen'} onchange={(e) => { const v = e.currentTarget.value; upd((x) => { if (x.person) x.person.rank = v }) }}>{#each app.defs.ranks as r (r.id)}<option value={r.id}>{r.name}</option>{/each}</select>
         </Field>
         <Field label="Faction" for="te-pf" help="A new person's faction. Empty: the colony's.">
@@ -169,4 +234,6 @@
   .details .wide { grid-column: 1 / -1; }
   .details .wide input { flex: 1; }
   .small { font-size: 11px; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .note { border-left: 3px solid var(--warn, #c90); padding-left: 6px; }
 </style>
