@@ -18,7 +18,9 @@ describe('#67 U45: conditions in plain words', () => {
     expect(describeCondition('!$global.toc_name_cleared', n)).toBe('Game flag toc_name_cleared is not set (or false)')
     expect(describeCondition('$player.credits >= 10000', n)).toBe('The player has at least 10000 credits')
     expect(describeCondition('$player.gender == FEMALE', n)).toBe('The player is female')
-    expect(describeCondition('$market.factionId == hegemony', n)).toBe('The market belongs to Hegemony')
+    expect(describeCondition('$faction.id == hegemony', n)).toBe("Here belongs to Hegemony (the market's owner, or who you talk to)")
+    // #67 U54: the game never sets $market.factionId
+    expect(describeCondition('$market.factionId == hegemony', n)).toMatch(/^Never true in game/)
   })
   it('quests, progress events and SagaLib commands by name', () => {
     expect(describeCondition('$global.toc_main_state == active', n)).toBe('Quest "The Other Captain" is running')

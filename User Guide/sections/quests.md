@@ -460,7 +460,7 @@ options in the preview; the chart lights up the path taken.
   fit (your mod's first, then by size: "Dock at Chicomoztoc (Hegemony, size 8)"), or "Start here,
   with its conditions met".
 - **Docking as in game.** An Arrive, a start choice and the Test context's **Market** dock the way
-  the game does: the market, its owner (`$market.factionId`, `$faction.id`), its menu and its names
+  the game does: the market, its owner (`$faction.id`), its menu and its names
   are set, so one Arrive reaches your option. Checks of the game and other mods that Play can't
   work out are taken as false (the usual case) unless the Test context says otherwise; your mod's
   own stay true.

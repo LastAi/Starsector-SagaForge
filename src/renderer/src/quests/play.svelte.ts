@@ -31,6 +31,7 @@ import { bountyKey, bountyState, endBounty, checkBountyWaits, type BountyState }
 import { bountyWaitsJson } from '../../../shared/export/runtime'
 import { checkOwners, checkPresence, awayKey, type RuntimeQuestJson, type SimPlaces } from '../../../shared/play'
 import { marketOf, ownerChangeJson } from '../../../shared/nexerelin'
+import { NEVER_SET_KEYS } from '../../../shared/conditions'
 import { startChoices, showCondition, MAX_START_CHOICES, type PlaceOption, type StartChoice } from '../../../shared/playstart'
 
 interface Snapshot { memory: [string, Value][]; player: PlayerState; view: DialogView; sim: SimState; logLen: number; path: string[]; day: number }
@@ -486,7 +487,6 @@ class PlayState {
     e.set('$id', entity)
     e.set('$entity.id', entity)
     e.set('$market.id', mk?.id)
-    e.set('$market.factionId', faction)
     e.set('$hasMarket', mk ? true : undefined)
     e.set('$menuState', mk ? 'main' : undefined)
     // the place's faction, as the game's $faction / $entity.faction at a market
@@ -512,11 +512,13 @@ class PlayState {
   /** #67 U50: the quest's trigger start didn't match: offer up to MAX_START_CHOICES ways to meet it. */
   private offerStart(q: QuestPlan, trigger: string, conditions: string[]): void {
     const e = this.engine!
-    const { choices, open } = startChoices(conditions, this.places(), (id) => factionLook(id)?.name ?? id)
+    const { choices, open, never } = startChoices(conditions, this.places(), (id) => factionLook(id)?.name ?? id)
     this.startOffer = { q, trigger, choices }
     const need = conditions.map(showCondition).filter(Boolean).join(', ') || 'nothing more'
     this.newDialog()
     e.para({ kind: 'note', text: `(${q.title} didn't start here. It starts on ${trigger} when: ${need}. Pick a way to meet that${choices.length >= MAX_START_CHOICES ? ` (the first ${MAX_START_CHOICES} that fit)` : ''}, or set the Test context in Plan.)`, color: 'gray', highlights: [] })
+    // #67 U54: a key the game never sets: it wouldn't start in game either
+    if (never.length) e.para({ kind: 'note', text: `(It uses ${never.join(', ')}, which the game never sets, so in game it never starts. Problems has the fix: ${never.map((k) => NEVER_SET_KEYS[k].use).join(', ')}.)`, color: 'bad', highlights: [] })
     if (open.length) e.para({ kind: 'note', text: `(Play can't set ${open.join(', ')}: assumed true unless the Test context says otherwise.)`, color: 'gray', highlights: [] })
     e.view.options = [...choices.map((c, i) => ({ id: `${START_OPTION}${i}`, text: c.label, order: i, enabled: true })), { id: '__leave', text: 'Leave', order: 99, enabled: true, shortcut: 'ESCAPE' }]
     e.log.push({ kind: 'info', text: `Not started: no rule of this quest matched ${trigger}; its start conditions: ${need}` })

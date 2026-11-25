@@ -117,9 +117,9 @@ export function contextFrom(t: TestContext, defs: GameDefinitions, look: Lookup)
   const fid = t.faction || p?.faction || ''
   if (fid) { mem.set('$faction.id', fid); mem.set('$entity.faction.id', fid) }
   if (t.market) { mem.set('$market.id', t.market); mem.set('$hasMarket', true); mem.set('$menuState', 'main') }
-  // #67 U50: the market's owner, as in game ("At a market of…" conditions were never true in Play)
-  const mf = t.market ? look.market(t.market)?.faction : ''
-  if (mf) mem.set('$market.factionId', mf)
+  // #67 U50/U54: at a market with no speaker or faction given, $faction is the market's owner, as in game
+  const mf = t.market && !fid ? look.market(t.market)?.faction : ''
+  if (mf) { mem.set('$faction.id', mf); mem.set('$entity.faction.id', mf) }
   if (t.entity && !t.person) { mem.set('$id', t.entity); mem.set('$entity.id', t.entity) }
   for (const [k, v] of Object.entries(PLACE_PRESETS.find((p) => p.id === t.place)?.memory ?? {})) mem.set(k, parseValue(v))
   mem.set('$player.credits', t.credits)

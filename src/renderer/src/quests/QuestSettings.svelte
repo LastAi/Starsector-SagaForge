@@ -248,7 +248,7 @@
     <Field label="Blurb" for="qs-sb" help="The line in the bar's description that hints at the scene (&quot;A spacer at the corner table keeps glancing your way.&quot;).">
       <textarea id="qs-sb" rows="2" value={quest.start.blurb} onchange={(e) => setStart('blurb', e.currentTarget.value)}></textarea>
     </Field>
-    <Field label="Only when" help="Condition lines (rules.csv syntax) for where and when, e.g. $market.id == vgc_haven, $market.factionId == hegemony, or a quest's flag. Empty: every colony's bar.">
+    <Field label="Only when" help="Condition lines (rules.csv syntax) for where and when, e.g. $market.id == vgc_haven, $faction.id == hegemony, or a quest's flag. Empty: every colony's bar.">
       <ConditionsEditor lines={quest.start.conditions} {templates} onChange={(l) => setStart('conditions', l)} />
     </Field>
     <Field label="Chance" for="qs-sp" help="How likely it is to be in this bar this month (vanilla's RollProbability, as its own bar scenes): it is rolled per colony and per month, so within a month every visit gives the same answer, and next month it may change. A bar shows at most 3 such scenes per visit (vanilla's maxBarEvents). 1 = always.">

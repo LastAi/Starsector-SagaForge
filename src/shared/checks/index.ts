@@ -29,7 +29,7 @@ import { eventProblems } from './events'
 import { progressProblems } from './progress'
 import { modProblems } from './mods'
 import { tokenProblems } from '../tokens'
-import { conditionScopeProblems } from '../conditions'
+import { conditionScopeProblems, neverSetKeyProblems } from '../conditions'
 import { chartNodeOf, expandModelGroups, groupDefProblems, groupInstanceProblems } from '../nodegroups'
 import { nexerelinProblems } from './nexerelin'
 import { bountyProblems } from './bounties'
@@ -68,6 +68,8 @@ type Checker = (ctx: CheckContext) => Problem[]
 const CHECKERS: Checker[] = [basicProblems, appVersionProblems, modProblems, nexerelinProblems, versionCheckProblems, factionProblems, allQuestProblems, flagsChecker, locationProblems, encounterProblems, saveChecker, styleChecks, itemProblems, missingImageProblems, (ctx) => todoProblems(ctx.model), (ctx) => inactiveProblems(ctx.model), imageSizeProblems, nameProblems, worldProblems, fleetProblems, poolProblems, eventProblems, progressProblems, bountyProblems, presenceProblems, settingProblems, achievementProblems, questSkipProblems, researchProblems, pluginProblems, oneNameProblems,
   (ctx) => tokenProblems(ctx.model),
   (ctx) => conditionScopeProblems(ctx.model),
+  // #67 U54: keys the game never sets ($market.factionId)
+  (ctx) => neverSetKeyProblems(ctx.model),
   (ctx) => (ctx.version ? versionProblems(ctx.model, ctx.version.diff, ctx.version.targetIsNewer, ctx.defs) : []),
   // Check mod only: rules that would take over the game's or other mods' dialog (Export runs it too)
   (ctx) => (ctx.rules ? modTakeoverProblems(ctx.model, ctx.loaded, ctx.index, ctx.rules) : [])]

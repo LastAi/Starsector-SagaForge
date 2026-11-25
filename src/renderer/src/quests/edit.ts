@@ -80,7 +80,8 @@ export function conditionTemplates(q: QuestPlan | null, factions: string[], ques
   }
   for (const t of (project.m?.fleets?.templates ?? []).slice(0, 8)) out.push({ label: `Named fleet "${t.name || t.id}" beaten at least once`, line: `$global.sagaforge_fleet_${t.id}_defeats >= 1` })
   out.push({ label: 'Credits at least…', line: '$player.credits >= 10000' })
-  out.push({ label: 'At a market of…', line: `$market.factionId == ${f}` })
+  // #67 U54: a market's owner is $faction.id (the game sets no $market.factionId)
+  out.push({ label: 'At a market of… (its owner)', line: `$faction.id == ${f}` })
   // Phase 7e (RC-R11): SagaLib 1.2 remembers every colony that decivilises
   out.push({ label: 'A colony has decivilised', line: '$global.sagaforge_deciv_<market id>' })
   // #70 (SagaLib 1.3): relations between two factions (vanilla's RepIsAtWorst is the player's), and who is away

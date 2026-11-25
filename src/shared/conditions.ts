@@ -110,7 +110,9 @@ export function describeCondition(line: string, n: CondNames = {}): string {
   if (key === '$player.gender' && op === '==') return not(`The player is ${v.toLowerCase()}`)
   if (key === '$player.credits' && op) return not(op === '>=' ? `The player has at least ${v} credits` : op === '<' ? `The player has less than ${v} credits` : `The player's credits: ${OPS[op] ?? op} ${v}`)
   if (key === '$player.commissionFactionId' && op === '==') return not(`The player is commissioned with ${n.faction?.(v) ?? v}`)
-  if (key === '$market.factionId' && op === '==') return not(`The market belongs to ${n.faction?.(v) ?? v}`)
+  // #67 U54: the game never sets $market.factionId; the place's owner is $faction.id
+  if (key === '$market.factionId') return `Never true in game: the game doesn't set $market.factionId (use $faction.id)`
+  if (key === '$faction.id' && (op === '==' || op === '!=')) return op === '==' ? not(`Here belongs to ${n.faction?.(v) ?? v} (the market's owner, or who you talk to)`) : not(`Here doesn't belong to ${n.faction?.(v) ?? v}`)
   if (key === '$entity.sagaforge_fled') return c.negate ? 'The player has not fled from this fleet' : 'The player fled from this fleet'
   const sc = keyScope(key)
   const name = sc === 'other' ? key : key.replace(/^\$(global|player|faction|market|entity|person)\./, '').replace(/^\$/, '')
@@ -152,12 +154,35 @@ export function conditionScopeProblems(m: ModModel): Problem[] {
   return out
 }
 
+/**
+ * #67 U54: memory keys the game never sets, with what to use instead. A market's memory holds only
+ * what CoreCampaignPluginImpl.updateMarketFacts puts there ($id, $size, $stability, $isPlayerOwned,
+ * tags, conditions, industries…): no owner. The owner of the place a dialog is at is $faction.id.
+ */
+export const NEVER_SET_KEYS: Record<string, { use: string; why: string }> = {
+  '$market.factionId': { use: '$faction.id', why: 'the game never sets it (a market\'s memory has no owner key). The faction of the place the dialog is at, a market\'s owner, is $faction.id' }
+}
+
+/** #67 U54: conditions, options, phrases and actions that use a key the game never sets (so they never match). */
+export function neverSetKeyProblems(m: ModModel): Problem[] {
+  const out: Problem[] = []
+  for (const [key, { use, why }] of Object.entries(NEVER_SET_KEYS)) {
+    const where: { name: string; ref: Problem['ref'] }[] = []
+    for (const q of m.quests) if (JSON.stringify(q).includes(key)) where.push({ name: `"${q.title}"`, ref: { page: 'quests', id: q.id } })
+    for (const p of m.progress ?? []) if (JSON.stringify(p).includes(key)) where.push({ name: `progress event "${p.name}"`, ref: { page: 'saga', id: 'progress', sub: p.id } })
+    for (const s of m.events ?? []) if (JSON.stringify(s).includes(key)) where.push({ name: 'world events', ref: { page: 'saga', id: 'events', sub: s.id } })
+    if ([...m.phrases, ...m.people.flatMap((x) => x.phrases)].some((p) => JSON.stringify(p).includes(key))) where.push({ name: 'phrases', ref: { page: 'saga', id: 'phrases' } })
+    for (const w of where) out.push({ level: 'warning', area: 'Conditions', ref: w.ref, key: `neverset:${key}:${w.name}`, message: `${w.name} uses ${key}, which never matches in game: ${why}.`, fixes: [{ label: `Use ${use}`, action: 'renameFlag', arg: { from: key, to: use } }] })
+  }
+  return out
+}
+
 /** The Conditions reference page's rows: [form, example, means, where it works]. */
 export const CONDITION_FORMS: string[][] = [
   ['$scope.key', '$global.toc_fought_hegemony', 'The key is set and true (not set counts as false).', 'everywhere its memory exists'],
   ['!$scope.key', '!$global.toc_name_cleared', '"!" in front turns any condition around: not set, or false.', 'everywhere'],
   ['$scope.key == value', '$player.gender == FEMALE', 'Equal. Text is compared as written (case matters), numbers as numbers.', 'everywhere'],
-  ['$scope.key != value', '$market.factionId != hegemony', 'Not equal.', 'everywhere'],
+  ['$scope.key != value', '$faction.id != hegemony', 'Not equal.', 'everywhere'],
   ['$scope.key >= number', '$player.credits >= 10000', 'At least (also >, <=, <).', 'everywhere'],
   ['Command args', 'RepIsAtWorst hegemony FAVORABLE', 'A rule command that answers true or false (Rules › Rule commands lists them; "Use" says condition).', 'in a dialog; SagaLib runs most of them outside one too'],
   ['SF_… command', 'SF_AtStep toc_main pay', 'SagaLib\'s conditions: quest stage and result, mods, gender, faction relations, research, bounties.', 'everywhere (needs SagaLib)'],

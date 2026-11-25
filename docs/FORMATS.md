@@ -165,6 +165,14 @@ Read through `Factions.CUSTOM_*`:
   between paragraphs, the export splits the text into `AddText` lines around them (PLAN.md §4.9
   fallback).
 - `FireAll`: adds the options of every matching rule first, then text and script per rule.
+- **A market's memory** (`$market.…`, API source `CoreCampaignPluginImpl.updateMarketFacts`, 0.98a;
+  task #67 U54, found in game 2026-11-24): `$id`, `$size`, `$stability`, `$isSurveyed`,
+  `$surveyLevel`, `$isPlanetConditionMarketOnly`, `$daysExisted`, `$isHidden`, `$isPlayerOwned`,
+  `$hasRuins`, `$hasUnexploredRuins`, `$tag:<tag>`, `$mc:<condition>`, `$ind:<industry>`, plus
+  whatever rules and scripts set. **No owner key**: `$market.factionId` is never set, so a condition
+  on it never matches (vanilla never uses it). The owner of the place a dialog is at is
+  **`$faction.id`** (`RuleBasedInteractionDialogPluginImpl.updateMemory`: the interaction target's
+  faction; vanilla: `$faction.id == hegemony`, 35 rules). Problems warns about `$market.factionId`.
 - A condition line `score:N` adds N to the rule's FireBest score (vanilla: `$id == rao score:1000`).
   FireBest picks the matching rule with the highest score. The score is the number of conditions
   plus any `score:` values.

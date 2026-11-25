@@ -7,6 +7,7 @@
 import { parseCondition } from './rules/parse'
 import { literal } from './rules/engine'
 import type { Value } from './rules/parse'
+import { NEVER_SET_KEYS } from './conditions'
 
 export interface PlaceOption { id: string; name: string; faction: string; size: number; own?: boolean; entities?: string[] }
 export interface StartChoice {
@@ -23,9 +24,11 @@ export const showCondition = (line: string) => line.replace(/\s+score\s*:\s*-?[\
 
 const PLACE_KEYS = new Set(['$market.id', '$id', '$entity.id'])
 
-export function startChoices(conds: string[], markets: PlaceOption[], factionName: (id: string) => string, max = MAX_START_CHOICES): { choices: StartChoice[]; open: string[]; noPlace: boolean } {
+export function startChoices(conds: string[], markets: PlaceOption[], factionName: (id: string) => string, max = MAX_START_CHOICES): { choices: StartChoice[]; open: string[]; noPlace: boolean; never: string[] } {
   const memory: [string, Value | undefined][] = []
   const open: string[] = []
+  // #67 U54: keys the game never sets: Play doesn't fake them (the quest wouldn't start in game either)
+  const never: string[] = []
   const tests: ((m: PlaceOption) => boolean)[] = []
   const what: string[] = []
   // used when no market fits: the place's memory set directly
@@ -34,9 +37,10 @@ export function startChoices(conds: string[], markets: PlaceOption[], factionNam
     const c = parseCondition(line)
     if (c.kind === 'score') continue
     if (c.kind === 'command') { open.push(showCondition(c.raw)); continue }
+    if (NEVER_SET_KEYS[c.key]) { never.push(c.key); continue }
     const lit = c.value !== undefined && !c.value.startsWith('$') ? literal(c.value) : undefined
-    // where: the market's owner, the market or place itself, its size
-    if (c.key === '$market.factionId' && lit !== undefined && (c.op === '==' || c.op === '!=')) {
+    // where: the faction of the place (a market's owner; #67 U54: $faction.id, as vanilla), the market or place itself, its size
+    if (c.key === '$faction.id' && lit !== undefined && (c.op === '==' || c.op === '!=')) {
       const f = String(lit)
       const is = (c.op === '==') !== c.negate
       tests.push((m) => (m.faction === f) === is)
@@ -68,13 +72,13 @@ export function startChoices(conds: string[], markets: PlaceOption[], factionNam
     else if (op === '!=') memory.push([c.key, typeof lit === 'boolean' ? !lit : undefined])
     else open.push(showCondition(c.raw))
   }
-  if (!tests.length) return { choices: [{ label: 'Start here, with its conditions met', memory }], open, noPlace: false }
+  if (!tests.length) return { choices: [{ label: 'Start here, with its conditions met', memory }], open, noPlace: false, never }
   const fit = markets.filter((m) => tests.every((t) => t(m)))
     .sort((a, b) => Number(!!b.own) - Number(!!a.own) || b.size - a.size || a.name.localeCompare(b.name))
     .slice(0, max)
   const choices: StartChoice[] = fit.map((m) => ({ label: `Dock at ${m.name} (${factionName(m.faction)}, size ${m.size})`, market: m, memory }))
-  if (!fit.length) return { choices: [{ label: `Start with its conditions met (no market fits: ${what.join(', ')})`, memory: [...placeMem, ...memory] }], open, noPlace: true }
-  return { choices, open, noPlace: false }
+  if (!fit.length) return { choices: [{ label: `Start with its conditions met (no market fits: ${what.join(', ')})`, memory: [...placeMem, ...memory] }], open, noPlace: true, never }
+  return { choices, open, noPlace: false, never }
 }
 
 const NOT: Record<string, string> = { '==': '!=', '!=': '==', '>': '<=', '<': '>=', '>=': '<', '<=': '>' }

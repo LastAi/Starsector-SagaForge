@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.1 (2026-11-24)
+
+- **Fixed: "At a market of…" never matched in game** (U54, found in game): it used `$market.factionId`,
+  which the game never sets. A market's owner is `$faction.id`, as in vanilla; the template uses it now.
+  Problems warns about `$market.factionId` with a one-click fix, and Play no longer sets it (that hid
+  the bug).
+
 ## 1.3.0 (2026-11-24)
 
 For Starsector **0.98a and 0.98.5a**. Released as a **pre-release**: the user-experience pass (#67)
